@@ -18,12 +18,21 @@ All notable changes to **File Gate** are documented here. The format is based on
   media-view access.
 - Server-to-server mint endpoint (`POST /api/file-gate/mint`) with shared-secret
   (constant-time) authentication, flood limiting, and published-host enforcement.
-- Pluggable `GateMethod` plugin type (attribute-based) with two built-in methods:
-  `signed_url` (HMAC) and `authenticated`.
+- Server-to-server revoke endpoint (`POST /api/file-gate/revoke`, same
+  shared-secret authentication as mint) that invalidates a minted `token` grant
+  by deleting its stored hash — without rotating the site secret.
+- Pluggable `GateMethod` plugin type (attribute-based) with three built-in
+  methods: `signed_url` (HMAC), `authenticated`, and `token` — a revocable
+  per-grant token (a random token whose SHA-256 hash is stored and bound into
+  the signature, revocable by deleting the hash) and/or a pre-shared
+  campaign-token allowlist (static `?token=` links). Minted tokens support TTL,
+  an availability window, and usage limits.
 - Target-agnostic `GrantSigner` (HMAC-SHA256 over the resource id plus canonical
   claims; constant-time comparison; fails closed with no secret).
-- Per-field gating via field-storage third-party settings, plus a field form
-  control that forces and locks the private file system when gating is enabled.
+- Per-field gating via field-storage third-party settings, plus a field edit
+  form control (a "Gate access to these files" toggle and a gate-method picker)
+  that forces and locks the private file system when gating is enabled, and an
+  admin menu link under Configuration → Media.
 - Expiry and usage controls for `signed_url`: per-field TTL, an absolute
   availability window (`available_until`), and usage limits (`max_uses`, where
   `1` yields a one-time link), all bound into the signature.
@@ -35,4 +44,6 @@ All notable changes to **File Gate** are documented here. The format is based on
   linking to each field's settings.
 - `administer file gate` and `bypass file gate` permissions.
 - Kernel test coverage of the deny hook, signed delivery, mint endpoint, the
-  signer, and usage-limited (one-time) links.
+  signer, and usage-limited (one-time) links; the `token` method (minted,
+  revoked, expired, tampered, one-time, unlimited, and pre-shared paths); the
+  revoke endpoint; and the field-gating persistence helper.

@@ -45,8 +45,9 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 ## Features
 
 - **Pluggable gate methods.** A clean plugin type (`GateMethod`) decides *how* a
-  request proves it passed the gate. Ships with **Signed URL** (HMAC) and
-  **Authenticated access**; add your own in a few lines.
+  request proves it passed the gate. Ships with **Signed URL** (HMAC),
+  **Authenticated access**, and **Token** (revocable per-grant links and
+  pre-shared campaign tokens); add your own in a few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
   theme is assumed. Works for decoupled, coupled, and hybrid sites.
@@ -121,6 +122,36 @@ Per-method options (for *Signed URL*, under the field's `method_settings`):
 | `available_until` | Absolute Unix timestamp; caps every grant's expiry (a "download available until X" window). |
 | `max_uses` | Maximum redemptions per minted URL (`1` = one-time link). |
 
+#### Token method
+
+The **Token** method (`token`) adds the one thing a bare signature cannot do:
+**revoke a single live link without rotating the site secret** (which would break
+every other link). It offers two shapes, chosen at redemption by whether the URL
+carries a signature:
+
+- **Minted, revocable (per grant).** `mint` self-issues a random token, records
+  its SHA-256 hash, and binds that hash into the signed URL. Revoke a link by
+  deleting its stored hash — via the [revoke endpoint](#revoke--post-apifile-gaterevoke)
+  or by removing the key from the `file_gate_tokens` expirable key/value store.
+  Because `mint` receives no caller input, a token is per-grant / independently
+  revocable — attach recipient meaning (token → person) in your own back end.
+- **Pre-shared campaign.** Configure an allowlist of token **hashes** and hand
+  out static `?token=<plaintext>` links (no `mint`). Revoke by removing the hash
+  from configuration. These links are static — no per-request expiry.
+
+Per-field `method_settings`:
+
+| Setting | Meaning |
+|---|---|
+| `ttl`, `available_until`, `max_uses` | Same as *Signed URL*, applied to minted tokens. |
+| `tokens` | Array of **SHA-256 hashes** of pre-shared tokens (e.g. `hash('sha256', $token)`). Store hashes only — never the plaintext token, which travels only in the recipient's link. Leave empty to disable pre-shared mode. |
+
+Tokens are stored and configured only as hashes, so a store or config dump yields
+no usable credentials. Like *Signed URL*'s usage counter, the revocation store is
+a fast key/value store, not a lock: a redemption whose use-increment races a
+manual revocation could admit one extra request. Adequate for lead-gen and
+distribution; not a hard licensing lock.
+
 ### 3. Global defaults
 
 Visit **Administration → Configuration → Media → File Gate**
@@ -167,6 +198,26 @@ empty), `429` (rate limited), `400` (bad request).
 Redeemed by the visitor's browser. Returns the file stream (`200`) or `403` when
 the grant is missing, expired, tampered, or spent; `404` when the file is unknown
 or not gated.
+
+For the *Token* method the browser also sends `token` (the plaintext token); a
+pre-shared campaign link sends only `token` (no `exp`/`sig`).
+
+### Revoke — `POST /api/file-gate/revoke`
+
+Server-to-server, same shared-secret authentication as mint. Invalidates a
+**minted** `token`-method grant before its natural expiry by deleting its stored
+hash — without rotating the site secret. Pre-shared campaign tokens are revoked
+by removing their hash from the field's `tokens` configuration, not here.
+
+Request body (JSON):
+
+```json
+{ "token": "<plaintext-token>" }
+```
+
+Responses: `204` (revoked), `400` (no token), `401` (bad/absent secret), `404`
+(unknown or already-gone token), `429` (rate limited), `503` (no secret
+configured).
 
 ### Front-end integration sketch (any framework)
 
@@ -248,7 +299,7 @@ final class MyMethod extends GateMethodBase {
 |---|---|---|
 | `signed_url` | shipped | HMAC signed URL; TTL, availability window, usage limits. |
 | `authenticated` | shipped | Delivers to any logged-in Drupal user. |
-| `token` | idea | A pre-shared or per-recipient token. |
+| `token` | shipped | Revocable per-grant token and/or a pre-shared campaign allowlist. |
 | `email_capture` / `form` | idea | Native (coupled) email/form gate. |
 | `otp` | idea | One-time password e-mailed to the requester. |
 | `referrer_lock` | idea | Only redeemable from an allowed origin/referrer. |

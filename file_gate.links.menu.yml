@@ -1,0 +1,11 @@
+# Menu links defined by File Gate.
+
+# Places the admin settings page in the Configuration → Media section so it is
+# reachable from the admin menu / navigation, not only via the module's
+# "Configure" link.
+file_gate.settings:
+  title: 'File Gate'
+  description: 'Configure gated access to private files: default TTL, content disposition, and mint rate limiting.'
+  parent: system.admin_config_media
+  route_name: file_gate.settings_form
+  weight: 10

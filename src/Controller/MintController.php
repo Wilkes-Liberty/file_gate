@@ -39,6 +39,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class MintController implements ContainerInjectionInterface {
 
+  use SharedSecretAuthTrait;
+
   /**
    * Constructs the mint controller.
    *
@@ -94,36 +96,16 @@ final class MintController implements ContainerInjectionInterface {
    *   {path, expires, ttl} on success, or an error with the appropriate status.
    */
   public function mint(Request $request): JsonResponse {
+    // Authenticate the server-to-server caller: fails closed with no secret
+    // (503), rejects a bad/absent secret (401), and rate-limits per IP (429).
+    // Returns an error response to send as-is, or NULL when the caller may
+    // proceed.
+    $denied = $this->authenticateSharedSecret($request, $this->configFactory, $this->flood, $this->logger, 'file_gate.mint');
+    if ($denied !== NULL) {
+      return $denied;
+    }
+
     $config = $this->configFactory->get('file_gate.settings');
-    $secret = (string) $config->get('download_secret');
-
-    // Fail closed: with no secret nothing can be signed, so refuse outright
-    // rather than emit unusable URLs.
-    if ($secret === '') {
-      $this->logger->warning('Mint refused: no File Gate secret is configured (failing closed).');
-      return new JsonResponse(['error' => 'File Gate is not configured.'], Response::HTTP_SERVICE_UNAVAILABLE);
-    }
-
-    // Authenticate the caller (constant-time comparison).
-    $provided = $this->providedSecret($request);
-    if ($provided === NULL || !hash_equals($secret, $provided)) {
-      // Security event: someone hit the mint endpoint with a bad/absent secret.
-      $this->logger->warning('Mint authentication failed from @ip.', [
-        '@ip' => $request->getClientIp() ?? 'unknown',
-      ]);
-      return new JsonResponse(['error' => 'Unauthorized.'], Response::HTTP_UNAUTHORIZED, [
-        'WWW-Authenticate' => 'Basic realm="file-gate-mint"',
-      ]);
-    }
-
-    // Basic abuse resistance on a publicly reachable path.
-    $ip = $request->getClientIp() ?? '0.0.0.0';
-    $limit = (int) ($config->get('flood_limit') ?: 50);
-    $window = (int) ($config->get('flood_window') ?: 60);
-    if (!$this->flood->isAllowed('file_gate.mint', $limit, $window, $ip)) {
-      return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
-    }
-    $this->flood->register('file_gate.mint', $window, $ip);
 
     $data = json_decode($request->getContent(), TRUE);
     if (!is_array($data)) {
@@ -208,31 +190,6 @@ final class MintController implements ContainerInjectionInterface {
     }
 
     return new JsonResponse(['error' => 'Provide a "file" or "media" UUID.'], Response::HTTP_BAD_REQUEST);
-  }
-
-  /**
-   * Extracts the caller-provided secret from the request.
-   *
-   * Accepts either an HTTP Basic Authorization password (so the secret stays
-   * out of the URL and access logs) or an X-File-Gate-Secret header.
-   *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The request.
-   *
-   * @return string|null
-   *   The provided secret, or NULL if none was supplied.
-   */
-  private function providedSecret(Request $request): ?string {
-    $authorization = (string) $request->headers->get('Authorization', '');
-    if (str_starts_with($authorization, 'Basic ')) {
-      $decoded = base64_decode(substr($authorization, 6), TRUE);
-      if ($decoded !== FALSE && str_contains($decoded, ':')) {
-        [, $password] = explode(':', $decoded, 2);
-        return $password;
-      }
-    }
-    $header = $request->headers->get('X-File-Gate-Secret');
-    return $header !== NULL ? (string) $header : NULL;
   }
 
 }
