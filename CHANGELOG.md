@@ -21,12 +21,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 - Server-to-server revoke endpoint (`POST /api/file-gate/revoke`, same
   shared-secret authentication as mint) that invalidates a minted `token` grant
   by deleting its stored hash — without rotating the site secret.
-- Pluggable `GateMethod` plugin type (attribute-based) with three built-in
-  methods: `signed_url` (HMAC), `authenticated`, and `token` — a revocable
-  per-grant token (a random token whose SHA-256 hash is stored and bound into
-  the signature, revocable by deleting the hash) and/or a pre-shared
-  campaign-token allowlist (static `?token=` links). Minted tokens support TTL,
-  an availability window, and usage limits.
+- Pluggable `GateMethod` plugin type (attribute-based) with four built-in
+  methods: `signed_url` (HMAC), `authenticated`, `token` — a revocable per-grant
+  token (a random token whose SHA-256 hash is stored and bound into the
+  signature, revocable by deleting the hash) and/or a pre-shared campaign-token
+  allowlist (static `?token=` links) — and `referrer_lock`, a signed URL that is
+  additionally only redeemable from an allowed origin/referrer (defense in depth,
+  not authorization — the Referer/Origin header is spoofable). Minted tokens
+  support TTL, an availability window, and usage limits.
 - Target-agnostic `GrantSigner` (HMAC-SHA256 over the resource id plus canonical
   claims; constant-time comparison; fails closed with no secret).
 - Per-field gating via field-storage third-party settings, plus a field edit
@@ -46,4 +48,7 @@ All notable changes to **File Gate** are documented here. The format is based on
 - Kernel test coverage of the deny hook, signed delivery, mint endpoint, the
   signer, and usage-limited (one-time) links; the `token` method (minted,
   revoked, expired, tampered, one-time, unlimited, and pre-shared paths); the
-  revoke endpoint; and the field-gating persistence helper.
+  revoke endpoint; the field-gating persistence helper; and the `referrer_lock`
+  method (allowed/disallowed origin, Origin vs Referer, default-port
+  normalization, missing-header policy, empty-allowlist fail-closed, signature
+  still enforced, and origin-checked-before-usage-consumed).

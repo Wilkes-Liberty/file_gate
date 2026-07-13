@@ -48,6 +48,10 @@ Redeemed by the visitor's browser. Query parameters:
 `403` when the grant is missing, expired, tampered, not yet valid, or spent;
 `404` when the file is unknown or not gated.
 
+The `referrer_lock` method carries the same `exp`/`sig` as `signed_url` and adds
+no query parameter — it reads the request's `Origin` header (falling back to the
+origin of `Referer`) and denies (`403`) when it is not in the field allowlist.
+
 ### `POST /api/file-gate/revoke`
 
 Revokes a **minted** `token`-method grant. **Server-to-server only** — same
@@ -116,6 +120,21 @@ third_party_settings:
       max_uses: 0         # optional; minted tokens (0 = unlimited)
       tokens:             # optional; SHA-256 hashes of pre-shared tokens
         - '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+```
+
+The `referrer_lock` method extends `signed_url` (so it takes the same `ttl` /
+`available_until` / `max_uses`) and adds an origin allowlist. It is hardening,
+not authorization — the `Origin` / `Referer` header is spoofable:
+
+```yaml
+third_party_settings:
+  file_gate:
+    gated: true
+    method: referrer_lock
+    method_settings:
+      allowed_origins:              # required; empty ⇒ deny all (fail closed)
+        - 'https://app.example.com'
+      on_missing_referrer: 'deny'   # optional; 'deny' (default) or 'allow'
 ```
 
 ## Plugin API — `GateMethod`
