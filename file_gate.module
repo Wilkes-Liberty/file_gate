@@ -166,6 +166,14 @@ function _file_gate_field_config_edit_form_validate(array &$form, FormStateInter
   if (!$form_state->getValue('file_gate_gated')) {
     return;
   }
+
+  $method = (string) ($form_state->getValue('file_gate_method') ?: '');
+  $options = $form['file_gate']['file_gate_method']['#options'] ?? [];
+  if ($method === '' || !isset($options[$method])) {
+    $form_state->setErrorByName('file_gate_method', t('Select a valid gate method.'));
+    return;
+  }
+
   $field_config = $form_state->getFormObject()->getEntity();
   $field_storage = $field_config->getFieldStorageDefinition();
   if ($field_storage->hasData() && $field_storage->getSetting('uri_scheme') !== 'private') {
