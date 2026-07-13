@@ -265,6 +265,41 @@ final class TokenGateTest extends KernelTestBase {
   }
 
   /**
+   * Minted and pre-shared token shapes do not cross at redemption time.
+   */
+  public function testTokenShapesDoNotCross(): void {
+    $this->setMethodSettings(['tokens' => [hash('sha256', 'campaign-secret')]]);
+    $file = $this->createReferencedFile('field_gated', 'campaign.pdf');
+    $minted = $this->mintQuery($file);
+
+    // A minted token presented without a signature must not fall back to the
+    // pre-shared allowlist path.
+    try {
+      $this->download(['f' => $file->uuid(), 'token' => $minted['token']]);
+      $this->fail('Expected minted token without signature to be denied.');
+    }
+    catch (AccessDeniedHttpException $e) {
+      // Expected.
+    }
+
+    // An allowlisted pre-shared token presented with a valid signature must not
+    // be treated as minted.
+    $exp = $this->container->get('datetime.time')->getRequestTime() + 300;
+    try {
+      $this->download([
+        'f' => $file->uuid(),
+        'token' => 'campaign-secret',
+        'exp' => $exp,
+        'sig' => $this->signTokenGrant($file, 'campaign-secret', $exp),
+      ]);
+      $this->fail('Expected pre-shared token presented with a signature to be denied.');
+    }
+    catch (AccessDeniedHttpException $e) {
+      // Expected.
+    }
+  }
+
+  /**
    * The revoke endpoint deletes a minted token and denies later redemption.
    */
   public function testRevokeDeletesMintedToken(): void {
