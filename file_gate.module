@@ -11,7 +11,12 @@
 
 declare(strict_types=1);
 
+use Drupal\Core\Entity\EntityFormInterface;
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\FieldConfigInterface;
+use Drupal\field\FieldStorageConfigInterface;
 
 /**
  * Implements hook_help().
@@ -69,4 +74,171 @@ function file_gate_file_download($uri) {
   }
 
   return -1;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for the field config edit form.
+ *
+ * Adds the per-field gating controls the module is built around: a "Gate access
+ * to these files" toggle and a gate-method picker. Gating lives on the field
+ * storage third-party settings (so it travels with exported configuration), and
+ * because a public file cannot be gated, enabling it forces the field's storage
+ * to the private file system. Only file-based fields (those exposing a
+ * uri_scheme storage setting) are altered.
+ */
+function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInterface $form_state): void {
+  $form_object = $form_state->getFormObject();
+  if (!$form_object instanceof EntityFormInterface) {
+    return;
+  }
+  $field_config = $form_object->getEntity();
+  if (!$field_config instanceof FieldConfigInterface) {
+    return;
+  }
+  $field_storage = $field_config->getFieldStorageDefinition();
+  // Only file-based fields can be gated; gating requires private storage, which
+  // is only meaningful where the field has a uri_scheme storage setting.
+  if (!$field_storage instanceof FieldStorageConfigInterface || !array_key_exists('uri_scheme', $field_storage->getSettings())) {
+    return;
+  }
+
+  $method_options = [];
+  foreach (\Drupal::service('plugin.manager.file_gate.gate_method')->getDefinitions() as $id => $definition) {
+    $method_options[$id] = $definition['label'] ?? $id;
+  }
+
+  $gated = (bool) $field_storage->getThirdPartySetting('file_gate', 'gated', FALSE);
+
+  $form['file_gate'] = [
+    '#type' => 'details',
+    '#title' => t('File Gate'),
+    '#open' => $gated,
+    '#weight' => 10,
+  ];
+  $form['file_gate']['file_gate_gated'] = [
+    '#type' => 'checkbox',
+    '#title' => t('Gate access to these files'),
+    // Flatten the value to the top level so it is easy to read in the submit
+    // handler and to target from #states selectors.
+    '#parents' => ['file_gate_gated'],
+    '#default_value' => $gated,
+    '#description' => t('Deny the normal <em>/system/files</em> path for this field’s private files and deliver them only through File Gate’s signed route after a gate method approves the request. Enabling this <strong>forces and locks the private file system</strong> for this field.'),
+  ];
+  $form['file_gate']['file_gate_method'] = [
+    '#type' => 'select',
+    '#title' => t('Gate method'),
+    '#parents' => ['file_gate_method'],
+    '#options' => $method_options,
+    '#default_value' => $field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url',
+    '#description' => t('How a request proves it passed the gate. Per-method options live in the field’s File Gate third-party settings (<code>method_settings</code>).'),
+    '#states' => [
+      'visible' => [
+        ':input[name="file_gate_gated"]' => ['checked' => TRUE],
+      ],
+    ],
+  ];
+
+  // Reflect the private-storage lock in the UI when gating is enabled.
+  // Enforcement is server-side in the submit handler, so this is a usability
+  // signal (and does not fight core's own uri_scheme locking on fields with
+  // data).
+  if (isset($form['field_storage']['subform']['settings']['uri_scheme'])) {
+    $form['field_storage']['subform']['settings']['uri_scheme']['#states']['disabled'][':input[name="file_gate_gated"]'] = ['checked' => TRUE];
+    $form['field_storage']['subform']['settings']['uri_scheme']['#description'] = t('File Gate forces this to “Private” while gating is enabled for this field.');
+  }
+
+  $form['#validate'][] = '_file_gate_field_config_edit_form_validate';
+  // Persist the gating settings onto the field storage after the field config
+  // is saved. Done as an explicit, decoupled storage save so the settings are
+  // reliably persisted regardless of core's storage-save path.
+  $form['actions']['submit']['#submit'][] = '_file_gate_field_config_edit_form_submit';
+}
+
+/**
+ * Validation handler for the gating controls on the field config edit form.
+ *
+ * Enabling gating converts the field to private storage; block that when the
+ * field already stores data in a non-private scheme, because the storage scheme
+ * cannot be changed once a field has data and the existing files would become
+ * unreachable.
+ */
+function _file_gate_field_config_edit_form_validate(array &$form, FormStateInterface $form_state): void {
+  if (!$form_state->getValue('file_gate_gated')) {
+    return;
+  }
+  $field_config = $form_state->getFormObject()->getEntity();
+  $field_storage = $field_config->getFieldStorageDefinition();
+  if ($field_storage->hasData() && $field_storage->getSetting('uri_scheme') !== 'private') {
+    $form_state->setErrorByName('file_gate_gated', t('This field already stores files in the %scheme file system. Gating requires private storage, which cannot be changed once a field has data. Create a new private field to gate.', [
+      '%scheme' => $field_storage->getSetting('uri_scheme'),
+    ]));
+  }
+}
+
+/**
+ * Submit handler that persists the gating settings onto the field storage.
+ */
+function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterface $form_state): void {
+  $field_config = $form_state->getFormObject()->getEntity();
+  // Re-load the field storage fresh so we persist onto the just-saved entity
+  // and do not clobber concurrent changes from the main form flow.
+  $field_storage = FieldStorageConfig::loadByName($field_config->getTargetEntityTypeId(), $field_config->getName());
+  if ($field_storage === NULL) {
+    return;
+  }
+
+  $gated = (bool) $form_state->getValue('file_gate_gated');
+  $method = (string) ($form_state->getValue('file_gate_method') ?: 'signed_url');
+  if (_file_gate_apply_field_gating($field_storage, $gated, $method)) {
+    $field_storage->save();
+    \Drupal::messenger()->addStatus($gated
+      ? t('File Gate is now protecting %field; its files are stored privately and delivered only through the gated route.', ['%field' => $field_storage->getName()])
+      : t('File Gate protection was removed from %field.', ['%field' => $field_storage->getName()]));
+  }
+}
+
+/**
+ * Applies (or removes) File Gate settings on a field storage.
+ *
+ * Extracted from the submit handler so the gating logic is unit-testable in
+ * isolation. When gating is enabled it forces private storage — a public file
+ * cannot be gated — and records the gate method; when disabled it removes the
+ * gating third-party settings and leaves the storage scheme untouched.
+ *
+ * @param \Drupal\field\Entity\FieldStorageConfig $field_storage
+ *   The field storage to mutate (not saved by this function).
+ * @param bool $gated
+ *   Whether the field should be gated.
+ * @param string $method
+ *   The gate method plugin id to record when gating is enabled.
+ *
+ * @return bool
+ *   TRUE if the field storage was changed and needs saving; FALSE otherwise.
+ */
+function _file_gate_apply_field_gating(FieldStorageConfig $field_storage, bool $gated, string $method): bool {
+  $changed = FALSE;
+
+  if ($gated) {
+    // Force private storage — a public file cannot be gated.
+    if ($field_storage->getSetting('uri_scheme') !== 'private') {
+      $field_storage->setSetting('uri_scheme', 'private');
+      $changed = TRUE;
+    }
+    if (!$field_storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
+      $field_storage->setThirdPartySetting('file_gate', 'gated', TRUE);
+      $changed = TRUE;
+    }
+    if ($field_storage->getThirdPartySetting('file_gate', 'method') !== $method) {
+      $field_storage->setThirdPartySetting('file_gate', 'method', $method);
+      $changed = TRUE;
+    }
+  }
+  elseif ($field_storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
+    // Remove gating; leave the storage scheme as the operator now chooses.
+    $field_storage->unsetThirdPartySetting('file_gate', 'gated');
+    $field_storage->unsetThirdPartySetting('file_gate', 'method');
+    $changed = TRUE;
+  }
+
+  return $changed;
 }

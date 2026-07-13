@@ -39,6 +39,7 @@ Redeemed by the visitor's browser. Query parameters:
 | `f` | The file UUID (required). |
 | `exp` | Grant expiry, Unix time (from the mint response). |
 | `sig` | HMAC signature. |
+| `token` | Present for the `token` method: the plaintext token. A minted link also carries `exp`/`sig`; a pre-shared campaign link carries only `token`. |
 | `jti`, `max` | Present only for usage-limited grants (one-time / N-use links). |
 | `nbf` | Present only when a not-before window was set. |
 
@@ -46,6 +47,33 @@ Redeemed by the visitor's browser. Query parameters:
 `Content-Disposition` of attachment or inline per the field/global setting);
 `403` when the grant is missing, expired, tampered, not yet valid, or spent;
 `404` when the file is unknown or not gated.
+
+### `POST /api/file-gate/revoke`
+
+Revokes a **minted** `token`-method grant. **Server-to-server only** — same
+shared-secret authentication as mint (Basic-auth password or `X-File-Gate-Secret`
+header, constant-time). Deletes the token's stored hash so later redemptions
+fail, without rotating the site secret (which would break every other live link).
+
+Pre-shared campaign tokens are revoked by removing their hash from the field's
+`tokens` configuration, not through this endpoint.
+
+**Request body** (JSON):
+
+| Field | Type | Notes |
+|---|---|---|
+| `token` | string | The plaintext token to revoke. |
+
+**Responses:**
+
+| Status | Meaning |
+|---|---|
+| `204` | Revoked (the token's stored hash was deleted). |
+| `400` | No `token` supplied, or invalid JSON. |
+| `401` | Missing or wrong secret. |
+| `404` | Unknown token, or already expired/revoked. |
+| `429` | Rate limited (per client IP). |
+| `503` | No signing secret is configured — the module is failing closed. |
 
 ## The grant signature
 
@@ -72,6 +100,22 @@ third_party_settings:
       ttl: 300            # optional; seconds; overrides the global default
       available_until: 0  # optional; absolute Unix timestamp cap
       max_uses: 1         # optional; 1 = one-time link
+```
+
+Edit these on the field's settings page (enable *Gate access to these files* and
+pick a method); the plugin's per-field `method_settings` are configured in YAML.
+The `token` method also accepts a `tokens` list under `method_settings` — an
+array of **SHA-256 hashes** (never plaintext) of pre-shared campaign tokens:
+
+```yaml
+third_party_settings:
+  file_gate:
+    gated: true
+    method: token
+    method_settings:
+      max_uses: 0         # optional; minted tokens (0 = unlimited)
+      tokens:             # optional; SHA-256 hashes of pre-shared tokens
+        - '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
 ```
 
 ## Plugin API — `GateMethod`

@@ -38,3 +38,18 @@ file_gate.mint:
     _access: 'TRUE'
   options:
     no_cache: TRUE
+
+# Server-to-server revoke endpoint. Invalidates a minted `token`-method grant by
+# deleting its stored hash — without rotating the site secret (which would break
+# every other live link). Authenticated with the same shared secret as mint
+# (constant-time), and fails closed when no secret is configured.
+file_gate.revoke:
+  path: '/api/file-gate/revoke'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\RevokeController::revoke'
+  methods: [POST]
+  requirements:
+    # Open by design: RevokeController authenticates the caller itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
