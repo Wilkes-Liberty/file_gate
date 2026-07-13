@@ -1,0 +1,37 @@
+{
+    "name": "drupal/file_gate",
+    "description": "Gate access to private files with pluggable methods (short-lived signed URLs, authenticated access) and deliver them to any decoupled front end.",
+    "type": "drupal-module",
+    "keywords": [
+        "Drupal",
+        "file",
+        "private files",
+        "access control",
+        "signed url",
+        "gated download",
+        "headless",
+        "decoupled"
+    ],
+    "homepage": "https://www.drupal.org/project/file_gate",
+    "license": "GPL-2.0-or-later",
+    "minimum-stability": "dev",
+    "authors": [
+        {
+            "name": "Jeremy Michael Cerda",
+            "email": "jmcerda@wilkesliberty.com",
+            "role": "Maintainer"
+        },
+        {
+            "name": "Wilkes & Liberty, LLC",
+            "homepage": "https://wilkesliberty.com",
+            "role": "Sponsor"
+        }
+    ],
+    "support": {
+        "issues": "https://www.drupal.org/project/issues/file_gate",
+        "source": "https://git.drupalcode.org/project/file_gate"
+    },
+    "require": {
+        "drupal/core": "^11.4 || ^12"
+    }
+}

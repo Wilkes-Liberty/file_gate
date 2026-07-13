@@ -1,0 +1,40 @@
+# Routes defined by File Gate.
+
+# Admin configuration form (global defaults + gated-field overview).
+file_gate.settings_form:
+  path: '/admin/config/media/file-gate'
+  defaults:
+    _form: '\Drupal\file_gate\Form\SettingsForm'
+    _title: 'File Gate'
+  requirements:
+    _permission: 'administer file gate'
+
+# Public delivery endpoint. Access is intentionally open ("_access: TRUE") —
+# the controller enforces the gate itself (it validates the minted grant via the
+# file's configured gate method). "no_cache" guarantees the streamed, per-grant
+# response is never served from the page cache.
+file_gate.download:
+  path: '/api/file-gate/download'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\DownloadController::download'
+  methods: [GET]
+  requirements:
+    # Open by design: DownloadController validates the minted grant itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
+
+# Server-to-server mint endpoint. Called by a trusted back end (e.g. a decoupled
+# front end after its own gate — a lead form, login, etc.). Access is open at the
+# routing layer; the controller authenticates the caller with the shared secret
+# using a constant-time comparison, and fails closed when no secret is configured.
+file_gate.mint:
+  path: '/api/file-gate/mint'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\MintController::mint'
+  methods: [POST]
+  requirements:
+    # Open by design: MintController authenticates the caller itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE

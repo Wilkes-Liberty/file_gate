@@ -1,0 +1,72 @@
+<?php
+
+/**
+ * @file
+ * Gate access to private files with pluggable, decoupled-friendly methods.
+ *
+ * File Gate denies the raw /system/files path for gated private files and
+ * delivers them instead through its own route after a gate method approves the
+ * request. See README.md for the architecture and security model.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function file_gate_help(string $route_name, RouteMatchInterface $route_match): ?string {
+  switch ($route_name) {
+    case 'help.page.file_gate':
+    case 'file_gate.settings_form':
+      $output = '';
+      $output .= '<p>' . t('File Gate controls access to <em>private://</em> files. It denies the normal <code>/system/files</code> path for files a "gated" field references, and delivers them instead through its own route after a pluggable <em>gate method</em> approves the request.') . '</p>';
+      $output .= '<p>' . t('Gating is configured per field: edit a private file or image field and enable "Gate access to these files". Delivery is fully front-end-agnostic — a trusted back end mints a short-lived signed URL (<code>POST /api/file-gate/mint</code>) which the visitor redeems (<code>GET /api/file-gate/download</code>).') . '</p>';
+      $output .= '<p>' . t('The signing secret must be injected from the environment in settings.php and is never stored in configuration. While it is unset the module fails closed (every gated file is denied).') . '</p>';
+      return $output;
+  }
+  return NULL;
+}
+
+/**
+ * Implements hook_file_download().
+ *
+ * File Gate's role in this hook is narrow and defensive: DENY the raw
+ * /system/files path for any private file that a gated field references, unless
+ * the current user may bypass the gate (editors/operators holding the
+ * "bypass file gate" permission). It never *grants* access here — authorized
+ * delivery happens on the module's own /api/file-gate/download route, which
+ * streams the file after validating the minted grant and does not invoke this
+ * hook.
+ *
+ * Returning -1 vetoes core's permissive private-file access (any single -1 from
+ * any module denies the download), which is exactly what closes the gap: core
+ * would otherwise grant anonymous download whenever the referencing (published)
+ * entity is viewable.
+ */
+function file_gate_file_download($uri) {
+  // Only private-scheme files are gateable. Anything else is never our concern.
+  if (\Drupal::service('stream_wrapper_manager')->getScheme($uri) !== 'private') {
+    return NULL;
+  }
+
+  $file = \Drupal::service('file.repository')->loadByUri($uri);
+  if ($file === NULL) {
+    return NULL;
+  }
+
+  // Not referenced by a gated field ⇒ leave it to core (this preserves access
+  // to ungated private files, e.g. profile documents).
+  if (!\Drupal::service('file_gate.resolver')->isGated($file)) {
+    return NULL;
+  }
+
+  // Gated. Editors/operators with the bypass permission keep normal admin-UI
+  // downloads; everyone else is denied the raw path and must use a minted URL.
+  if (\Drupal::currentUser()->hasPermission('bypass file gate')) {
+    return NULL;
+  }
+
+  return -1;
+}

@@ -1,0 +1,12 @@
+name: 'File Gate'
+type: module
+description: 'Gate access to private files with pluggable methods (short-lived signed URLs, authenticated access, …) and deliver them to any decoupled front end.'
+package: 'Security'
+# Requires Drupal 11.4+: the module builds on \Drupal\file\FileReferenceResolver,
+# which was introduced in 11.4.0 (replacing the deprecated file_get_file_references()).
+core_version_requirement: ^11.4 || ^12
+# Only core File is required. Media is optional — gating works for any private
+# file field, whether or not the file is wrapped in a media entity.
+dependencies:
+  - 'drupal:file'
+configure: file_gate.settings_form

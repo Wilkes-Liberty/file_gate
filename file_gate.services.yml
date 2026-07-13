@@ -1,0 +1,33 @@
+services:
+
+  # Target-agnostic HMAC grant signer. Deliberately knows nothing about files:
+  # it signs/validates an opaque "resource id" string plus an expiry, so the same
+  # signing core can back a future content_gate / entity_gate without change.
+  file_gate.grant_signer:
+    class: Drupal\file_gate\GrantSigner
+    arguments:
+      - '@config.factory'
+      - '@datetime.time'
+
+  # Plugin manager for gate methods (Plugin/GateMethod/*). Third parties add new
+  # ways to prove a request has passed the gate (token, email capture, …).
+  plugin.manager.file_gate.gate_method:
+    class: Drupal\file_gate\GateMethodManager
+    parent: default_plugin_manager
+
+  # File-specific glue: given a managed file, decide whether (and how) it is gated
+  # by reading the gate configuration off the field(s) that reference it.
+  file_gate.resolver:
+    class: Drupal\file_gate\FileGateResolver
+    arguments:
+      - '@Drupal\file\FileReferenceResolver'
+      - '@entity_type.manager'
+      - '@stream_wrapper_manager'
+
+  # Dedicated logger channel. Carries both security events (denied downloads,
+  # failed mint authentication, fail-closed refusals) and usage/stats events
+  # (successful mints and deliveries) for auditing and analytics.
+  logger.channel.file_gate:
+    parent: logger.channel_base
+    arguments:
+      - 'file_gate'

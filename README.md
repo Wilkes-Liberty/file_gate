@@ -1,0 +1,277 @@
+# File Gate
+
+Gate access to private files with pluggable methods (short-lived signed URLs,
+authenticated access, …) and deliver them to any decoupled front end.
+
+## The problem it solves
+
+Out of the box, Drupal grants a private-file download to anyone who can *view*
+the entity that references it. Because anonymous users can view **published**
+content, a private file attached to published media is effectively public to
+anyone who has the link — `private://` only means "not guessable", not "gated".
+
+File Gate closes that gap. It **denies** the normal `/system/files` path for any
+private file a *gated* field references, and delivers those files instead through
+its own endpoint, only after a pluggable **gate method** approves the request.
+
+## How it works
+
+```
+                    (1) editor uploads a file to a gated, private:// field
+                         │
+ visitor ──(2)──▶ your front end ──(3, server-to-server)──▶  POST /api/file-gate/mint
+   ▲   passes the front end's gate         (file/media UUID + shared secret)
+   │   (lead form, login, purchase…)                        │
+   │                                                        ▼
+   └─────(5) browser redeems ◀──(4)── { path, expires, ttl } (short-lived signed URL)
+             GET /api/file-gate/download?f=…&exp=…&sig=…
+                         │
+                         ▼
+             File Gate verifies the grant and streams the bytes.
+             Meanwhile GET /system/files/… stays denied for the public.
+```
+
+1. A private file/image field is marked **gated** (see *Configuration*).
+2. A visitor passes **your** gate — a lead form, a login, a purchase — entirely
+   in your front end. File Gate does not care how you gate; it only mints and
+   verifies.
+3. Your back end calls the **mint** endpoint (server-to-server) with the file or
+   media UUID and the shared secret.
+4. File Gate returns a **relative, short-lived, signed path**.
+5. The visitor's browser redeems it at the **download** endpoint. File Gate
+   verifies the signature (and any usage limit) and streams the file. The raw
+   `/system/files` path is denied to the public throughout.
+
+## Features
+
+- **Pluggable gate methods.** A clean plugin type (`GateMethod`) decides *how* a
+  request proves it passed the gate. Ships with **Signed URL** (HMAC) and
+  **Authenticated access**; add your own in a few lines.
+- **Front-end agnostic / headless-first.** Mint over a server-to-server API;
+  redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
+  theme is assumed. Works for decoupled, coupled, and hybrid sites.
+- **Per-field configuration.** Mark any file/image field gated where you choose
+  its storage; enabling gating **forces and locks the private file system** so a
+  gated field can never silently store public, world-readable files.
+- **Media-optional.** Gate a Media source field, a plain file field, or any other
+  private file field. The only hard dependency is core *File*.
+- **Expiry & usage controls.** Per-field TTL, an absolute availability window
+  (`available_until`), and **usage limits** (`max_uses`, including one-time
+  links). All are bound into the signature and cannot be altered by the client.
+- **Fails closed.** With no signing secret configured, minting returns `503` and
+  every gated file is denied.
+- **Constant-time verification.** HMAC-SHA256 grants compared with
+  `hash_equals()`; the secret lives in the environment, never in configuration.
+- **Editors keep working.** A *Bypass file gate* permission lets trusted staff
+  download gated files normally through the admin UI.
+- **Auditing & analytics.** A dedicated logger channel records security events
+  (denied downloads, failed mint auth, fail-closed refusals) and usage events
+  (mints and deliveries).
+- **Admin dashboard.** Reports the secret status, sets global defaults, lists
+  gate methods, and links every gated field to its settings.
+
+## Requirements
+
+- **Drupal 11.4+** — the module builds on core's `FileReferenceResolver`
+  (introduced in 11.4).
+- A configured **private file system** (`file_private_path`).
+- A **signing secret**, injected from the environment (below).
+
+## Installation
+
+```bash
+composer require drupal/file_gate
+drush en file_gate
+```
+
+## Configuration
+
+### 1. Provide the signing secret (required)
+
+The secret is **never** stored in configuration. Inject it from the environment
+in `settings.php`:
+
+```php
+$config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');
+```
+
+Generate a strong random value (e.g. `openssl rand -hex 32`) and set
+`DRUPAL_FILE_GATE_SECRET` in your environment. While it is empty the module fails
+closed. This secret doubles as the mint endpoint's credential; keep it off the
+public network and never expose it to the browser (only the derived signature is
+ever public).
+
+### 2. Gate a field
+
+Edit any private file or image field. In its settings you will find **"Gate
+access to these files"**. Enabling it:
+
+- forces the field's storage to the **private** file system and locks that
+  control; and
+- lets you pick a **gate method** (default: *Signed URL*).
+
+Gating is stored as third-party settings on the field storage, so it travels
+with your exported configuration.
+
+Per-method options (for *Signed URL*, under the field's `method_settings`):
+
+| Setting | Meaning |
+|---|---|
+| `ttl` | Signed-URL lifetime in seconds (defaults to the global TTL). |
+| `available_until` | Absolute Unix timestamp; caps every grant's expiry (a "download available until X" window). |
+| `max_uses` | Maximum redemptions per minted URL (`1` = one-time link). |
+
+### 3. Global defaults
+
+Visit **Administration → Configuration → Media → File Gate**
+(`/admin/config/media/file-gate`) to set the default TTL, content disposition
+(attachment/inline), and mint rate limiting, to check the secret status, and to
+see every gated field.
+
+## API contract (for front ends)
+
+### Mint — `POST /api/file-gate/mint`
+
+Server-to-server only. Authenticate with the shared secret as the HTTP Basic
+password (or the `X-File-Gate-Secret` header).
+
+Request body (JSON):
+
+```json
+{ "media": "<media-uuid>" }
+```
+
+or
+
+```json
+{ "file": "<file-uuid>" }
+```
+
+Response `200`:
+
+```json
+{
+  "path": "/api/file-gate/download?f=<file-uuid>&exp=1720800000&sig=<hmac>",
+  "expires": 1720800000,
+  "ttl": 120
+}
+```
+
+`path` is **root-relative and host-agnostic** — prepend your public Drupal file
+origin. Errors: `503` (no secret configured), `401` (bad/absent secret), `404`
+(unknown file/media), `409` (host media unpublished), `422` (file not gated /
+empty), `429` (rate limited), `400` (bad request).
+
+### Download — `GET /api/file-gate/download?f=…&exp=…&sig=…`
+
+Redeemed by the visitor's browser. Returns the file stream (`200`) or `403` when
+the grant is missing, expired, tampered, or spent; `404` when the file is unknown
+or not gated.
+
+### Front-end integration sketch (any framework)
+
+```js
+// Server-side (never expose the secret to the browser):
+const res = await fetch(`${DRUPAL_INTERNAL_ORIGIN}/api/file-gate/mint`, {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Basic ' + Buffer.from(':' + process.env.DRUPAL_FILE_GATE_SECRET).toString('base64'),
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ media: mediaUuid }),
+});
+const { path } = await res.json();
+// Hand the browser the public URL to redeem:
+const downloadUrl = `${DRUPAL_PUBLIC_FILE_ORIGIN}${path}`;
+```
+
+The metadata the front end needs (that a gated document exists, its name, type,
+size) should be exposed via your API (JSON:API/GraphQL) **without** a directly
+resolvable file URL — the bytes are delivered only through the gated endpoint.
+
+## Security model
+
+- **Deny by default.** The `hook_file_download()` implementation returns `-1`
+  (a hard veto that overrides core's permissive private-file access) for any
+  gated file requested at `/system/files`, unless the account holds *Bypass file
+  gate*. It never grants there — delivery happens only on the module's route.
+- **Signed grants.** `sig = HMAC-SHA256(normalized_uri . "|" . canonical(claims),
+  secret)`. Every claim (expiry, not-before, usage token/cap) is bound, so a
+  client cannot change the file, the expiry, or the usage limit without
+  invalidating the grant. Comparison is constant-time.
+- **Fail closed.** No secret ⇒ nothing validates and minting refuses (`503`).
+- **No path disclosure.** The signed URL carries the file UUID, not the
+  `private://` path; delivery streams `BinaryFileResponse` with
+  `Cache-Control: private, no-store`.
+- **Trust boundary.** The mint endpoint trusts the secret-holding caller; it does
+  **not** re-verify the front end's own gate. Keep the endpoint on a trusted
+  network (and rate-limited) and keep the secret secret.
+- **Usage limits are approximate.** The redemption counter is a fast key/value
+  store, not a lock; a tight race could allow one extra redemption. Adequate for
+  lead-gen and casual limits, not for hard licensing.
+
+## Extending: writing a gate method
+
+A gate method answers "has this request passed the gate for this file?"
+
+```php
+namespace Drupal\my_module\Plugin\GateMethod;
+
+use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\file\FileInterface;
+use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\GateMethodBase;
+use Symfony\Component\HttpFoundation\Request;
+
+#[GateMethod(
+  id: 'my_method',
+  label: new TranslatableMarkup('My method'),
+  description: new TranslatableMarkup('…'),
+)]
+final class MyMethod extends GateMethodBase {
+
+  public function grants(FileInterface $file, Request $request): bool {
+    // Return TRUE only if the request positively proves it passed the gate.
+  }
+
+  public function mint(FileInterface $file): ?array {
+    // Return query params to append to the download URL, or NULL if this
+    // method decides access live (no pre-issued grant).
+  }
+
+}
+```
+
+### Built-in methods and roadmap
+
+| Method | Status | Notes |
+|---|---|---|
+| `signed_url` | shipped | HMAC signed URL; TTL, availability window, usage limits. |
+| `authenticated` | shipped | Delivers to any logged-in Drupal user. |
+| `token` | idea | A pre-shared or per-recipient token. |
+| `email_capture` / `form` | idea | Native (coupled) email/form gate. |
+| `otp` | idea | One-time password e-mailed to the requester. |
+| `referrer_lock` | idea | Only redeemable from an allowed origin/referrer. |
+| `commerce` | idea | Gate behind a purchase/licence. |
+
+## Permissions
+
+- **Administer File Gate** — configure the module and view gated fields.
+- **Bypass file gate** — download gated files directly via `/system/files`
+  (editors/operators). The administrator role holds it implicitly.
+
+## Logging
+
+File Gate logs to its own `file_gate` channel: `warning` for security events
+(denied downloads, failed mint auth, fail-closed refusals) and `info` for usage
+events (mints, deliveries). Watch it via *Reports → Recent log messages* or your
+log aggregator.
+
+## Maintainers
+
+- Jeremy Michael Cerda (jmcerda) — <https://www.drupal.org/u/jmcerda>
+- Sponsored by **Wilkes & Liberty, LLC** — <https://wilkesliberty.com>
+
+## License
+
+GPL-2.0-or-later. See [LICENSE](LICENSE).

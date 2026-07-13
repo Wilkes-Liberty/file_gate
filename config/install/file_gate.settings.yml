@@ -1,0 +1,18 @@
+# Global File Gate settings.
+#
+# SECURITY: download_secret intentionally ships EMPTY. The real value must be
+# injected at runtime from the environment (e.g. in settings.php:
+#   $config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');
+# ) and must never be committed to configuration. While the secret is empty the
+# module fails CLOSED: minting returns HTTP 503 and every grant validation fails,
+# so gated files stay denied.
+download_secret: ''
+# Default signed-URL lifetime, in seconds. Keep this short — the URL is only
+# needed for the moment between minting and the browser starting the download.
+ttl: 120
+# Content-Disposition for gated downloads: 'attachment' forces a download,
+# 'inline' lets the browser render it (e.g. a PDF) in place.
+disposition: 'attachment'
+# Flood protection for the mint endpoint (failed + successful attempts per IP).
+flood_limit: 50
+flood_window: 60

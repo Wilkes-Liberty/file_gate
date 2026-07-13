@@ -1,0 +1,15 @@
+# Permissions defined by File Gate.
+#
+# Both are marked "restrict access: true" because they weaken or bypass the
+# access gate — Drupal renders the security warning next to them on the
+# permissions form.
+
+'administer file gate':
+  title: 'Administer File Gate'
+  description: 'Configure the File Gate module (default TTL, disposition, flood limits) and view which fields are gated.'
+  restrict access: true
+
+'bypass file gate':
+  title: 'Bypass file gate (download gated files directly)'
+  description: 'Download gated private files through the normal <em>/system/files</em> path — e.g. editors and operators using the admin UI — without a minted grant. Grant only to trusted staff roles; the site administrator role already has it implicitly.'
+  restrict access: true

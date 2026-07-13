@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="file_gate">
+  <description>PHP CodeSniffer ruleset for the File Gate module.</description>
+
+  <!-- Scan the module itself. -->
+  <file>.</file>
+
+  <!-- Files to check. -->
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme,yml"/>
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- Drupal coding standards. -->
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+</ruleset>

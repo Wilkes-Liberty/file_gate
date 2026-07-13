@@ -1,0 +1,42 @@
+# Configuration schema for File Gate.
+
+file_gate.settings:
+  type: config_object
+  label: 'File Gate settings'
+  mapping:
+    download_secret:
+      type: string
+      label: 'Signing / mint secret'
+      # Empty in config; injected from the environment at runtime. Never commit a
+      # real value here.
+    ttl:
+      type: integer
+      label: 'Default signed-URL TTL (seconds)'
+    disposition:
+      type: string
+      label: 'Content-Disposition (inline or attachment)'
+    flood_limit:
+      type: integer
+      label: 'Mint flood limit (attempts per window per IP)'
+    flood_window:
+      type: integer
+      label: 'Mint flood window (seconds)'
+
+# Per-field gate configuration, stored as third-party settings on the file/image
+# field storage. This is what marks a field's private files as gated and picks
+# the gate method that protects them. The schema key is the full field-storage
+# config name pattern + ".third_party.<module>" (the core convention, e.g.
+# field.field.*.*.*.third_party.content_translation).
+field.storage.*.*.third_party.file_gate:
+  type: mapping
+  label: 'File Gate field settings'
+  mapping:
+    gated:
+      type: boolean
+      label: 'Gate access to these files'
+    method:
+      type: string
+      label: 'Gate method plugin id'
+    method_settings:
+      type: ignore
+      label: 'Gate-method-specific settings'

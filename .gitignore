@@ -1,0 +1,12 @@
+# Composer artifacts (a module ships neither).
+/vendor/
+composer.lock
+
+# IDE / editor.
+/.idea/
+/.vscode/
+*.sublime-*
+
+# OS cruft.
+.DS_Store
+Thumbs.db
