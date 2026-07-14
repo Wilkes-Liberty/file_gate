@@ -53,3 +53,18 @@ file_gate.revoke:
     _access: 'TRUE'
   options:
     no_cache: TRUE
+
+# Server-to-server OTP-issue endpoint for the `otp` gate method. A trusted back
+# end requests a one-time passcode bound to (file, email); File Gate stores its
+# hash and e-mails it. Authenticated with the shared secret (constant-time), and
+# fails closed when no secret is configured.
+file_gate.otp:
+  path: '/api/file-gate/otp'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\OtpController::request'
+  methods: [POST]
+  requirements:
+    # Open by design: OtpController authenticates the caller itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE

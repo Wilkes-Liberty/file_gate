@@ -35,6 +35,26 @@ function file_gate_help(string $route_name, RouteMatchInterface $route_match): ?
 }
 
 /**
+ * Implements hook_mail().
+ *
+ * Builds the one-time passcode email for the `otp` gate method. The code itself
+ * is passed in params (never stored or logged in plaintext elsewhere).
+ */
+function file_gate_mail(string $key, array &$message, array $params): void {
+  if ($key !== 'otp') {
+    return;
+  }
+  $message['subject'] = t('Your one-time download passcode');
+  $message['body'][] = t('Your passcode to download @filename is: @code', [
+    '@filename' => $params['filename'] ?? t('your file'),
+    '@code' => $params['code'] ?? '',
+  ]);
+  $message['body'][] = t('It expires in @minutes minutes and can be used once. If you did not request this, you can ignore this email.', [
+    '@minutes' => $params['ttl_minutes'] ?? 10,
+  ]);
+}
+
+/**
  * Implements hook_file_download().
  *
  * File Gate's role in this hook is narrow and defensive: DENY the raw

@@ -21,14 +21,16 @@ All notable changes to **File Gate** are documented here. The format is based on
 - Server-to-server revoke endpoint (`POST /api/file-gate/revoke`, same
   shared-secret authentication as mint) that invalidates a minted `token` grant
   by deleting its stored hash — without rotating the site secret.
-- Pluggable `GateMethod` plugin type (attribute-based) with four built-in
+- Pluggable `GateMethod` plugin type (attribute-based) with five built-in
   methods: `signed_url` (HMAC), `authenticated`, `token` — a revocable per-grant
   token (a random token whose SHA-256 hash is stored and bound into the
   signature, revocable by deleting the hash) and/or a pre-shared campaign-token
-  allowlist (static `?token=` links) — and `referrer_lock`, a signed URL that is
+  allowlist (static `?token=` links) — `referrer_lock`, a signed URL that is
   additionally only redeemable from an allowed origin/referrer (defense in depth,
-  not authorization — the Referer/Origin header is spoofable). Minted tokens
-  support TTL, an availability window, and usage limits.
+  not authorization — the Referer/Origin header is spoofable), and `otp`, a
+  single-use one-time passcode e-mailed to a self-identified address (issued at
+  `POST /api/file-gate/otp`; TTL-limited, attempt-locked, stored only as a hash).
+  Minted tokens support TTL, an availability window, and usage limits.
 - **File Gate Assurance** submodule (`file_gate_assurance`) adding an `assurance`
   gate method: a signed URL whose delivery also requires a hardware-backed,
   phishing-resistant OIDC assurance level (PIV/CAC — HSPD-12 / FIPS 201 — or
@@ -81,4 +83,6 @@ All notable changes to **File Gate** are documented here. The format is based on
   still enforced, and origin-checked-before-usage-consumed); and the `assurance`
   method (valid/insufficient-acr/wrong-audience/wrong-issuer/expired/forged-key
   tokens, aal-tamper, advisory amr, asserted mode, and DPoP grant / missing
-  proof / thumbprint mismatch / wrong-htu / replay).
+  proof / thumbprint mismatch / wrong-htu / replay); and the `otp` method
+  (request-then-redeem via the mail collector, single use, wrong code, attempt
+  lockout, endpoint guards, send throttle, and mint-not-supported).

@@ -60,6 +60,29 @@ against the field's configured issuer/audience/`acr` before delivery. It binds a
 `aal` claim into the signed URL (so the level cannot be downgraded). Redeem via a
 JavaScript `fetch`, not a plain navigation, so the headers can be set.
 
+The `otp` method reads `email` and `otp` query parameters (no `exp`/`sig`) and
+verifies the passcode against the one issued for that (file, email) — single use,
+within its TTL, under the attempt cap.
+
+### `POST /api/file-gate/otp`
+
+Issues a one-time passcode for an `otp`-gated file. **Server-to-server only** —
+same shared-secret authentication as mint. Generates a code bound to (file,
+email), stores its hash (TTL-limited, attempt-capped), and e-mails it via the
+site mail transport. Rate-limited per IP and per (file, email).
+
+**Request body** (JSON):
+
+| Field | Type | Notes |
+|---|---|---|
+| `file` / `media` | string | The file or media UUID (exactly one). |
+| `email` | string | The recipient address the code is bound to. |
+
+**Responses:** `204` (a code was sent), `400` (bad JSON / invalid email / no
+file), `401` (bad/absent secret), `404` (unknown file/media), `409` (media
+unpublished), `422` (file is not OTP-gated), `429` (rate limited), `503` (no
+secret configured).
+
 ### `POST /api/file-gate/revoke`
 
 Revokes a **minted** `token`-method grant. **Server-to-server only** — same
