@@ -171,6 +171,17 @@ final class OtpTest extends KernelTestBase {
   }
 
   /**
+   * Repeated failed shared-secret authentication attempts are throttled.
+   */
+  public function testEndpointFailedAuthThrottle(): void {
+    $file = $this->createFile('doc.pdf');
+    for ($i = 0; $i < 10; $i++) {
+      $this->assertSame(401, $this->requestOtp($file, self::EMAIL, 'wrong-secret')->getStatusCode());
+    }
+    $this->assertSame(429, $this->requestOtp($file, self::EMAIL, 'wrong-secret')->getStatusCode());
+  }
+
+  /**
    * The send endpoint refuses a file that is not OTP-gated (422).
    */
   public function testEndpointRefusesNonOtpFile(): void {

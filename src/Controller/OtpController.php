@@ -168,11 +168,12 @@ final class OtpController implements ContainerInjectionInterface {
 
     // A zero-padded numeric code from a CSPRNG.
     $code = str_pad((string) random_int(0, (10 ** $length) - 1), $length, '0', STR_PAD_LEFT);
+    $secret = (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
 
     $this->keyValueExpirableFactory->get(Otp::STORE_COLLECTION)->setWithExpire(
       Otp::storeKey($file->uuid(), $email),
       [
-        'hash' => hash('sha256', $code),
+        'hash' => Otp::codeHash($code, $secret),
         'attempts' => 0,
         'max' => $max,
         'exp' => $this->time->getRequestTime() + $ttl,

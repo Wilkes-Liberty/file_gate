@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\file_gate\Plugin\GateMethod;
 
 use Drupal\Component\Datetime\TimeInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
@@ -26,8 +27,9 @@ use Symfony\Component\HttpFoundation\Request;
  *
  * A live-decision method: mint() returns NULL (there is no pre-issued signed
  * grant); the redemption carries "email" and "otp" query parameters instead.
- * Codes are stored only as SHA-256 hashes; brute force is bounded by the TTL,
- * the per-code attempt cap (lockout), and the send endpoint's rate limiting.
+ * Codes are stored as an HMAC-SHA256 keyed by the File Gate secret; brute force
+ * is bounded by the TTL, the per-code attempt cap (lockout), and the send
+ * endpoint's rate limiting.
  *
  * Per-field method settings:
  * - ttl: code lifetime in seconds (default 600);
@@ -67,6 +69,11 @@ final class Otp extends GateMethodBase {
   private KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
+   * The config factory.
+   */
+  private ConfigFactoryInterface $configFactory;
+
+  /**
    * The time service.
    */
   private TimeInterface $time;
@@ -77,6 +84,7 @@ final class Otp extends GateMethodBase {
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
     $instance = new static($configuration, $plugin_id, $plugin_definition);
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
+    $instance->configFactory = $container->get('config.factory');
     $instance->time = $container->get('datetime.time');
     return $instance;
   }
@@ -110,7 +118,8 @@ final class Otp extends GateMethodBase {
       return FALSE;
     }
 
-    if (hash_equals((string) ($record['hash'] ?? ''), hash('sha256', $code))) {
+    $secret = (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
+    if (hash_equals((string) ($record['hash'] ?? ''), self::codeHash($code, $secret))) {
       // Correct: consume the code (single use).
       $store->delete($key);
       return TRUE;
@@ -199,6 +208,21 @@ final class Otp extends GateMethodBase {
    */
   public static function normalizeEmail(string $email): string {
     return mb_strtolower(trim($email));
+  }
+
+  /**
+   * Builds the keyed hash used for OTP storage and comparison.
+   *
+   * @param string $code
+   *   The OTP code.
+   * @param string $secret
+   *   The File Gate shared secret.
+   *
+   * @return string
+   *   The HMAC-SHA256 digest.
+   */
+  public static function codeHash(string $code, string $secret): string {
+    return hash_hmac('sha256', $code, $secret);
   }
 
   /**
