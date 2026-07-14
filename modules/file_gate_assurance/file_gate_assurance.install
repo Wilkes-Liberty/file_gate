@@ -7,6 +7,8 @@
 
 declare(strict_types=1);
 
+use Drupal\Core\Extension\Requirement\RequirementSeverity;
+
 /**
  * Implements hook_runtime_requirements().
  *
@@ -20,7 +22,7 @@ function file_gate_assurance_runtime_requirements(): array {
     $requirements['file_gate_assurance_jwt'] = [
       'title' => t('File Gate Assurance'),
       'description' => t('The <code>firebase/php-jwt</code> library is required for OIDC token verification. Install it with <code>composer require firebase/php-jwt</code>.'),
-      'severity' => REQUIREMENT_ERROR,
+      'severity' => RequirementSeverity::Error,
     ];
   }
   return $requirements;
