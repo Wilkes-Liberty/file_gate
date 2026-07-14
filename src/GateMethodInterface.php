@@ -66,4 +66,33 @@ interface GateMethodInterface extends PluginInspectionInterface {
    */
   public function mint(FileInterface $file): ?array;
 
+  /**
+   * Builds this method's per-field settings form.
+   *
+   * Rendered on the field edit form when the method is selected, so a site
+   * builder configures the method's options in the UI rather than by hand in
+   * exported YAML. Return an empty array for a method with no settings.
+   *
+   * @param array $settings
+   *   The current method_settings for this field.
+   *
+   * @return array
+   *   A Form API array of settings elements (keyed by setting name).
+   */
+  public function fieldSettingsForm(array $settings): array;
+
+  /**
+   * Maps submitted settings-form values back to the stored method_settings.
+   *
+   * Lets a method normalize what it persists (cast types, split textareas,
+   * drop empties) independently of how the form is rendered.
+   *
+   * @param array $values
+   *   The submitted values from this method's fieldSettingsForm().
+   *
+   * @return array
+   *   The method_settings to store in the field's third-party settings.
+   */
+  public function fieldSettingsSubmit(array $values): array;
+
 }

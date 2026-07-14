@@ -6,6 +6,7 @@ namespace Drupal\file_gate;
 
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Plugin\PluginBase;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -16,6 +17,8 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  * services override create() to inject them.
  */
 abstract class GateMethodBase extends PluginBase implements GateMethodInterface, ContainerFactoryPluginInterface {
+
+  use StringTranslationTrait;
 
   /**
    * {@inheritdoc}
@@ -37,6 +40,22 @@ abstract class GateMethodBase extends PluginBase implements GateMethodInterface,
    */
   public function description(): string {
     return (string) ($this->pluginDefinition['description'] ?? '');
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    // Methods with no settings expose no form.
+    return [];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    // By default persist the submitted values verbatim.
+    return $values;
   }
 
 }

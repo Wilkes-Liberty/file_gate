@@ -7,6 +7,7 @@ namespace Drupal\file_gate_assurance\Plugin\GateMethod;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
 use Drupal\file_gate_assurance\AssuranceVerifierInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -56,12 +57,17 @@ use Symfony\Component\HttpFoundation\Request;
   label: new TranslatableMarkup('Assurance (PIV/CAC + FIDO2/WebAuthn via OIDC)'),
   description: new TranslatableMarkup('A signed URL whose delivery also requires a hardware-backed, phishing-resistant assurance level (PIV/CAC or FIDO2/WebAuthn) proven at any OIDC IdP. Verifies the IdP assertion live at redemption (or trusts a stepped-up mint caller), optionally sender-constrained with DPoP. Federation (asserted level), not an AAL3 verifier.'),
 )]
-final class Assurance extends SignedUrl {
+final class Assurance extends SignedUrl implements ContextualMintInterface {
 
   /**
    * The assurance verifier.
    */
   private AssuranceVerifierInterface $verifier;
+
+  /**
+   * The caller-asserted subject for the grant being minted, if any.
+   */
+  private ?string $mintSubject = NULL;
 
   /**
    * {@inheritdoc}
@@ -90,17 +96,41 @@ final class Assurance extends SignedUrl {
   /**
    * {@inheritdoc}
    */
+  public function mintWithContext(FileInterface $file, Request $request): ?array {
+    // The trusted mint caller may assert the subject the grant is for; File
+    // Gate binds only its hash, and Model B enforces at redemption that the
+    // presented token belongs to that subject (per-user binding). A wrong
+    // subject gains nothing — redemption still needs a valid token for it.
+    $data = json_decode($request->getContent(), TRUE);
+    $subject = is_array($data) && isset($data['subject']) && is_string($data['subject'])
+      ? $data['subject']
+      : '';
+    $this->mintSubject = $subject !== '' ? $subject : NULL;
+    return $this->mint($file);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   protected function signedClaimKeys(): array {
-    // Bind the asserted level into the signature so it cannot be downgraded.
-    return array_merge(parent::signedClaimKeys(), ['aal']);
+    // Bind the asserted level and the optional subject hash into the signature,
+    // so neither can be downgraded nor swapped.
+    return array_merge(parent::signedClaimKeys(), ['aal', 'sh']);
   }
 
   /**
    * {@inheritdoc}
    */
   protected function extraMintClaims(FileInterface $file): array {
+    $claims = [];
     $aal = (int) ($this->configuration['aal'] ?? 0);
-    return $aal > 0 ? ['aal' => $aal] : [];
+    if ($aal > 0) {
+      $claims['aal'] = $aal;
+    }
+    if ($this->mintSubject !== NULL) {
+      $claims['sh'] = hash('sha256', $this->mintSubject);
+    }
+    return $claims;
   }
 
   /**
@@ -114,10 +144,18 @@ final class Assurance extends SignedUrl {
    *   invalid token, insufficient `acr`, or (when required) DPoP failure.
    */
   private function assuranceSatisfied(Request $request): bool {
+    $mode = $this->configuration['verify_at'] ?? 'redeem';
+
     // Model A: the trusted mint caller asserted the level; it is bound into the
     // signature (verified by parent::grants). No live check here.
-    if (($this->configuration['verify_at'] ?? 'redeem') === 'mint') {
+    if ($mode === 'mint') {
       return TRUE;
+    }
+
+    // Edge mTLS: trust a validated PIV client-certificate identity that an
+    // mTLS-terminating proxy passes in a configured, trusted header.
+    if ($mode === 'client_cert') {
+      return $this->clientCertSatisfied($request);
     }
 
     // Model B: verify a live OIDC token presented at redemption.
@@ -142,7 +180,51 @@ final class Assurance extends SignedUrl {
       return FALSE;
     }
 
+    // Per-user binding: when the grant carries a subject hash (bound at mint
+    // from a caller-asserted subject), the token's subject must match it.
+    $sub_hash = (string) $request->query->get('sh', '');
+    if ($sub_hash !== '' && !hash_equals($sub_hash, hash('sha256', (string) $claims['sub']))) {
+      return FALSE;
+    }
+
+    // Optional live revocation check (RFC 7662).
+    if (!empty($this->configuration['introspect']) && !$this->verifier->introspect($token, $this->configuration)) {
+      return FALSE;
+    }
+
     return TRUE;
+  }
+
+  /**
+   * Whether a validated client-certificate identity from the edge is accepted.
+   *
+   * SECURITY: this trusts a request header, which is only safe when File Gate
+   * is reachable exclusively through the mTLS-terminating proxy that sets it
+   * (and strips any client-supplied copy). The proxy plus its trust store (e.g.
+   * the Federal PKI) is the verifier — File Gate only consumes the result.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The redemption request.
+   *
+   * @return bool
+   *   TRUE when the configured header carries a subject that passes the
+   *   allowlist (or any subject, when no allowlist is configured).
+   */
+  private function clientCertSatisfied(Request $request): bool {
+    $header = (string) ($this->configuration['trusted_proxy_header'] ?? '');
+    if ($header === '') {
+      return FALSE;
+    }
+    $subject = trim((string) $request->headers->get($header, ''));
+    if ($subject === '') {
+      return FALSE;
+    }
+    $allowed = array_map('strval', (array) ($this->configuration['allowed_subjects'] ?? []));
+    if ($allowed === []) {
+      // No subject allowlist: any identity the proxy validated is accepted.
+      return TRUE;
+    }
+    return in_array($subject, $allowed, TRUE);
   }
 
   /**
@@ -165,6 +247,131 @@ final class Assurance extends SignedUrl {
       }
     }
     return NULL;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    $lines = static fn (array $v): string => implode("\n", $v);
+    $verify_at = (string) ($settings['verify_at'] ?? 'redeem');
+    if (!in_array($verify_at, ['redeem', 'mint', 'client_cert'], TRUE)) {
+      $verify_at = 'redeem';
+    }
+    return parent::fieldSettingsForm($settings) + [
+      'verify_at' => [
+        '#type' => 'select',
+        '#title' => $this->t('Verify'),
+        '#options' => [
+          'redeem' => $this->t('At redemption — live OIDC token (Model B)'),
+          'mint' => $this->t('At mint — trust the stepped-up caller (Model A)'),
+          'client_cert' => $this->t('Edge mTLS — trust a validated client certificate'),
+        ],
+        '#default_value' => $verify_at,
+      ],
+      'aal' => [
+        '#type' => 'number',
+        '#title' => $this->t('Assurance level to bind'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['aal'] ?? 0),
+        '#description' => $this->t('Bound into the signed grant (audit + downgrade protection), e.g. 3. 0 = none.'),
+      ],
+      'issuer' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('OIDC issuer URL'),
+        '#default_value' => $settings['issuer'] ?? '',
+        '#description' => $this->t('Redemption mode. The JWKS is found via OIDC discovery on this issuer.'),
+      ],
+      'audience' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Expected token audience'),
+        '#default_value' => $settings['audience'] ?? '',
+        '#description' => $this->t('Redemption mode. The token’s <code>aud</code> must contain this value.'),
+      ],
+      'required_acr' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Accepted acr values'),
+        '#default_value' => $lines((array) ($settings['required_acr'] ?? [])),
+        '#description' => $this->t('Redemption mode. One <code>acr</code> value per line, exactly as your IdP emits. Empty denies.'),
+      ],
+      'required_amr' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Required amr values (advisory)'),
+        '#default_value' => $lines((array) ($settings['required_amr'] ?? [])),
+        '#description' => $this->t('Optional. One per line; enforced only when set. <code>amr</code> is advisory.'),
+      ],
+      'dpop' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Require a DPoP proof (RFC 9449)'),
+        '#default_value' => !empty($settings['dpop']),
+        '#description' => $this->t('Sender-constrains the token to a key the client proves possession of.'),
+      ],
+      'introspect' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Introspect the token (RFC 7662)'),
+        '#default_value' => !empty($settings['introspect']),
+        '#description' => $this->t('Live revocation check at redemption. Adds a network round-trip.'),
+      ],
+      'introspection_endpoint' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Introspection endpoint'),
+        '#default_value' => $settings['introspection_endpoint'] ?? '',
+      ],
+      'introspection_client_id' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Introspection client id'),
+        '#default_value' => $settings['introspection_client_id'] ?? '',
+        '#description' => $this->t('The client secret is injected globally from the environment, never stored here.'),
+      ],
+      'trusted_proxy_header' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Trusted client-cert header'),
+        '#default_value' => $settings['trusted_proxy_header'] ?? '',
+        '#description' => $this->t('Edge mTLS mode. The header your reverse proxy sets to the validated certificate subject, e.g. <code>X-Client-Cert-Dn</code>. Only safe if File Gate is reachable solely through that proxy.'),
+      ],
+      'allowed_subjects' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Allowed certificate subjects'),
+        '#default_value' => $lines((array) ($settings['allowed_subjects'] ?? [])),
+        '#description' => $this->t('Edge mTLS mode. One subject (DN) per line. Empty accepts any subject the proxy validated.'),
+      ],
+      'leeway' => [
+        '#type' => 'number',
+        '#title' => $this->t('Clock-skew tolerance'),
+        '#field_suffix' => $this->t('seconds'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['leeway'] ?? 60),
+      ],
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    // Inherit ttl / available_until / max_uses.
+    $settings = parent::fieldSettingsSubmit($values);
+
+    $mode = $values['verify_at'] ?? 'redeem';
+    $settings['verify_at'] = in_array($mode, ['redeem', 'mint', 'client_cert'], TRUE) ? $mode : 'redeem';
+    $settings['aal'] = (int) ($values['aal'] ?? 0);
+    $settings['dpop'] = !empty($values['dpop']);
+    $settings['introspect'] = !empty($values['introspect']);
+    $settings['leeway'] = (int) ($values['leeway'] ?? 60);
+
+    foreach (['issuer', 'audience', 'introspection_endpoint', 'introspection_client_id', 'trusted_proxy_header'] as $key) {
+      $value = trim((string) ($values[$key] ?? ''));
+      if ($value !== '') {
+        $settings[$key] = $value;
+      }
+    }
+    foreach (['required_acr', 'required_amr', 'allowed_subjects'] as $key) {
+      $list = array_filter(array_map('trim', preg_split('/\R/', (string) ($values[$key] ?? ''))));
+      if ($list) {
+        $settings[$key] = array_values($list);
+      }
+    }
+    return $settings;
   }
 
 }

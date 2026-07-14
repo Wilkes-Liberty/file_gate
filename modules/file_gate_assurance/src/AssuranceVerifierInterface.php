@@ -39,4 +39,23 @@ interface AssuranceVerifierInterface {
    */
   public function verify(string $token, array $config, Request $request): ?array;
 
+  /**
+   * Checks a token's live status at the IdP introspection endpoint (RFC 7662).
+   *
+   * Opt-in: closes the gap where a JWT stays valid until its own expiry even
+   * after the IdP session is revoked. Adds a network round-trip per redemption.
+   *
+   * @param string $token
+   *   The bearer token to introspect.
+   * @param array $config
+   *   The method settings: at least "introspection_endpoint"; optionally
+   *   "introspection_client_id". The client secret is sourced globally from
+   *   module configuration.
+   *
+   * @return bool
+   *   TRUE only if the endpoint reports the token active. Fails closed (FALSE)
+   *   when unconfigured or on any error.
+   */
+  public function introspect(string $token, array $config): bool;
+
 }

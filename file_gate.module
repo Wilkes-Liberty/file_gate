@@ -130,13 +130,44 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
     '#parents' => ['file_gate_method'],
     '#options' => $method_options,
     '#default_value' => $field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url',
-    '#description' => t('How a request proves it passed the gate. Per-method options live in the field’s File Gate third-party settings (<code>method_settings</code>).'),
+    '#description' => t('How a request proves it passed the gate. The selected method’s options appear below.'),
     '#states' => [
       'visible' => [
         ':input[name="file_gate_gated"]' => ['checked' => TRUE],
       ],
     ],
   ];
+
+  // Per-method settings. Render each method's own settings form, shown only
+  // when gating is on and that method is selected. On submit, only the selected
+  // method's values are read (see the submit handler). Fields are not marked
+  // #required, because #states-hidden elements still validate server-side —
+  // methods fail closed at runtime when misconfigured instead.
+  $method_manager = \Drupal::service('plugin.manager.file_gate.gate_method');
+  $current_method = $field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url';
+  $current_settings = (array) $field_storage->getThirdPartySetting('file_gate', 'method_settings', []);
+  $form['file_gate']['file_gate_settings'] = [
+    '#type' => 'container',
+    '#parents' => ['file_gate_settings'],
+    '#tree' => TRUE,
+  ];
+  foreach ($method_options as $id => $label) {
+    $method_settings = $id === $current_method ? $current_settings : [];
+    $subform = $method_manager->createInstance($id, $method_settings)->fieldSettingsForm($method_settings);
+    if (!$subform) {
+      continue;
+    }
+    $form['file_gate']['file_gate_settings'][$id] = [
+      '#type' => 'fieldset',
+      '#title' => t('@label settings', ['@label' => $label]),
+      '#states' => [
+        'visible' => [
+          ':input[name="file_gate_gated"]' => ['checked' => TRUE],
+          ':input[name="file_gate_method"]' => ['value' => $id],
+        ],
+      ],
+    ] + $subform;
+  }
 
   // Reflect the private-storage lock in the UI when gating is enabled.
   // Enforcement is server-side in the submit handler, so this is a usability
@@ -197,7 +228,27 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
 
   $gated = (bool) $form_state->getValue('file_gate_gated');
   $method = (string) ($form_state->getValue('file_gate_method') ?: 'signed_url');
-  if (_file_gate_apply_field_gating($field_storage, $gated, $method)) {
+  $changed = _file_gate_apply_field_gating($field_storage, $gated, $method);
+
+  if ($gated) {
+    // Persist the selected method's own settings, normalized by the plugin.
+    $values = (array) ($form_state->getValue(['file_gate_settings', $method]) ?? []);
+    $method_settings = \Drupal::service('plugin.manager.file_gate.gate_method')
+      ->createInstance($method, [])
+      ->fieldSettingsSubmit($values);
+    if ($field_storage->getThirdPartySetting('file_gate', 'method_settings', []) !== $method_settings) {
+      $field_storage->setThirdPartySetting('file_gate', 'method_settings', $method_settings);
+      $changed = TRUE;
+    }
+  }
+  else {
+    if ($field_storage->getThirdPartySetting('file_gate', 'method_settings', []) !== []) {
+      $field_storage->unsetThirdPartySetting('file_gate', 'method_settings');
+      $changed = TRUE;
+    }
+  }
+
+  if ($changed) {
     $field_storage->save();
     \Drupal::messenger()->addStatus($gated
       ? t('File Gate is now protecting %field; its files are stored privately and delivered only through the gated route.', ['%field' => $field_storage->getName()])

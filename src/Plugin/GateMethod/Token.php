@@ -287,4 +287,57 @@ final class Token extends GateMethodBase {
     return $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    return [
+      'ttl' => [
+        '#type' => 'number',
+        '#title' => $this->t('Minted-token lifetime (TTL)'),
+        '#field_suffix' => $this->t('seconds'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['ttl'] ?? 0),
+        '#description' => $this->t('How long a minted token stays valid. 0 uses the global default.'),
+      ],
+      'available_until' => [
+        '#type' => 'number',
+        '#title' => $this->t('Available until'),
+        '#field_suffix' => $this->t('Unix timestamp'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['available_until'] ?? 0),
+        '#description' => $this->t('An absolute cap on the minted token expiry. 0 = no cap.'),
+      ],
+      'max_uses' => [
+        '#type' => 'number',
+        '#title' => $this->t('Maximum redemptions per minted token'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['max_uses'] ?? 0),
+        '#description' => $this->t('0 = unlimited; 1 = a one-time link.'),
+      ],
+      'tokens' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Pre-shared token hashes'),
+        '#default_value' => implode("\n", (array) ($settings['tokens'] ?? [])),
+        '#description' => $this->t('Optional. One <strong>SHA-256 hash</strong> per line of a pre-shared campaign token. Store hashes only, never the plaintext token. Leave empty to disable pre-shared mode.'),
+      ],
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    $settings = [];
+    foreach (['ttl', 'available_until', 'max_uses'] as $key) {
+      $settings[$key] = (int) ($values[$key] ?? 0);
+    }
+    // One hash per line; drop blanks and surrounding whitespace.
+    $tokens = array_filter(array_map('trim', preg_split('/\R/', (string) ($values['tokens'] ?? ''))));
+    if ($tokens) {
+      $settings['tokens'] = array_values($tokens);
+    }
+    return $settings;
+  }
+
 }

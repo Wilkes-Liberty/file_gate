@@ -11,6 +11,7 @@ use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\Url;
 use Drupal\file\FileInterface;
+use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
 use Psr\Log\LoggerInterface;
@@ -124,7 +125,11 @@ final class MintController implements ContainerInjectionInterface {
     }
 
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
-    $params = $method->mint($file);
+    // A method that binds request-scoped claims (e.g. a caller-asserted
+    // subject) receives the request; all others use the plain mint() contract.
+    $params = $method instanceof ContextualMintInterface
+      ? $method->mintWithContext($file, $request)
+      : $method->mint($file);
     if ($params === NULL) {
       return new JsonResponse([
         'error' => sprintf('Gate method "%s" does not support minted URLs.', $gate['method']),
