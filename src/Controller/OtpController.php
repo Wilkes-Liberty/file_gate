@@ -180,11 +180,18 @@ final class OtpController implements ContainerInjectionInterface {
       $ttl,
     );
 
-    $this->mailManager->mail('file_gate', 'otp', $email, $this->languageManager->getDefaultLanguage()->getId(), [
+    $result = $this->mailManager->mail('file_gate', 'otp', $email, $this->languageManager->getDefaultLanguage()->getId(), [
       'code' => $code,
       'filename' => $file->getFilename() ?? 'your download',
       'ttl_minutes' => (int) ceil($ttl / 60),
     ]);
+
+    if (empty($result['result'])) {
+      // Avoid leaving an outstanding code when the email could not be sent.
+      $this->keyValueExpirableFactory->get(Otp::STORE_COLLECTION)->delete(Otp::storeKey($file->uuid(), $email));
+      $this->logger->error('Failed to send an OTP email for file @uuid.', ['@uuid' => $file->uuid()]);
+      return;
+    }
 
     // Usage event: a code was issued (never log the code itself).
     $this->logger->info('Issued an OTP for file @uuid.', ['@uuid' => $file->uuid()]);
