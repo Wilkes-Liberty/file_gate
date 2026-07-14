@@ -1,0 +1,23 @@
+{
+    "name": "drupal/file_gate_assurance",
+    "description": "Gate file delivery behind PIV/CAC or FIDO2/WebAuthn assurance proven at any OIDC IdP (provider-agnostic). A File Gate submodule.",
+    "type": "drupal-module",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Jeremy Michael Cerda",
+            "email": "jmcerda@wilkesliberty.com",
+            "role": "Maintainer"
+        },
+        {
+            "name": "Wilkes & Liberty, LLC",
+            "homepage": "https://wilkesliberty.com",
+            "role": "Sponsor"
+        }
+    ],
+    "require": {
+        "drupal/core": "^11.4 || ^12",
+        "drupal/file_gate": "*",
+        "firebase/php-jwt": "^6.10 || ^7.0"
+    }
+}

@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * @file
+ * Install/runtime checks for the File Gate Assurance submodule.
+ */
+
+declare(strict_types=1);
+
+/**
+ * Implements hook_runtime_requirements().
+ *
+ * OIDC token verification needs the firebase/php-jwt library. It is declared in
+ * the submodule's composer.json but the parent module does not require it (to
+ * keep File Gate's core dependency-light), so guard against its absence.
+ */
+function file_gate_assurance_runtime_requirements(): array {
+  $requirements = [];
+  if (!class_exists('Firebase\JWT\JWT')) {
+    $requirements['file_gate_assurance_jwt'] = [
+      'title' => t('File Gate Assurance'),
+      'description' => t('The <code>firebase/php-jwt</code> library is required for OIDC token verification. Install it with <code>composer require firebase/php-jwt</code>.'),
+      'severity' => REQUIREMENT_ERROR,
+    ];
+  }
+  return $requirements;
+}

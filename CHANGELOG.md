@@ -29,6 +29,19 @@ All notable changes to **File Gate** are documented here. The format is based on
   additionally only redeemable from an allowed origin/referrer (defense in depth,
   not authorization — the Referer/Origin header is spoofable). Minted tokens
   support TTL, an availability window, and usage limits.
+- **File Gate Assurance** submodule (`file_gate_assurance`) adding an `assurance`
+  gate method: a signed URL whose delivery also requires a hardware-backed,
+  phishing-resistant OIDC assurance level (PIV/CAC — HSPD-12 / FIPS 201 — or
+  FIDO2/WebAuthn) proven at any standards-compliant IdP. Provider-agnostic (OIDC
+  discovery + JWKS, algorithm pinned to the published keys), with opt-in DPoP
+  (RFC 9449) sender-constraining and replay protection. Verifies live at
+  redemption (Model B) or trusts a stepped-up mint caller (Model A); binds the
+  asserted level (`aal`) into the signature. This is federation (NIST SP 800-63C,
+  an *asserted* level), not an AAL3 verifier — a plain signed URL is a bearer
+  capability unless DPoP-bound. Requires `firebase/php-jwt` (a suggested
+  dependency of the parent module).
+- A `SignedUrl` claim-binding seam (`signedClaimKeys()` / `extraMintClaims()`)
+  so gate methods can extend it and bind additional signed claims.
 - Target-agnostic `GrantSigner` (HMAC-SHA256 over the resource id plus canonical
   claims; constant-time comparison; fails closed with no secret).
 - Per-field gating via field-storage third-party settings, plus a field edit
@@ -48,7 +61,10 @@ All notable changes to **File Gate** are documented here. The format is based on
 - Kernel test coverage of the deny hook, signed delivery, mint endpoint, the
   signer, and usage-limited (one-time) links; the `token` method (minted,
   revoked, expired, tampered, one-time, unlimited, and pre-shared paths); the
-  revoke endpoint; the field-gating persistence helper; and the `referrer_lock`
+  revoke endpoint; the field-gating persistence helper; the `referrer_lock`
   method (allowed/disallowed origin, Origin vs Referer, default-port
   normalization, missing-header policy, empty-allowlist fail-closed, signature
-  still enforced, and origin-checked-before-usage-consumed).
+  still enforced, and origin-checked-before-usage-consumed); and the `assurance`
+  method (valid/insufficient-acr/wrong-audience/wrong-issuer/expired/forged-key
+  tokens, aal-tamper, advisory amr, asserted mode, and DPoP grant / missing
+  proof / thumbprint mismatch / wrong-htu / replay).

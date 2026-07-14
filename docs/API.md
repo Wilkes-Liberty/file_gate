@@ -52,6 +52,13 @@ The `referrer_lock` method carries the same `exp`/`sig` as `signed_url` and adds
 no query parameter — it reads the request's `Origin` header (falling back to the
 origin of `Referer`) and denies (`403`) when it is not in the field allowlist.
 
+The `assurance` method (File Gate Assurance submodule) additionally reads an OIDC
+token from the `Authorization` header (`Bearer <token>` or, DPoP-bound, `DPoP
+<token>`) and — when DPoP is enabled — a `DPoP: <proof>` header, verifying them
+against the field's configured issuer/audience/`acr` before delivery. It binds an
+`aal` claim into the signed URL (so the level cannot be downgraded). Redeem via a
+JavaScript `fetch`, not a plain navigation, so the headers can be set.
+
 ### `POST /api/file-gate/revoke`
 
 Revokes a **minted** `token`-method grant. **Server-to-server only** — same

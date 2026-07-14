@@ -49,6 +49,16 @@ class SignedUrl extends GateMethodBase {
   private const REDEMPTION_COLLECTION = 'file_gate_redemptions';
 
   /**
+   * Core claims reserved by signed-url grants.
+   */
+  private const CORE_CLAIM_KEYS = [
+    GrantSignerInterface::CLAIM_EXPIRES,
+    GrantSignerInterface::CLAIM_NOT_BEFORE,
+    'jti',
+    'max',
+  ];
+
+  /**
    * The grant signer.
    */
   private GrantSignerInterface $signer;
@@ -92,7 +102,7 @@ class SignedUrl extends GateMethodBase {
     // an attacker adds or alters changes the canonical payload and fails the
     // HMAC.
     $claims = [];
-    foreach ([GrantSignerInterface::CLAIM_EXPIRES, GrantSignerInterface::CLAIM_NOT_BEFORE, 'jti', 'max'] as $key) {
+    foreach ($this->signedClaimKeys() as $key) {
       if ($request->query->has($key)) {
         $claims[$key] = $request->query->get($key);
       }
@@ -135,6 +145,16 @@ class SignedUrl extends GateMethodBase {
 
     $claims = [GrantSignerInterface::CLAIM_EXPIRES => $exp];
 
+    // Let subclasses bind additional claims (e.g. an assurance level). Keys
+    // they add here MUST also appear in signedClaimKeys() so grants()
+    // reconstructs the exact signed payload.
+    foreach ($this->extraMintClaims($file) as $key => $value) {
+      if (!is_string($key) || $key === '' || isset($claims[$key]) || in_array($key, self::CORE_CLAIM_KEYS, TRUE) || !is_scalar($value)) {
+        return NULL;
+      }
+      $claims[$key] = $value;
+    }
+
     // A usage cap needs a unique, unguessable token so redemptions of THIS
     // grant can be counted independently of any other.
     $max_uses = (int) ($settings['max_uses'] ?? 0);
@@ -148,6 +168,41 @@ class SignedUrl extends GateMethodBase {
     // The claims travel in the URL (bound by the signature); the controller
     // appends them, plus "sig", to the download link.
     return $claims + ['sig' => $sig];
+  }
+
+  /**
+   * The query parameter keys that reconstruct the signed claim set.
+   *
+   * Subclasses that bind extra claims at mint MUST add their keys here, so
+   * grants() reconstructs exactly the payload that was signed (any missing or
+   * extra key changes the canonical payload and the HMAC fails closed).
+   *
+   * @return string[]
+   *   The claim keys to read from the request query.
+   */
+  protected function signedClaimKeys(): array {
+    return [
+      GrantSignerInterface::CLAIM_EXPIRES,
+      GrantSignerInterface::CLAIM_NOT_BEFORE,
+      'jti',
+      'max',
+    ];
+  }
+
+  /**
+   * Additional scalar claims to bind into the grant at mint time.
+   *
+   * Subclasses override this to bind extra signed claims (e.g. an assurance
+   * level). Every key returned here MUST also be listed by signedClaimKeys().
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file being minted.
+   *
+   * @return array
+   *   Extra scalar claims keyed by claim name.
+   */
+  protected function extraMintClaims(FileInterface $file): array {
+    return [];
   }
 
   /**
