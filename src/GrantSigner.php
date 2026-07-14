@@ -118,6 +118,17 @@ final class GrantSigner implements GrantSignerInterface {
    * so the same claims always produce the same signable payload regardless of
    * the order the client presents them in.
    *
+   * Every key and value is rawurlencode()d before joining. This is a security
+   * requirement, not cosmetics: the encoding makes the claims → string mapping
+   * injective, so a literal "&" or "=" inside a value can never impersonate a
+   * claim delimiter. Without it the mapping collides — {jti: "a", max: "1"}
+   * and {jti: "a&max=1"} both render "jti=a&max=1" — letting a client fold a
+   * signed claim into an adjacent value and drop it from the reconstructed
+   * claim bag while keeping a valid signature (e.g. dropping "max" to defeat a
+   * one-time link, or the assurance "sh" claim to defeat per-user binding).
+   * Encoding pins each claim boundary so any such reshaping changes the payload
+   * and fails the HMAC.
+   *
    * @param array $claims
    *   The claims (scalar values).
    *
@@ -128,7 +139,7 @@ final class GrantSigner implements GrantSignerInterface {
     ksort($claims);
     $parts = [];
     foreach ($claims as $key => $value) {
-      $parts[] = $key . '=' . $value;
+      $parts[] = rawurlencode((string) $key) . '=' . rawurlencode((string) $value);
     }
     return implode('&', $parts);
   }

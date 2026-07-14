@@ -130,6 +130,34 @@ final class GrantSignerTest extends KernelTestBase {
   }
 
   /**
+   * A claim cannot be dropped by folding it into an adjacent claim value.
+   *
+   * Regression test for the canonicalisation-injection bypass: because the
+   * canonical form rawurlencode()s every key and value, a value containing a
+   * literal "&"/"=" can no longer impersonate a claim delimiter. An attacker
+   * who holds a URL minted with {jti, max} cannot rebuild it as
+   * {jti: "abc&max=1"} to drop "max" (defeating a one-time link), nor fold the
+   * assurance "sh" claim away — the reshaped payload no longer matches the
+   * signature.
+   */
+  public function testClaimFoldingIsRejected(): void {
+    $this->setSecret('s3cr3t-key');
+    $signer = $this->signer();
+    $exp = $this->now() + 300;
+
+    // A legitimately minted one-time grant.
+    $sig = $signer->sign(self::RESOURCE, ['exp' => $exp, 'jti' => 'abc123', 'max' => 1]);
+    // The attack: fold "&max=1" into jti and omit the real "max" claim. Under a
+    // naive "key=value" join this collided with the original; encoding rejects
+    // it, so the dropped usage cap can never be bypassed.
+    $this->assertFalse($signer->validate(self::RESOURCE, ['exp' => $exp, 'jti' => 'abc123&max=1'], $sig));
+
+    // The same shape against a bound subject hash (assurance per-user binding).
+    $sig = $signer->sign(self::RESOURCE, ['aal' => 3, 'exp' => $exp, 'sh' => 'victimhash']);
+    $this->assertFalse($signer->validate(self::RESOURCE, ['aal' => 3, 'exp' => $exp . '&sh=victimhash'], $sig));
+  }
+
+  /**
    * Sign() refuses when no secret is configured.
    */
   public function testSignThrowsWithoutSecret(): void {
