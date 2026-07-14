@@ -241,6 +241,12 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
       $changed = TRUE;
     }
   }
+  else {
+    if ($field_storage->getThirdPartySetting('file_gate', 'method_settings', []) !== []) {
+      $field_storage->unsetThirdPartySetting('file_gate', 'method_settings');
+      $changed = TRUE;
+    }
+  }
 
   if ($changed) {
     $field_storage->save();
