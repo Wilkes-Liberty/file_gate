@@ -283,6 +283,9 @@ final class OtpTest extends KernelTestBase {
   private function lastMailCode(): string {
     $mails = $this->container->get('state')->get('system.test_mail_collector', []);
     $last = end($mails);
+    if ($last === FALSE) {
+      return '';
+    }
     $body = is_array($last['body'] ?? NULL) ? implode(' ', $last['body']) : (string) ($last['body'] ?? '');
     return preg_match('/\b(\d{6})\b/', $body, $m) ? $m[1] : '';
   }
