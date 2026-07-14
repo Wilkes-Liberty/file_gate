@@ -46,8 +46,9 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 
 - **Pluggable gate methods.** A clean plugin type (`GateMethod`) decides *how* a
   request proves it passed the gate. Ships with **Signed URL** (HMAC),
-  **Authenticated access**, and **Token** (revocable per-grant links and
-  pre-shared campaign tokens); add your own in a few lines.
+  **Authenticated access**, **Token** (revocable per-grant links and pre-shared
+  campaign tokens), and **Referrer lock** (a signed URL restricted to an allowed
+  origin); add your own in a few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
   theme is assumed. Works for decoupled, coupled, and hybrid sites.
@@ -151,6 +152,29 @@ no usable credentials. Like *Signed URL*'s usage counter, the revocation store i
 a fast key/value store, not a lock: a redemption whose use-increment races a
 manual revocation could admit one extra request. Adequate for lead-gen and
 distribution; not a hard licensing lock.
+
+#### Referrer lock method
+
+The **Referrer lock** method (`referrer_lock`) is a *Signed URL* that is
+additionally only redeemable from an allowed origin. It mints and validates the
+same signed grant (and inherits `ttl`, `available_until`, and `max_uses`), and at
+redemption also checks the request's `Origin` header — falling back to the origin
+of the `Referer` — against a per-field allowlist. The origin is checked first, so
+a request from a disallowed origin is denied before a usage-limited grant would
+spend one of its uses.
+
+> **Hardening, not authorization.** The `Origin` / `Referer` header is trivially
+> spoofable by any non-browser client and is often stripped by privacy setups, so
+> this is **not** an access boundary — the signature is. Use it to discourage a
+> leaked link from working when embedded on another site, not to protect anything
+> the signature alone should not already protect.
+
+Per-field `method_settings` (in addition to all of *Signed URL*'s):
+
+| Setting | Meaning |
+|---|---|
+| `allowed_origins` | List of allowed origins, e.g. `https://app.example.com`. Matched as scheme + host + (non-default) port. An empty list denies every request (fail closed) — configure at least one. |
+| `on_missing_referrer` | What to do when no parseable `Origin`/`Referer` is available: `deny` (default) or `allow` (tolerate privacy setups that strip the header, leaning on the signature alone). |
 
 ### 3. Global defaults
 
@@ -302,7 +326,7 @@ final class MyMethod extends GateMethodBase {
 | `token` | shipped | Revocable per-grant token and/or a pre-shared campaign allowlist. |
 | `email_capture` / `form` | idea | Native (coupled) email/form gate. |
 | `otp` | idea | One-time password e-mailed to the requester. |
-| `referrer_lock` | idea | Only redeemable from an allowed origin/referrer. |
+| `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
 | `commerce` | idea | Gate behind a purchase/licence. |
 
 ## Permissions

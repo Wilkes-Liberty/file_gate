@@ -32,13 +32,16 @@ use Symfony\Component\HttpFoundation\Request;
  *   (the "the download is available until <date>" window);
  * - max_uses: maximum number of times a single minted URL may be redeemed
  *   (1 = a one-time link). Enforced with an expirable redemption counter.
+ *
+ * Extended by the referrer_lock method, which reuses this mint/validate/usage
+ * logic unchanged and layers an origin allowlist check on top of grants().
  */
 #[GateMethod(
   id: 'signed_url',
   label: new TranslatableMarkup('Signed URL'),
   description: new TranslatableMarkup('A trusted back end mints a short-lived, HMAC-signed URL after its own gate (lead form, login, …); the browser redeems it. Supports per-field TTL, an absolute availability window, and usage limits (one-time links). Fully front-end-agnostic.'),
 )]
-final class SignedUrl extends GateMethodBase {
+class SignedUrl extends GateMethodBase {
 
   /**
    * The redemption-counter collection name (keyed by grant token).
