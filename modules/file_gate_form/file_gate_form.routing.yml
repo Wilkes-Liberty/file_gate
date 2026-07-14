@@ -13,3 +13,5 @@ file_gate_form.gate:
     # Open by design: the form 404s for a file not gated with the form method,
     # and only a valid submission records a grant.
     _access: 'TRUE'
+  options:
+    no_cache: TRUE
