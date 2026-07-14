@@ -48,9 +48,10 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   request proves it passed the gate. Ships with **Signed URL** (HMAC),
   **Authenticated access**, **Token** (revocable per-grant links and pre-shared
   campaign tokens), **Referrer lock** (a signed URL restricted to an allowed
-  origin), and **One-time passcode** (email-verified); the optional **File Gate
-  Assurance** submodule adds hardware-backed, phishing-resistant **PIV/CAC +
-  FIDO2/WebAuthn** gating over any OIDC IdP (with opt-in DPoP). Add your own in a
+  origin), and **One-time passcode** (email-verified); optional submodules add
+  **File Gate Form** (a coupled email / lead-capture form Drupal renders) and
+  **File Gate Assurance** (hardware-backed, phishing-resistant **PIV/CAC +
+  FIDO2/WebAuthn** gating over any OIDC IdP, with opt-in DPoP). Add your own in a
   few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
@@ -360,7 +361,7 @@ final class MyMethod extends GateMethodBase {
 | `signed_url` | shipped | HMAC signed URL; TTL, availability window, usage limits. |
 | `authenticated` | shipped | Delivers to any logged-in Drupal user. |
 | `token` | shipped | Revocable per-grant token and/or a pre-shared campaign allowlist. |
-| `email_capture` / `form` | idea | Native (coupled) email/form gate. |
+| `form` | shipped | Coupled email / lead-capture form (Drupal renders the gate). Ships in the **File Gate Form** submodule. |
 | `otp` | shipped | One-time passcode e-mailed to a self-identified address; single-use, TTL-limited, attempt-locked. |
 | `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
 | `assurance` | shipped | Signed URL gated on a hardware-backed OIDC assurance (PIV/CAC + FIDO2/WebAuthn), with opt-in DPoP. Ships in the **File Gate Assurance** submodule. |

@@ -1,0 +1,7 @@
+name: 'File Gate Form'
+type: module
+description: 'Coupled email / lead-capture gate: Drupal renders a lightweight form and grants the download on submission. Optional — keeps the headless path free of front-end assumptions.'
+package: 'Security'
+core_version_requirement: ^11.4 || ^12
+dependencies:
+  - 'file_gate:file_gate'
