@@ -134,9 +134,10 @@ Model B; A2 later.
   purely live method (mint returns `NULL`, like `authenticated`) should not extend
   `signed_url`.
 - **JWT verification (normative):** configure the IdP by **issuer URL**; use OIDC
-  discovery to find the JWKS. Pin the asymmetric algorithm (RS256/ES256/PS256) by
-  JWKS `kid`, never from the token header; reject `none` and HS256. **Never reuse
-  the File Gate HMAC `download_secret` as a JWT key** — keep the key domains
+  discovery to find the JWKS. Select the verification key by trusted JWKS `kid`,
+  and allowlist acceptable `alg` values for that key type (e.g. RS256/PS256 for
+  RSA, ES256 for P-256); reject `none` and symmetric algorithms such as HS256.
+  **Never reuse the File Gate HMAC `download_secret` as a JWT key** — keep the key domains
   separate. Take `iss`/JWKS from admin config, never the token's own `iss` (SSRF);
   cache JWKS by `kid` with a TTL and rate-limited refetch on unknown `kid`. Pin
   `aud` + `iss`; check `exp`/`nbf`/`iat` with bounded clock skew; reject the wrong
