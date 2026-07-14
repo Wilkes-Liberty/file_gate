@@ -31,7 +31,12 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   /**
    * The signature algorithms accepted for DPoP proofs (asymmetric only).
    */
-  private const DPOP_ALGS = ['ES256', 'ES384', 'ES512', 'RS256', 'RS384', 'PS256'];
+  private const DPOP_ALGS = ['ES256', 'ES256K', 'ES384', 'ES512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'EdDSA'];
+
+  /**
+   * The asymmetric JWT algorithms accepted for OIDC token verification.
+   */
+  private const OIDC_TOKEN_ALGS = ['ES256', 'ES256K', 'ES384', 'ES512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'EdDSA'];
 
   /**
    * The DPoP proof freshness window, in seconds.
@@ -82,12 +87,23 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       return NULL;
     }
 
+    $default_alg = $this->jwtHeaderAlg($token);
+    if ($default_alg === NULL) {
+      return NULL;
+    }
+
     try {
       // parseKeySet pins each key's algorithm; JWT::decode then rejects "none",
       // any HMAC alg, and any token whose header alg disagrees with its key.
-      $keys = JWK::parseKeySet($jwks, 'RS256');
-      JWT::$leeway = max(0, (int) ($config['leeway'] ?? 60));
-      $claims = JWT::decode($token, $keys);
+      $keys = JWK::parseKeySet($jwks, $default_alg);
+      $leeway = JWT::$leeway;
+      try {
+        JWT::$leeway = max(0, (int) ($config['leeway'] ?? 60));
+        $claims = JWT::decode($token, $keys);
+      }
+      finally {
+        JWT::$leeway = $leeway;
+      }
     }
     catch (\Throwable $e) {
       $this->logger->warning('Assurance: token rejected: @msg', ['@msg' => $e->getMessage()]);
@@ -308,6 +324,29 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   }
 
   /**
+   * Reads and validates the JWT header algorithm.
+   *
+   * @param string $jwt
+   *   The encoded JWT.
+   *
+   * @return string|null
+   *   The header alg when it is an allowed asymmetric algorithm; otherwise
+   *   NULL.
+   */
+  private function jwtHeaderAlg(string $jwt): ?string {
+    if (substr_count($jwt, '.') !== 2) {
+      return NULL;
+    }
+    [$header_b64] = explode('.', $jwt, 2);
+    $header = json_decode($this->base64UrlDecode($header_b64), TRUE);
+    if (!is_array($header)) {
+      return NULL;
+    }
+    $alg = (string) ($header['alg'] ?? '');
+    return in_array($alg, self::OIDC_TOKEN_ALGS, TRUE) ? $alg : NULL;
+  }
+
+  /**
    * Normalizes a URL to scheme://host[:port]/path (no query/fragment).
    *
    * @param string $url
@@ -353,7 +392,12 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    *   The decoded bytes (empty string on failure).
    */
   private function base64UrlDecode(string $data): string {
-    $decoded = base64_decode(strtr($data, '-_', '+/'), TRUE);
+    $normalized = strtr($data, '-_', '+/');
+    $padding = strlen($normalized) % 4;
+    if ($padding > 0) {
+      $normalized .= str_repeat('=', 4 - $padding);
+    }
+    $decoded = base64_decode($normalized, TRUE);
     return $decoded === FALSE ? '' : $decoded;
   }
 

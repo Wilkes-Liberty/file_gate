@@ -49,6 +49,16 @@ class SignedUrl extends GateMethodBase {
   private const REDEMPTION_COLLECTION = 'file_gate_redemptions';
 
   /**
+   * Core claims reserved by signed-url grants.
+   */
+  private const CORE_CLAIM_KEYS = [
+    GrantSignerInterface::CLAIM_EXPIRES,
+    GrantSignerInterface::CLAIM_NOT_BEFORE,
+    'jti',
+    'max',
+  ];
+
+  /**
    * The grant signer.
    */
   private GrantSignerInterface $signer;
@@ -139,6 +149,9 @@ class SignedUrl extends GateMethodBase {
     // they add here MUST also appear in signedClaimKeys() so grants()
     // reconstructs the exact signed payload.
     foreach ($this->extraMintClaims($file) as $key => $value) {
+      if (!is_string($key) || $key === '' || isset($claims[$key]) || in_array($key, self::CORE_CLAIM_KEYS, TRUE) || !is_scalar($value)) {
+        return NULL;
+      }
       $claims[$key] = $value;
     }
 
