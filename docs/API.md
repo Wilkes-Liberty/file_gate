@@ -170,6 +170,25 @@ third_party_settings:
       on_missing_referrer: 'deny'   # optional; 'deny' (default) or 'allow' when no parseable Origin/Referer is available
 ```
 
+The `otp` method (core) e-mails a one-time passcode; its `method_settings`:
+
+```yaml
+third_party_settings:
+  file_gate:
+    gated: true
+    method: otp
+    method_settings:
+      ttl: 600            # optional; code lifetime in seconds (default 600)
+      max_attempts: 5     # optional; wrong tries before lockout (default 5)
+      code_length: 6      # optional; number of digits (default 6; 4–10)
+```
+
+The `form`, `commerce`, and `assurance` methods ship in optional submodules;
+their `method_settings` keys are documented in each submodule's README
+([`file_gate_form`](../modules/file_gate_form/README.md),
+[`file_gate_commerce`](../modules/file_gate_commerce/README.md),
+[`file_gate_assurance`](../modules/file_gate_assurance/README.md)).
+
 ## Plugin API — `GateMethod`
 
 Implement `\Drupal\file_gate\GateMethodInterface` (extend `GateMethodBase`) and
@@ -180,8 +199,17 @@ tag the class with the `#[GateMethod(id, label, description)]` attribute in
 |---|---|
 | `grants(FileInterface $file, Request $request): bool` | Decide, at delivery time, whether the request may receive the file. **Must fail closed.** |
 | `mint(FileInterface $file): ?array` | Pre-issue a grant: return query params to append to the download URL (e.g. `['exp' => …, 'sig' => …]`), or `NULL` if the method decides access live (no minted URL). |
+| `fieldSettingsForm(array $settings): array` | Return a Form API array of the method's per-field options (rendered inline on the field edit form), or `[]` for a method with no settings. |
+| `fieldSettingsSubmit(array $values): array` | Normalise the submitted values into the `method_settings` to persist (cast types, split textareas, drop empties). |
 
 The plugin's per-field `method_settings` are available as `$this->configuration`.
+
+**Optional: `ContextualMintInterface`.** A method that needs the mint *request*
+itself — e.g. to bind a caller-asserted subject — implements
+`\Drupal\file_gate\ContextualMintInterface::mintWithContext(FileInterface $file, Request $request): ?array`.
+The mint controller feature-detects it and calls `mintWithContext()` in place of
+`mint()`, so `mint()` stays backward compatible. (This is how the `assurance`
+method reads the `subject` from the mint body for per-user binding.)
 
 ## Services
 

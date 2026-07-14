@@ -11,9 +11,13 @@ use Drupal\Core\StringTranslation\TranslatableMarkup;
  * Defines a gate_method plugin attribute for discovery.
  *
  * A gate method answers one question: "has this request passed the gate for
- * this file?" The module ships two: signed_url (a minted, short-lived HMAC URL)
- * and authenticated (a logged-in user). Third parties add their own (token,
- * email capture, form submission, …).
+ * this file?" The module ships five built-in methods: signed_url (a minted,
+ * short-lived HMAC URL), authenticated (a logged-in user), token (a revocable
+ * per-grant or pre-shared token), referrer_lock (a signed URL plus an origin
+ * allowlist), and otp (an emailed one-time passcode). Optional submodules add
+ * more — form (email/lead capture), commerce (purchase/entitlement), and
+ * assurance (PIV/CAC + FIDO2/WebAuthn via OIDC) — and third parties can add
+ * their own.
  *
  * @see \Drupal\file_gate\GateMethodInterface
  * @see \Drupal\file_gate\GateMethodManager

@@ -12,12 +12,20 @@ use Symfony\Component\HttpFoundation\Request;
  * Interface for gate method plugins.
  *
  * A gate method encapsulates one strategy for proving that a request is allowed
- * to receive a gated file. It has two jobs:
+ * to receive a gated file. It has three jobs:
  * - grants(): decide, at delivery time, whether the current request satisfies
  *   the gate for a given file;
  * - mint(): optionally pre-issue a grant (server-side) that a client can later
  *   redeem — used by URL-based methods such as signed_url. Methods that decide
- *   access live (e.g. from the session) return NULL from mint().
+ *   access live (e.g. from the session) return NULL from mint();
+ * - fieldSettingsForm() / fieldSettingsSubmit(): expose the method's options
+ *   on the field edit form so a site builder configures it in the UI.
+ *
+ * A method that needs the mint request itself (e.g. to bind a caller-asserted
+ * subject) may additionally implement the optional ContextualMintInterface,
+ * which the mint controller feature-detects — mint() stays backward compatible.
+ *
+ * @see \Drupal\file_gate\ContextualMintInterface
  */
 interface GateMethodInterface extends PluginInspectionInterface {
 

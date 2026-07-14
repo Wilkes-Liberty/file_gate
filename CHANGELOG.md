@@ -6,8 +6,11 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.0-rc1] - 2026-07-14
+
 ### Added
-- Initial release.
+- Initial 1.0 release line: the full set of gate methods, submodules, and
+  endpoints below.
 - `hook_file_download()` deny for `private://` files referenced by a **gated**
   field — a hard veto that overrides core's permissive private-file access
   (which grants anonymous download whenever the referencing published entity is
@@ -61,7 +64,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 - Per-method settings forms: gate methods expose `fieldSettingsForm()` /
   `fieldSettingsSubmit()` and the field edit form renders the selected method's
   own options inline — every built-in method (signed_url, token, referrer_lock,
-  assurance) is now configurable in the UI, not only in exported YAML.
+  otp, form, commerce, assurance) is now configurable in the UI, not only in
+  exported YAML.
 - `ContextualMintInterface` — an optional interface letting a gate method receive
   the mint request (e.g. to bind a caller-asserted subject); the mint controller
   feature-detects it, so `mint()` stays backward compatible.
@@ -104,4 +108,29 @@ All notable changes to **File Gate** are documented here. The format is based on
   honeypot rejection, live-decision mint, and the settings form); and the
   `commerce` method (entitled-grants / not-entitled-denied via a fake checker,
   no-SKU fail-closed, the bundled checker's fail-closed paths without Commerce
-  and for anonymous, live-decision mint, and the settings form).
+  and for anonymous, live-decision mint, and the settings form); and the signer's
+  canonicalisation injectivity (a folded claim cannot be dropped) and the
+  `client_cert` fail-closed-without-allowlist path.
+
+### Fixed
+- The mint response `ttl` now reflects the grant's real remaining lifetime
+  (derived from the minted expiry), not the global default — accurate when a
+  field configures its own TTL or availability window.
+- `config/schema/file_gate.schema.yml` now declares `introspection_client_secret`
+  (env-injected, like `download_secret`) so config validation covers it.
+- The lead-capture form's honeypot field is no longer named `url` (which browser
+  and password-manager autofill could populate and falsely trip); it uses a
+  non-autofill name.
+
+### Security
+- The grant signer's claim canonicalisation is now injective — each key and value
+  is `rawurlencode()`d before signing — closing a claim-folding bypass. A holder
+  of one legitimately minted URL could previously fold a signed claim into an
+  adjacent value and drop it (dropping `max` to defeat a one-time / usage-capped
+  link, or the assurance subject hash `sh` to defeat per-user binding) while
+  keeping a valid HMAC. **Signed URLs minted before this change must be re-minted**
+  (the signature format changed). Regression-tested.
+- The assurance `client_cert` (edge-mTLS) mode now fails closed without an
+  explicit certificate-subject allowlist. The trusted proxy header is spoofable
+  off-proxy, so "accept any validated subject" is no longer permitted; a subject
+  allowlist is required.

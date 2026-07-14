@@ -28,8 +28,10 @@ login, a purchase) that the front end owns.
    lives entirely in the front end; Drupal only mints and verifies.
 
 3. **Pluggable gate methods.** A `GateMethod` plugin type decides *how* a request
-   proves it passed the gate (`signed_url`, `authenticated`, and third-party
-   methods). This keeps the mechanism open-ended.
+   proves it passed the gate. Five methods ship in the core module (`signed_url`,
+   `authenticated`, `token`, `referrer_lock`, `otp`); optional submodules add
+   `form`, `commerce`, and `assurance`; third parties add their own. This keeps
+   the mechanism open-ended.
 
 4. **Target-agnostic core.** The `GrantSigner` and the mint mechanism operate on
    an opaque *resource id* plus a bag of claims — they never assume the resource
