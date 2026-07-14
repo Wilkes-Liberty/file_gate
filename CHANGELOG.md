@@ -49,6 +49,13 @@ All notable changes to **File Gate** are documented here. The format is based on
   rate limit); a `LeadCapturedEvent` lets sites persist submissions into Contact,
   Webform, or a CRM without File Gate storing PII. The coupling is isolated in
   this optional submodule so the headless path pulls in no form assumptions.
+- **File Gate Commerce** submodule (`file_gate_commerce`) adding a `commerce`
+  gate method: deliver only to a buyer / licensee. A live-decision method that
+  re-checks entitlement on every download (so expiry/revocation take effect
+  immediately), delegating to a swappable `EntitlementCheckerInterface`. The
+  bundled checker grants on a completed Drupal Commerce order matching a
+  configured SKU; override the `file_gate_commerce.entitlement_checker` service
+  for licences or an external entitlement API. Access gating, not DRM.
 - A `SignedUrl` claim-binding seam (`signedClaimKeys()` / `extraMintClaims()`)
   so gate methods can extend it and bind additional signed claims.
 - Per-method settings forms: gate methods expose `fieldSettingsForm()` /
@@ -94,4 +101,7 @@ All notable changes to **File Gate** are documented here. The format is based on
   (request-then-redeem via the mail collector, single use, wrong code, attempt
   lockout, endpoint guards, send throttle, and mint-not-supported); and the
   `form` method (submit-grants-download, no-submission-denied, expired grant,
-  honeypot rejection, live-decision mint, and the settings form).
+  honeypot rejection, live-decision mint, and the settings form); and the
+  `commerce` method (entitled-grants / not-entitled-denied via a fake checker,
+  no-SKU fail-closed, the bundled checker's fail-closed paths without Commerce
+  and for anonymous, live-decision mint, and the settings form).
