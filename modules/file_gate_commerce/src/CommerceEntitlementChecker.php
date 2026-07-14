@@ -16,7 +16,7 @@ use Psr\Log\LoggerInterface;
  * whose SKU matches the configured entitlement. It reaches Commerce only via
  * the entity API by machine name (never Commerce PHP classes), so the submodule
  * loads and this service resolves even where Commerce is not installed — in
- * which case it simply fails closed (and hook_requirements flags it).
+ * which case it simply fails closed (and hook_runtime_requirements flags it).
  *
  * This is deliberately the simple case. Sites needing licences
  * (commerce_license), custom order states, guest-by-email orders, or external

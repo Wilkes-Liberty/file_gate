@@ -214,6 +214,25 @@ token — verified in the moment — without an account.
 > window. Use `otp` to gate lead-gen / self-service documents, not to protect
 > content a real secret should protect; keep the TTL short.
 
+#### Form (email / lead capture) method
+
+The optional **File Gate Form** submodule (`file_gate_form`) adds the `form`
+method: Drupal renders a lightweight email / lead-capture form at
+`/file-gate/form/{file}` and grants the download on submission (a per-session
+grant in the private tempstore, TTL-limited). Spam is bounded by a honeypot and a
+per-IP rate limit, and a `LeadCapturedEvent` lets the site persist submissions
+without File Gate storing PII. See
+[`modules/file_gate_form/README.md`](modules/file_gate_form/README.md).
+
+#### Commerce (purchase / entitlement) method
+
+The optional **File Gate Commerce** submodule (`file_gate_commerce`) adds the
+`commerce` method: deliver only to a buyer / licensee, re-checked live on every
+download. The bundled checker grants on a completed Drupal Commerce order matching
+a configured SKU; override the `file_gate_commerce.entitlement_checker` service
+for licences or an external entitlement API. Access gating, not DRM. See
+[`modules/file_gate_commerce/README.md`](modules/file_gate_commerce/README.md).
+
 ### 3. Global defaults
 
 Visit **Administration → Configuration → Media → File Gate**
@@ -262,7 +281,9 @@ the grant is missing, expired, tampered, or spent; `404` when the file is unknow
 or not gated.
 
 For the *Token* method the browser also sends `token` (the plaintext token); a
-pre-shared campaign link sends only `token` (no `exp`/`sig`).
+pre-shared campaign link sends only `token` (no `exp`/`sig`). For the *OTP*
+method the browser sends `email` and `otp` (the emailed code) in place of a
+signature (`?f=…&email=…&otp=…`).
 
 ### Revoke — `POST /api/file-gate/revoke`
 
@@ -280,6 +301,26 @@ Request body (JSON):
 Responses: `204` (revoked), `400` (no token), `401` (bad/absent secret), `404`
 (unknown or already-gone token), `429` (rate limited), `503` (no secret
 configured).
+
+### OTP — `POST /api/file-gate/otp`
+
+Server-to-server, same shared-secret authentication as mint. Issues a single-use
+passcode bound to a `(file, email)` pair and e-mails it to that address (File Gate
+sends the mail and stores only a hash of the code). The visitor then redeems the
+download with `?f=…&email=…&otp=…`.
+
+Request body (JSON):
+
+```json
+{ "file": "<file-uuid>", "email": "person@example.com" }
+```
+
+(or `"media": "<media-uuid>"` in place of `"file"`.)
+
+Responses: `204` (code issued and e-mailed), `400` (invalid body or email),
+`401` (bad/absent secret), `404` (unknown file/media), `409` (host media
+unpublished), `422` (file not gated with the `otp` method), `429` (rate limited —
+per IP and per `(file, email)`), `503` (no secret configured).
 
 ### Front-end integration sketch (any framework)
 
@@ -355,7 +396,11 @@ final class MyMethod extends GateMethodBase {
 }
 ```
 
-### Built-in methods and roadmap
+### Built-in methods
+
+Five methods ship in the core module; three more ship in optional submodules (each
+noted below). All are complete — new methods are added by third parties or future
+submodules, not tracked as a roadmap here.
 
 | Method | Status | Notes |
 |---|---|---|

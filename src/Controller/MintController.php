@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate\Controller;
 
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
@@ -28,7 +29,9 @@ use Symfony\Component\HttpFoundation\Response;
  * - refuses (503) when no secret is configured (fail closed);
  * - authenticates the caller with the shared secret (constant-time);
  * - resolves the requested file (by file UUID, or by media UUID when the Media
- *   module is installed), requiring the host entity to be published;
+ *   module is installed; the media path additionally requires the host media
+ *   entity to be published — the direct file path trusts the secret-holding
+ *   caller, consistent with the mint trust model below);
  * - returns a relative, host-agnostic signed path the front end prepends its
  *   own public origin to.
  *
@@ -59,6 +62,8 @@ final class MintController implements ContainerInjectionInterface {
    *   The flood service (mint rate limiting).
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
+   * @param \Drupal\Component\Datetime\TimeInterface $time
+   *   The time service (to report the grant's real remaining TTL).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -68,6 +73,7 @@ final class MintController implements ContainerInjectionInterface {
     private readonly ConfigFactoryInterface $configFactory,
     private readonly FloodInterface $flood,
     private readonly LoggerInterface $logger,
+    private readonly TimeInterface $time,
   ) {}
 
   /**
@@ -82,6 +88,7 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('config.factory'),
       $container->get('flood'),
       $container->get('logger.channel.file_gate'),
+      $container->get('datetime.time'),
     );
   }
 
@@ -105,8 +112,6 @@ final class MintController implements ContainerInjectionInterface {
     if ($denied !== NULL) {
       return $denied;
     }
-
-    $config = $this->configFactory->get('file_gate.settings');
 
     $data = json_decode($request->getContent(), TRUE);
     if (!is_array($data)) {
@@ -149,10 +154,14 @@ final class MintController implements ContainerInjectionInterface {
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);
 
+    // Report the grant's real expiry and remaining lifetime. Both derive from
+    // the minted claim, so a field-specific TTL (or an availability-window cap)
+    // is reflected accurately rather than the global default.
+    $expires = isset($params['exp']) ? (int) $params['exp'] : NULL;
     return new JsonResponse([
       'path' => $path,
-      'expires' => $params['exp'] ?? NULL,
-      'ttl' => (int) ($config->get('ttl') ?: 120),
+      'expires' => $expires,
+      'ttl' => $expires !== NULL ? max(0, $expires - $this->time->getRequestTime()) : NULL,
     ]);
   }
 

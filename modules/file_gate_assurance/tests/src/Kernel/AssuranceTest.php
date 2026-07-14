@@ -361,10 +361,14 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
-   * Edge mTLS: a validated client-cert identity in the trusted header grants.
+   * Edge mTLS: a validated client-cert identity on the allowlist grants.
    */
   public function testClientCertModeGrants(): void {
-    $this->configure(['verify_at' => 'client_cert', 'trusted_proxy_header' => 'X-Client-Cert-Dn']);
+    $this->configure([
+      'verify_at' => 'client_cert',
+      'trusted_proxy_header' => 'X-Client-Cert-Dn',
+      'allowed_subjects' => ['CN=Jane Doe,OU=Agency'],
+    ]);
     $file = $this->createFile('doc.pdf');
     $query = $this->mintQuery($file);
 
@@ -376,10 +380,27 @@ final class AssuranceTest extends KernelTestBase {
    * Edge mTLS: no client-cert header is denied.
    */
   public function testClientCertModeMissingHeaderDenied(): void {
-    $this->configure(['verify_at' => 'client_cert', 'trusted_proxy_header' => 'X-Client-Cert-Dn']);
+    $this->configure([
+      'verify_at' => 'client_cert',
+      'trusted_proxy_header' => 'X-Client-Cert-Dn',
+      'allowed_subjects' => ['CN=Jane Doe,OU=Agency'],
+    ]);
     $file = $this->createFile('doc.pdf');
     $this->expectException(AccessDeniedHttpException::class);
     $this->download($this->mintQuery($file));
+  }
+
+  /**
+   * Edge mTLS fails closed without a subject allowlist.
+   *
+   * The trusted header is spoofable off-proxy, so "accept any validated
+   * subject" is refused: an empty allowlist denies even a well-formed value.
+   */
+  public function testClientCertModeNoAllowlistDenied(): void {
+    $this->configure(['verify_at' => 'client_cert', 'trusted_proxy_header' => 'X-Client-Cert-Dn']);
+    $file = $this->createFile('doc.pdf');
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), ['X-Client-Cert-Dn' => 'CN=Jane Doe,OU=Agency']);
   }
 
   /**

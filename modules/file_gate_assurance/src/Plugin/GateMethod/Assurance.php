@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\Request;
  * never the hardware crypto. Provider-agnostic: any OIDC IdP works.
  *
  * This is federation (SP 800-63C) — an *asserted* level — not File Gate acting
- * as an AAL3 verifier under 800-63B; see docs/design/piv-cac-webauthn.md. Two
+ * as an AAL3 verifier under 800-63B; see docs/design/piv-cac-webauthn.md. Three
  * modes, chosen by `verify_at`:
  * - "redeem" (default, Model B): the browser presents a live OIDC token at the
  *   download endpoint (a JS fetch, not a plain navigation) and grants() checks
@@ -34,13 +34,18 @@ use Symfony\Component\HttpFoundation\Request;
  *   the level; File Gate binds it as an audit claim and trusts the caller
  *   (consistent with the mint trust model). The delivery URL is a bearer
  *   capability — not itself AAL3-bound.
+ * - "client_cert" (edge mTLS): an mTLS-terminating reverse proxy validates a
+ *   PIV/CAC client certificate against the Federal PKI and passes the subject
+ *   in a trusted header; File Gate accepts it against a required subject
+ *   allowlist. Only safe when File Gate is reachable *solely* through the
+ *   proxy (the header is otherwise spoofable) — see clientCertSatisfied().
  *
  * The assurance is checked BEFORE the inherited signature/usage check, so a
  * request that fails assurance never spends a usage-limited grant's use.
  *
  * Per-field method settings (beyond signed_url's ttl / available_until /
  * max_uses):
- * - verify_at: "redeem" (default) or "mint";
+ * - verify_at: "redeem" (default), "mint", or "client_cert";
  * - aal: the assurance level to bind into the signed grant (audit + tamper
  *   binding), e.g. 3;
  * - issuer: the OIDC issuer URL (required for "redeem");
@@ -50,6 +55,13 @@ use Symfony\Component\HttpFoundation\Request;
  * - required_amr: optional advisory `amr` values to also require (off by
  *   default);
  * - dpop: TRUE to require an RFC 9449 DPoP proof (opt-in hardening);
+ * - introspect / introspection_endpoint / introspection_client_id: opt-in live
+ *   revocation via RFC 7662 (the client secret is injected from the
+ *   environment, never stored here);
+ * - trusted_proxy_header: the header the mTLS proxy sets to the validated
+ *   certificate subject (required for "client_cert");
+ * - allowed_subjects: the accepted certificate subjects/DNs (required for
+ *   "client_cert" — empty denies);
  * - leeway: clock-skew tolerance in seconds (default 60).
  */
 #[GateMethod(
@@ -202,13 +214,18 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
    * is reachable exclusively through the mTLS-terminating proxy that sets it
    * (and strips any client-supplied copy). The proxy plus its trust store (e.g.
    * the Federal PKI) is the verifier — File Gate only consumes the result.
+   * Because the header is spoofable off-proxy, this mode fails closed without
+   * an explicit subject allowlist: requiring a configured subject means a
+   * forged header alone is not enough. Network isolation remains the primary
+   * control; a future hardening could add a proxy-shared secret header as a
+   * second server-verified factor.
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The redemption request.
    *
    * @return bool
-   *   TRUE when the configured header carries a subject that passes the
-   *   allowlist (or any subject, when no allowlist is configured).
+   *   TRUE only when a non-empty subject allowlist is configured and the header
+   *   subject is on it; fails closed otherwise.
    */
   private function clientCertSatisfied(Request $request): bool {
     $header = (string) ($this->configuration['trusted_proxy_header'] ?? '');
@@ -219,10 +236,12 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     if ($subject === '') {
       return FALSE;
     }
+    // Fail closed without an explicit allowlist. "Accept any subject the proxy
+    // validated" would grant to anyone able to reach File Gate off-proxy and
+    // forge the header; a required allowlist is a second barrier.
     $allowed = array_map('strval', (array) ($this->configuration['allowed_subjects'] ?? []));
     if ($allowed === []) {
-      // No subject allowlist: any identity the proxy validated is accepted.
-      return TRUE;
+      return FALSE;
     }
     return in_array($subject, $allowed, TRUE);
   }
@@ -333,7 +352,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
         '#type' => 'textarea',
         '#title' => $this->t('Allowed certificate subjects'),
         '#default_value' => $lines((array) ($settings['allowed_subjects'] ?? [])),
-        '#description' => $this->t('Edge mTLS mode. One subject (DN) per line. Empty accepts any subject the proxy validated.'),
+        '#description' => $this->t('Edge mTLS mode, required. One subject (DN) per line. Empty denies (the header is spoofable off-proxy, so an allowlist is mandatory).'),
       ],
       'leeway' => [
         '#type' => 'number',

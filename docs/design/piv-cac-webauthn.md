@@ -1,8 +1,11 @@
 # Design note: PIV/CAC + FIDO2/WebAuthn assurance (`file_gate_assurance`)
 
-Status: **proposal / for discussion** — see
-[issue #6](https://github.com/Wilkes-Liberty/file_gate/issues/6). No code lands
-until the open decisions below are settled.
+Status: **implemented / accepted** — shipped in the `file_gate_assurance`
+submodule (see
+[issue #6](https://github.com/Wilkes-Liberty/file_gate/issues/6)). This note is
+retained as the design record; the decisions table at the end records how each
+question was resolved as built. Two hardenings were added beyond the original
+two-model framing — see "As shipped" below.
 
 This note designs a gate method that delivers a gated file only after
 phishing-resistant, hardware-backed authentication — PIV/CAC smart cards
@@ -89,6 +92,25 @@ RFC 8705, are an alternative PoP mechanism with the same constraint.) DPoP ships
 Model B opt-in for same-origin / JS flows; DPoP (RFC 9449) opt-in hardening on
 Model B; A2 later.
 
+### As shipped (additions beyond this note)
+
+Two hardenings landed in `file_gate_assurance` beyond the two models above:
+
+- **Live revocation (RFC 7662 introspection), opt-in.** In Model B, the method can
+  additionally introspect the presented token at redemption so an IdP-revoked
+  session is denied before its `exp`. The introspection client secret is injected
+  from the environment (`file_gate.settings:introspection_client_secret`), never
+  stored in field config.
+- **A third `verify_at` mode, `client_cert` (edge mTLS).** File Gate trusts a
+  PIV/CAC certificate subject that an mTLS-terminating reverse proxy validated
+  against the Federal PKI and passed in a configured header, checked against a
+  **required** subject allowlist. The header is only trustworthy when File Gate is
+  reachable *solely* through that proxy; the mode fails closed without an
+  allowlist. This is the closest File Gate gets to a verifier-adjacent posture,
+  and it is still the proxy + PKI — not File Gate — doing the certificate
+  validation. A2 (verify the OIDC token at mint) was **not** built; it still needs
+  the file-gate-audienced-token story (decision #4).
+
 ## How assurance is conveyed
 
 - Drive the decision off OIDC **`acr`**, mapped **at the IdP** to the required
@@ -143,9 +165,13 @@ Model B; A2 later.
   `aud` + `iss`; check `exp`/`nbf`/`iat` with bounded clock skew; reject the wrong
   `typ`. File Gate cannot verify the front end's `nonce`. With DPoP, validate the
   proof JWT and match `cnf.jkt`.
-- **Config surface:** per-method settings are currently unschema'd and UI-less; the
-  submodule adds typed schema (issuer, `required_acr`, optional advisory
-  `required_amr`, DPoP toggle) and a settings form with validation.
+- **Config surface (as shipped):** per-method options are configured through a
+  settings form on the field edit form (issuer, audience, `required_acr`, optional
+  advisory `required_amr`, DPoP toggle, plus the introspection and edge-mTLS
+  options). The `method_settings` bag itself stays `type: ignore` in config schema
+  — it is polymorphic across gate methods — while the shared, env-injected
+  `introspection_client_secret` is declared in the parent `file_gate.settings`
+  schema.
 
 ## Security & compliance caveats (ship in the docs)
 
@@ -157,21 +183,21 @@ Model B; A2 later.
   values.
 - Audit: log the asserted level, `sub_hash`, method, and decision.
 
-## Open decisions
+## Decisions (resolved as shipped)
 
-| # | Decision | Leaning |
+| # | Decision | Resolved as shipped |
 |---|---|---|
-| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | A1 default; A2 later (needs audience solution) |
-| 2 | Model A only / B only / both | Both — A default, B opt-in — with the honest caveat in docs |
-| 3 | Refactor `SignedUrl` claim-reconstruction seam | Yes — prerequisite |
-| 4 | File-Gate-audienced token for A2/B | Token exchange (RFC 8693) or IdP mapper — defer |
-| 5 | Interface: verify-in-controller + optional interface vs `mint()` change | verify-in-controller + optional interface (preserve BC) |
-| 6 | PoP at delivery: none / DPoP (9449) / mTLS (8705) | DPoP opt-in on Model B (off by default); mTLS alternative |
-| 7 | Revocation: valid-until-exp vs introspection | Introspection optional (Model B); document Model A limit |
-| 8 | Assurance signal: `acr` policy vs `amr` | `acr`; `amr` advisory only |
-| 9 | Typed schema + settings form for the submodule | Yes |
-| 10 | Claims contract: `sub_hash` + scalar `aal`; forbid `download_secret` reuse as JWT key | Yes |
-| 11 | JWT/OIDC dependency (provider-agnostic) | `firebase/php-jwt` + OIDC discovery, or reuse an OIDC client module |
+| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | A1 shipped as `verify_at: mint`; A2 **not** built (still needs the audience solution, #4) |
+| 2 | Model A only / B only / both | Both — `verify_at: mint` (A) and `verify_at: redeem` (B), plus `client_cert` (edge mTLS) — with the honest caveat in docs |
+| 3 | Refactor `SignedUrl` claim-reconstruction seam | Shipped — `signedClaimKeys()` / `extraMintClaims()`, with regression tests |
+| 4 | File-Gate-audienced token for A2/B | Deferred — token exchange (RFC 8693) or an IdP mapper, when A2 is built |
+| 5 | Interface: verify-in-controller + optional interface vs `mint()` change | Shipped as `ContextualMintInterface` (feature-detected by the mint controller); `mint()` unchanged |
+| 6 | PoP at delivery: none / DPoP (9449) / mTLS (8705) | DPoP shipped opt-in on Model B (off by default); mTLS documented as the alternative |
+| 7 | Revocation: valid-until-exp vs introspection | Introspection shipped optional (Model B); Model A limit documented |
+| 8 | Assurance signal: `acr` policy vs `amr` | `acr` drives the decision; `amr` advisory only |
+| 9 | Typed schema + settings form for the submodule | Settings form shipped; `method_settings` kept `type: ignore` (polymorphic), not per-method typed schema; `introspection_client_secret` declared in the parent schema |
+| 10 | Claims contract: `sub_hash` + scalar `aal`; forbid `download_secret` reuse as JWT key | Shipped — scalar `aal` + `sh` (sha-256 subject hash) bound; JWT key domain kept separate; the signer canonicalisation was later hardened to be injective so a bound claim cannot be dropped |
+| 11 | JWT/OIDC dependency (provider-agnostic) | `firebase/php-jwt` + OIDC discovery (a suggested dependency of the parent module) |
 
 ## Phased implementation (after the decisions are settled)
 
