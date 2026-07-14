@@ -134,7 +134,7 @@ third_party_settings:
     method_settings:
       allowed_origins:              # required; empty ⇒ deny all (fail closed)
         - 'https://app.example.com'
-      on_missing_referrer: 'deny'   # optional; 'deny' (default) or 'allow'
+      on_missing_referrer: 'deny'   # optional; 'deny' (default) or 'allow' when no parseable Origin/Referer is available
 ```
 
 ## Plugin API — `GateMethod`
