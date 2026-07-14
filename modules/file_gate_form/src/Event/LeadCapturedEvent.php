@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate_form\Event;
 
-use Drupal\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 use Drupal\file\FileInterface;
 
 /**
