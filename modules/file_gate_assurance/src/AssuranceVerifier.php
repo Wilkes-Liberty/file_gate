@@ -6,6 +6,7 @@ namespace Drupal\file_gate_assurance;
 
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Cache\CacheBackendInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
@@ -56,6 +57,8 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    *   The time service.
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
+   *   The config factory (reads the env-injected introspection client secret).
    */
   public function __construct(
     private readonly ClientInterface $httpClient,
@@ -63,6 +66,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
     private readonly TimeInterface $time,
     private readonly LoggerInterface $logger,
+    private readonly ConfigFactoryInterface $configFactory,
   ) {}
 
   /**
@@ -124,6 +128,38 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       'acr' => isset($claims->acr) ? (string) $claims->acr : NULL,
       'amr' => array_map('strval', (array) ($claims->amr ?? [])),
     ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function introspect(string $token, array $config): bool {
+    $endpoint = (string) ($config['introspection_endpoint'] ?? '');
+    // Fail closed: introspection was requested but there is nowhere to ask.
+    if ($endpoint === '') {
+      return FALSE;
+    }
+    $options = [
+      'timeout' => 8,
+      'form_params' => ['token' => $token],
+      'headers' => ['Accept' => 'application/json'],
+    ];
+    $client_id = (string) ($config['introspection_client_id'] ?? '');
+    if ($client_id !== '') {
+      // The secret is injected from the environment into global config, never
+      // stored in the field's exported settings.
+      $secret = (string) $this->configFactory->get('file_gate.settings')->get('introspection_client_secret');
+      $options['auth'] = [$client_id, $secret];
+    }
+    try {
+      $response = $this->httpClient->request('POST', $endpoint, $options);
+      $data = json_decode((string) $response->getBody(), TRUE);
+      return is_array($data) && !empty($data['active']);
+    }
+    catch (\Throwable $e) {
+      $this->logger->warning('Assurance: introspection failed: @msg', ['@msg' => $e->getMessage()]);
+      return FALSE;
+    }
   }
 
   /**

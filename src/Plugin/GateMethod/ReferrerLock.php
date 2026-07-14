@@ -157,4 +157,42 @@ final class ReferrerLock extends SignedUrl {
     return $origin;
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    // Inherit signed_url's ttl / available_until / max_uses, then add the lock.
+    return parent::fieldSettingsForm($settings) + [
+      'allowed_origins' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Allowed origins'),
+        '#default_value' => implode("\n", (array) ($settings['allowed_origins'] ?? [])),
+        '#description' => $this->t('One origin per line, e.g. <code>https://app.example.com</code>. An empty list denies every request (fail closed).'),
+      ],
+      'on_missing_referrer' => [
+        '#type' => 'select',
+        '#title' => $this->t('When no Origin/Referer is present'),
+        '#options' => [
+          'deny' => $this->t('Deny (default)'),
+          'allow' => $this->t('Allow (lean on the signature alone)'),
+        ],
+        '#default_value' => ($settings['on_missing_referrer'] ?? 'deny') === 'allow' ? 'allow' : 'deny',
+        '#description' => $this->t('“Allow” tolerates privacy setups that strip the header.'),
+      ],
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    $settings = parent::fieldSettingsSubmit($values);
+    $origins = array_filter(array_map('trim', preg_split('/\R/', (string) ($values['allowed_origins'] ?? ''))));
+    if ($origins) {
+      $settings['allowed_origins'] = array_values($origins);
+    }
+    $settings['on_missing_referrer'] = ($values['on_missing_referrer'] ?? 'deny') === 'allow' ? 'allow' : 'deny';
+    return $settings;
+  }
+
 }

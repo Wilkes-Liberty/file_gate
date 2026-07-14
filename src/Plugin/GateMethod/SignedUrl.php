@@ -193,6 +193,48 @@ class SignedUrl extends GateMethodBase {
   }
 
   /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    return [
+      'ttl' => [
+        '#type' => 'number',
+        '#title' => $this->t('Signed-URL lifetime (TTL)'),
+        '#field_suffix' => $this->t('seconds'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['ttl'] ?? 0),
+        '#description' => $this->t('How long a minted URL stays valid. 0 uses the global default.'),
+      ],
+      'available_until' => [
+        '#type' => 'number',
+        '#title' => $this->t('Available until'),
+        '#field_suffix' => $this->t('Unix timestamp'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['available_until'] ?? 0),
+        '#description' => $this->t('An absolute cap on every grant expiry. 0 = no cap.'),
+      ],
+      'max_uses' => [
+        '#type' => 'number',
+        '#title' => $this->t('Maximum redemptions per URL'),
+        '#min' => 0,
+        '#default_value' => (int) ($settings['max_uses'] ?? 0),
+        '#description' => $this->t('0 = unlimited; 1 = a one-time link.'),
+      ],
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    $settings = [];
+    foreach (['ttl', 'available_until', 'max_uses'] as $key) {
+      $settings[$key] = (int) ($values[$key] ?? 0);
+    }
+    return $settings;
+  }
+
+  /**
    * Atomically-ish consumes one use of a usage-limited grant.
    *
    * @param string $token

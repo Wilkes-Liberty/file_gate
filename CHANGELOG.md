@@ -42,6 +42,20 @@ All notable changes to **File Gate** are documented here. The format is based on
   dependency of the parent module).
 - A `SignedUrl` claim-binding seam (`signedClaimKeys()` / `extraMintClaims()`)
   so gate methods can extend it and bind additional signed claims.
+- Per-method settings forms: gate methods expose `fieldSettingsForm()` /
+  `fieldSettingsSubmit()` and the field edit form renders the selected method's
+  own options inline — every built-in method (signed_url, token, referrer_lock,
+  assurance) is now configurable in the UI, not only in exported YAML.
+- `ContextualMintInterface` — an optional interface letting a gate method receive
+  the mint request (e.g. to bind a caller-asserted subject); the mint controller
+  feature-detects it, so `mint()` stays backward compatible.
+- Assurance enhancements: **per-user binding** (the mint request may assert a
+  `subject`; its hash is bound and the redeemed token's `sub` must match), an
+  opt-in **RFC 7662 introspection** live-revocation check (client secret injected
+  from the environment, never stored in field config), and an **edge-mTLS
+  (`client_cert`) mode** that trusts a validated PIV client-certificate subject
+  passed by an mTLS-terminating reverse proxy (the proxy + Federal PKI is the
+  verifier).
 - Target-agnostic `GrantSigner` (HMAC-SHA256 over the resource id plus canonical
   claims; constant-time comparison; fails closed with no secret).
 - Per-field gating via field-storage third-party settings, plus a field edit

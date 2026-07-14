@@ -53,13 +53,16 @@ usage-limited grant. Two modes, chosen by `verify_at`:
 Gate a field with the `assurance` method and set its `method_settings` (field
 storage third-party settings):
 
+Configure it on the field's settings page (a per-method settings form is provided
+in the UI), or in exported YAML:
+
 ```yaml
 third_party_settings:
   file_gate:
     gated: true
     method: assurance
     method_settings:
-      verify_at: redeem                 # 'redeem' (default) or 'mint'
+      verify_at: redeem                 # 'redeem' (default), 'mint', or 'client_cert'
       aal: 3                            # bound into the grant (audit + tamper)
       issuer: 'https://idp.example.gov' # your OIDC issuer (required for redeem)
       audience: 'file-gate-api'         # expected token aud (required for redeem)
@@ -67,7 +70,13 @@ third_party_settings:
         - 'http://idmanagement.gov/ns/assurance/aal/3'
       required_amr: []                  # optional, advisory; enforced only if set
       dpop: false                       # true = require an RFC 9449 DPoP proof
+      introspect: false                 # true = RFC 7662 live revocation check
+      introspection_endpoint: ''        # required when introspect is true
+      introspection_client_id: ''       # optional; secret is env-injected (below)
       leeway: 60                        # clock-skew tolerance (seconds)
+      # edge-mTLS mode (verify_at: client_cert):
+      trusted_proxy_header: ''          # header your proxy sets to the cert subject
+      allowed_subjects: []              # optional DN allowlist; empty = any valid cert
       # inherited from signed_url:
       ttl: 120
       max_uses: 1
@@ -75,13 +84,50 @@ third_party_settings:
 
 | Setting | Meaning |
 |---|---|
-| `verify_at` | `redeem` (verify a live token at delivery) or `mint` (trust the caller; audit binding only). |
+| `verify_at` | `redeem` (verify a live token at delivery), `mint` (trust the caller; audit binding only), or `client_cert` (edge mTLS — below). |
 | `aal` | The assurance level bound into the signed grant (audit + downgrade protection). |
 | `issuer` | The OIDC issuer URL. JWKS is found via OIDC discovery. Required for `redeem`. |
 | `audience` | The token audience to require. Required for `redeem`. |
 | `required_acr` | Acceptable `acr` values, **exactly as your IdP emits them**. Empty denies. The decision is driven by `acr` (IdP policy). |
 | `required_amr` | Optional advisory `amr` values to also require. Off unless set; `amr` is advisory (RFC 8176). |
 | `dpop` | `true` to require a DPoP proof (RFC 9449) sender-constraining the token. |
+| `introspect` | `true` for a live RFC 7662 revocation check (adds a round-trip). Needs `introspection_endpoint`; the client secret is injected globally (below), never stored here. |
+| `trusted_proxy_header` / `allowed_subjects` | Edge-mTLS mode — see below. |
+
+### Per-user binding (optional)
+
+By default a valid token from *any* sufficiently-assured user redeems the URL. To
+tie a grant to one person, the trusted back end passes the user's subject in the
+**mint** request body (`{ "file": "…", "subject": "<sub>" }`). File Gate binds
+only `hash(subject)` into the signed URL, and at redemption the presented token's
+`sub` must match. (Binding a caller-asserted subject is safe: redemption still
+requires a valid IdP token for that subject.)
+
+### Edge mTLS (PIV via a reverse proxy)
+
+`verify_at: client_cert` enforces PIV/CAC at the download **without** File Gate
+doing any PKI. Terminate the client-certificate TLS at your reverse proxy / load
+balancer (validating against the Federal PKI trust store), and have it pass the
+validated certificate subject in a header. **The proxy plus its trust store is
+the verifier; File Gate consumes the result.**
+
+- `trusted_proxy_header` — the header the proxy sets (e.g. `X-Client-Cert-Dn`).
+- `allowed_subjects` — optional exact-match DN allowlist; empty accepts any
+  subject the proxy validated.
+
+> **SECURITY:** this trusts a request header, so it is only safe when File Gate is
+> reachable **exclusively** through that proxy and the proxy strips any
+> client-supplied copy of the header.
+
+### Introspection secret
+
+When `introspection_client_id` is set, the matching client **secret** is injected
+from the environment into global config — never stored in field settings:
+
+```php
+// settings.php
+$config['file_gate.settings']['introspection_client_secret'] = getenv('FILE_GATE_INTROSPECTION_SECRET');
+```
 | `leeway` | Clock-skew tolerance in seconds (default 60). |
 
 `acr` values are **entirely IdP-configured** — pin to whatever your IdP emits.
