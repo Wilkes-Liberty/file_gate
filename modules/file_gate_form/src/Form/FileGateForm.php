@@ -112,7 +112,10 @@ final class FileGateForm extends FormBase {
       ];
     }
     // Honeypot: humans never see this; bots that fill every field are rejected.
-    $form['url'] = [
+    // The field is deliberately NOT named "url"/"website"/"homepage" — those
+    // map to browser-autofill / password-manager categories that would
+    // populate the hidden field for a legitimate visitor and falsely trip it.
+    $form['hp_url'] = [
       '#type' => 'textfield',
       '#title' => $this->t('Leave this field blank'),
       '#required' => FALSE,
@@ -132,7 +135,7 @@ final class FileGateForm extends FormBase {
    */
   public function validateForm(array &$form, FormStateInterface $form_state): void {
     // Honeypot tripped ⇒ a bot. Reject without revealing why.
-    if (trim((string) $form_state->getValue('url')) !== '') {
+    if (trim((string) $form_state->getValue('hp_url')) !== '') {
       $form_state->setErrorByName('email', $this->t('Your submission could not be processed.'));
       return;
     }

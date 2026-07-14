@@ -21,12 +21,20 @@ file_gate.settings:
     flood_window:
       type: integer
       label: 'Mint flood window (seconds)'
+    introspection_client_secret:
+      type: string
+      label: 'OIDC introspection client secret'
+      # Used only by the File Gate Assurance submodule's optional RFC 7662
+      # introspection. Like download_secret it is injected from the environment
+      # (settings.php) at runtime and left empty in exported config — never commit
+      # a real value here.
 
 # Per-field gate configuration, stored as third-party settings on the file/image
 # field storage. This is what marks a field's private files as gated and picks
 # the gate method that protects them. The schema key is the full field-storage
-# config name pattern + ".third_party.<module>" (the core convention, e.g.
-# field.field.*.*.*.third_party.content_translation).
+# config name pattern + ".third_party.<module>" (the core convention for
+# third-party settings on field storage, e.g.
+# field.storage.*.*.third_party.<module>).
 field.storage.*.*.third_party.file_gate:
   type: mapping
   label: 'File Gate field settings'

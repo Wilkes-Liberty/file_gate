@@ -127,7 +127,7 @@ final class FormGateTest extends KernelTestBase {
     $file = $this->createFile('doc.pdf');
     $form_object = FileGateForm::create($this->container);
     $form_state = new FormState();
-    $form_state->setValues(['email' => 'bot@example.com', 'url' => 'http://spam.example']);
+    $form_state->setValues(['email' => 'bot@example.com', 'hp_url' => 'http://spam.example']);
     $form = $form_object->buildForm([], $form_state, $file->uuid());
     $form_object->validateForm($form, $form_state);
 
@@ -176,7 +176,7 @@ final class FormGateTest extends KernelTestBase {
   private function submitForm(FileInterface $file, string $email): void {
     $form_object = FileGateForm::create($this->container);
     $form_state = new FormState();
-    $form_state->setValues(['email' => $email, 'url' => '', 'consent' => FALSE]);
+    $form_state->setValues(['email' => $email, 'hp_url' => '', 'consent' => FALSE]);
     $form = $form_object->buildForm([], $form_state, $file->uuid());
     $form_object->validateForm($form, $form_state);
     $this->assertEmpty($form_state->getErrors());
