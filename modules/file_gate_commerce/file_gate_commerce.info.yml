@@ -1,0 +1,7 @@
+name: 'File Gate Commerce'
+type: module
+description: 'Gate delivery behind a completed purchase or entitlement. Bundles a Drupal Commerce order checker (by SKU); swap the entitlement checker service for licences or an external API. Re-checks live on every download. Optional.'
+package: 'Security'
+core_version_requirement: ^11.4 || ^12
+dependencies:
+  - 'file_gate:file_gate'

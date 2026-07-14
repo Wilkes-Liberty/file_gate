@@ -1,0 +1,10 @@
+services:
+
+  # Decides whether the current account is entitled to a gated file. The bundled
+  # implementation checks Drupal Commerce completed orders by SKU; override this
+  # service to check licences or an external entitlement API instead.
+  file_gate_commerce.entitlement_checker:
+    class: Drupal\file_gate_commerce\CommerceEntitlementChecker
+    arguments:
+      - '@entity_type.manager'
+      - '@logger.channel.file_gate'

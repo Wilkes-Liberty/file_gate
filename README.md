@@ -49,10 +49,11 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   **Authenticated access**, **Token** (revocable per-grant links and pre-shared
   campaign tokens), **Referrer lock** (a signed URL restricted to an allowed
   origin), and **One-time passcode** (email-verified); optional submodules add
-  **File Gate Form** (a coupled email / lead-capture form Drupal renders) and
-  **File Gate Assurance** (hardware-backed, phishing-resistant **PIV/CAC +
-  FIDO2/WebAuthn** gating over any OIDC IdP, with opt-in DPoP). Add your own in a
-  few lines.
+  **File Gate Form** (a coupled email / lead-capture form Drupal renders),
+  **File Gate Commerce** (gate behind a Drupal Commerce purchase or a pluggable
+  entitlement), and **File Gate Assurance** (hardware-backed, phishing-resistant
+  **PIV/CAC + FIDO2/WebAuthn** gating over any OIDC IdP, with opt-in DPoP). Add
+  your own in a few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
   theme is assumed. Works for decoupled, coupled, and hybrid sites.
@@ -365,7 +366,7 @@ final class MyMethod extends GateMethodBase {
 | `otp` | shipped | One-time passcode e-mailed to a self-identified address; single-use, TTL-limited, attempt-locked. |
 | `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
 | `assurance` | shipped | Signed URL gated on a hardware-backed OIDC assurance (PIV/CAC + FIDO2/WebAuthn), with opt-in DPoP. Ships in the **File Gate Assurance** submodule. |
-| `commerce` | idea | Gate behind a purchase/licence. |
+| `commerce` | shipped | Gate behind a purchase / entitlement (Drupal Commerce by default, or a pluggable external checker). Ships in the **File Gate Commerce** submodule. |
 
 ## Permissions
 
