@@ -166,8 +166,12 @@ final class OtpController implements ContainerInjectionInterface {
     $max = max(1, (int) ($settings['max_attempts'] ?? Otp::DEFAULT_MAX_ATTEMPTS));
     $length = min(10, max(4, (int) ($settings['code_length'] ?? Otp::DEFAULT_CODE_LENGTH)));
 
-    // A zero-padded numeric code from a CSPRNG.
-    $code = str_pad((string) random_int(0, (10 ** $length) - 1), $length, '0', STR_PAD_LEFT);
+    // A CSPRNG numeric code, built digit-by-digit to avoid a large power that
+    // could overflow the integer range (e.g. 10 ** 10 on 32-bit PHP).
+    $code = '';
+    for ($i = 0; $i < $length; $i++) {
+      $code .= random_int(0, 9);
+    }
     $secret = (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
 
     $this->keyValueExpirableFactory->get(Otp::STORE_COLLECTION)->setWithExpire(

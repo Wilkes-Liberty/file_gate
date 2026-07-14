@@ -223,7 +223,7 @@ final class OtpTest extends KernelTestBase {
   public function testMintNotSupported(): void {
     $file = $this->createFile('doc.pdf');
     $request = Request::create('/api/file-gate/mint', 'POST', [], [], [], [], (string) json_encode(['file' => $file->uuid()]));
-    $request->headers->set('Authorization', 'Basic ' . base64_encode('x:' . self::SECRET));
+    $request->headers->set('Authorization', 'Basic ' . base64_encode('file-gate:' . self::SECRET));
     $this->assertSame(400, MintController::create($this->container)->mint($request)->getStatusCode());
   }
 

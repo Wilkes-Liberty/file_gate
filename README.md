@@ -206,6 +206,12 @@ token — verified in the moment — without an account.
 | `max_attempts` | Wrong-code tries before the code is locked out (default 5). |
 | `code_length` | Number of digits in the passcode (default 6). |
 
+> **Email is not a confidential channel.** The passcode proves *control* of the
+> address, not that the message is secret — anyone who can read the recipient's
+> mail (or intercept it without transport encryption) can use the code within its
+> window. Use `otp` to gate lead-gen / self-service documents, not to protect
+> content a real secret should protect; keep the TTL short.
+
 ### 3. Global defaults
 
 Visit **Administration → Configuration → Media → File Gate**

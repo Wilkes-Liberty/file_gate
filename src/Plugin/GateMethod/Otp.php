@@ -31,6 +31,13 @@ use Symfony\Component\HttpFoundation\Request;
  * is bounded by the TTL, the per-code attempt cap (lockout), and the send
  * endpoint's rate limiting.
  *
+ * SECURITY: the passcode is delivered by e-mail, which is not a confidential
+ * channel — it proves *control* of the address, not that the message is secret.
+ * Anyone able to read the recipient's mail (or intercept it without transport
+ * encryption) can use the code within its window. Use this to gate lead-gen /
+ * self-service documents, not to protect content that a real secret should
+ * protect; short TTLs keep the exposure small.
+ *
  * Per-field method settings:
  * - ttl: code lifetime in seconds (default 600);
  * - max_attempts: wrong-code tries before the code is locked out (default 5);
