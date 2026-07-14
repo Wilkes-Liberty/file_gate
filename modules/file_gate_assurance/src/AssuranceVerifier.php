@@ -30,14 +30,33 @@ use Symfony\Component\HttpFoundation\Request;
 class AssuranceVerifier implements AssuranceVerifierInterface {
 
   /**
-   * The signature algorithms accepted for DPoP proofs (asymmetric only).
+   * The asymmetric signature algorithms accepted (never "none"/HMAC).
+   *
+   * Used both for DPoP proofs and for OIDC token verification.
    */
-  private const DPOP_ALGS = ['ES256', 'ES256K', 'ES384', 'ES512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'EdDSA'];
+  private const ASYMMETRIC_ALGS = [
+    'ES256',
+    'ES256K',
+    'ES384',
+    'ES512',
+    'RS256',
+    'RS384',
+    'RS512',
+    'PS256',
+    'PS384',
+    'PS512',
+    'EdDSA',
+  ];
+
+  /**
+   * The signature algorithms accepted for DPoP proofs.
+   */
+  private const DPOP_ALGS = self::ASYMMETRIC_ALGS;
 
   /**
    * The asymmetric JWT algorithms accepted for OIDC token verification.
    */
-  private const OIDC_TOKEN_ALGS = ['ES256', 'ES256K', 'ES384', 'ES512', 'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'EdDSA'];
+  private const OIDC_TOKEN_ALGS = self::ASYMMETRIC_ALGS;
 
   /**
    * The DPoP proof freshness window, in seconds.
