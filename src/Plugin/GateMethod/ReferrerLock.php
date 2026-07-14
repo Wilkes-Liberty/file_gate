@@ -68,7 +68,7 @@ final class ReferrerLock extends SignedUrl {
    *
    * @return bool
    *   TRUE when the request's origin matches an allowed origin. When no origin
-   *   can be determined (no Origin/Referer header), the configured
+   *   can be determined (no parseable Origin/Referer header), the configured
    *   "on_missing_referrer" behaviour decides. An empty allowlist denies.
    */
   private function originAllowed(Request $request): bool {
