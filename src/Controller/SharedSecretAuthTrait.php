@@ -24,6 +24,16 @@ use Symfony\Component\HttpFoundation\Response;
 trait SharedSecretAuthTrait {
 
   /**
+   * Per-IP limit for failed shared-secret authentication attempts.
+   */
+  private const FAILED_AUTH_LIMIT = 10;
+
+  /**
+   * Per-IP window (seconds) for failed shared-secret authentication attempts.
+   */
+  private const FAILED_AUTH_WINDOW = 60;
+
+  /**
    * Authenticates a server-to-server request and applies the flood limit.
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
@@ -46,6 +56,7 @@ trait SharedSecretAuthTrait {
   protected function authenticateSharedSecret(Request $request, ConfigFactoryInterface $config_factory, FloodInterface $flood, LoggerInterface $logger, string $flood_event): ?JsonResponse {
     $config = $config_factory->get('file_gate.settings');
     $secret = (string) $config->get('download_secret');
+    $ip = $request->getClientIp() ?? '0.0.0.0';
 
     // Fail closed: with no secret nothing can be authenticated or signed, so
     // refuse outright rather than accept an unverifiable caller.
@@ -59,11 +70,17 @@ trait SharedSecretAuthTrait {
     // Authenticate the caller (constant-time comparison).
     $provided = $this->providedSecret($request);
     if ($provided === NULL || !hash_equals($secret, $provided)) {
+      $failed_auth_event = $flood_event . '.auth_fail';
+      if (!$flood->isAllowed($failed_auth_event, self::FAILED_AUTH_LIMIT, self::FAILED_AUTH_WINDOW, $ip)) {
+        return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
+      }
+      $flood->register($failed_auth_event, self::FAILED_AUTH_WINDOW, $ip);
+
       // Security event: someone hit a server-to-server endpoint with a
       // bad/absent secret.
       $logger->warning('@event authentication failed from @ip.', [
         '@event' => $flood_event,
-        '@ip' => $request->getClientIp() ?? 'unknown',
+        '@ip' => $ip,
       ]);
       return new JsonResponse(['error' => 'Unauthorized.'], Response::HTTP_UNAUTHORIZED, [
         'WWW-Authenticate' => 'Basic realm="file-gate"',
@@ -71,7 +88,6 @@ trait SharedSecretAuthTrait {
     }
 
     // Basic abuse resistance on a publicly reachable path.
-    $ip = $request->getClientIp() ?? '0.0.0.0';
     $limit = (int) ($config->get('flood_limit') ?: 50);
     $window = (int) ($config->get('flood_window') ?: 60);
     if (!$flood->isAllowed($flood_event, $limit, $window, $ip)) {

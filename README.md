@@ -47,10 +47,11 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 - **Pluggable gate methods.** A clean plugin type (`GateMethod`) decides *how* a
   request proves it passed the gate. Ships with **Signed URL** (HMAC),
   **Authenticated access**, **Token** (revocable per-grant links and pre-shared
-  campaign tokens), and **Referrer lock** (a signed URL restricted to an allowed
-  origin); the optional **File Gate Assurance** submodule adds hardware-backed,
-  phishing-resistant **PIV/CAC + FIDO2/WebAuthn** gating over any OIDC IdP (with
-  opt-in DPoP). Add your own in a few lines.
+  campaign tokens), **Referrer lock** (a signed URL restricted to an allowed
+  origin), and **One-time passcode** (email-verified); the optional **File Gate
+  Assurance** submodule adds hardware-backed, phishing-resistant **PIV/CAC +
+  FIDO2/WebAuthn** gating over any OIDC IdP (with opt-in DPoP). Add your own in a
+  few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
   theme is assumed. Works for decoupled, coupled, and hybrid sites.
@@ -189,6 +190,21 @@ acting as an AAL3 verifier. See
 [`modules/file_gate_assurance/README.md`](modules/file_gate_assurance/README.md)
 and the design note in
 [`docs/design/piv-cac-webauthn.md`](docs/design/piv-cac-webauthn.md).
+
+#### One-time passcode method
+
+The **One-time passcode** method (`otp`) proves control of an email address: a
+trusted back end requests a code bound to (file, email) at `POST
+/api/file-gate/otp` (shared-secret auth, like mint), File Gate e-mails it, and the
+visitor redeems the download with `?f=…&email=…&otp=…`. The code is single-use,
+TTL-limited, attempt-locked, and stored only as a hash. A step up from a bare
+token — verified in the moment — without an account.
+
+| Setting | Meaning |
+|---|---|
+| `ttl` | Code lifetime in seconds (default 600). |
+| `max_attempts` | Wrong-code tries before the code is locked out (default 5). |
+| `code_length` | Number of digits in the passcode (default 6). |
 
 ### 3. Global defaults
 
@@ -339,7 +355,7 @@ final class MyMethod extends GateMethodBase {
 | `authenticated` | shipped | Delivers to any logged-in Drupal user. |
 | `token` | shipped | Revocable per-grant token and/or a pre-shared campaign allowlist. |
 | `email_capture` / `form` | idea | Native (coupled) email/form gate. |
-| `otp` | idea | One-time password e-mailed to the requester. |
+| `otp` | shipped | One-time passcode e-mailed to a self-identified address; single-use, TTL-limited, attempt-locked. |
 | `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
 | `assurance` | shipped | Signed URL gated on a hardware-backed OIDC assurance (PIV/CAC + FIDO2/WebAuthn), with opt-in DPoP. Ships in the **File Gate Assurance** submodule. |
 | `commerce` | idea | Gate behind a purchase/licence. |
