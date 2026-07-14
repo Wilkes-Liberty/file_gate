@@ -49,7 +49,8 @@ interface AssuranceVerifierInterface {
    *   The bearer token to introspect.
    * @param array $config
    *   The method settings: at least "introspection_endpoint"; optionally
-   *   "introspection_client_id" / "introspection_client_secret".
+   *   "introspection_client_id". The client secret is sourced globally from
+   *   module configuration.
    *
    * @return bool
    *   TRUE only if the endpoint reports the token active. Fails closed (FALSE)

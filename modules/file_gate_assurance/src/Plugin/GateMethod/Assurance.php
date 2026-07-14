@@ -254,6 +254,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
    */
   public function fieldSettingsForm(array $settings): array {
     $lines = static fn (array $v): string => implode("\n", $v);
+    $verify_at = (string) ($settings['verify_at'] ?? 'redeem');
+    if (!in_array($verify_at, ['redeem', 'mint', 'client_cert'], TRUE)) {
+      $verify_at = 'redeem';
+    }
     return parent::fieldSettingsForm($settings) + [
       'verify_at' => [
         '#type' => 'select',
@@ -263,7 +267,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
           'mint' => $this->t('At mint — trust the stepped-up caller (Model A)'),
           'client_cert' => $this->t('Edge mTLS — trust a validated client certificate'),
         ],
-        '#default_value' => $settings['verify_at'] ?? 'redeem',
+        '#default_value' => $verify_at,
       ],
       'aal' => [
         '#type' => 'number',
