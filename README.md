@@ -174,7 +174,7 @@ Per-field `method_settings` (in addition to all of *Signed URL*'s):
 | Setting | Meaning |
 |---|---|
 | `allowed_origins` | List of allowed origins, e.g. `https://app.example.com`. Matched as scheme + host + (non-default) port. An empty list denies every request (fail closed) — configure at least one. |
-| `on_missing_referrer` | What to do when neither header is present: `deny` (default) or `allow` (tolerate privacy setups that strip the header, leaning on the signature alone). |
+| `on_missing_referrer` | What to do when no parseable `Origin`/`Referer` is available: `deny` (default) or `allow` (tolerate privacy setups that strip the header, leaning on the signature alone). |
 
 ### 3. Global defaults
 
