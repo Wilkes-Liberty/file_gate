@@ -16,6 +16,7 @@ ignored) or in an `X-File-Gate-Secret` header. The comparison is constant-time.
 |---|---|---|
 | `media` | string | A media entity UUID (requires the Media module). Its source file is used; the media must be published. |
 | `file` | string | A managed file UUID (media-agnostic). |
+| `subject` | string | Optional. A caller-asserted subject the grant is bound to (used by the `assurance` method for per-user binding); only its hash is stored/signed. |
 
 **Responses:**
 
@@ -113,10 +114,12 @@ third_party_settings:
       max_uses: 1         # optional; 1 = one-time link
 ```
 
-Edit these on the field's settings page (enable *Gate access to these files* and
-pick a method); the plugin's per-field `method_settings` are configured in YAML.
-The `token` method also accepts a `tokens` list under `method_settings` — an
-array of **SHA-256 hashes** (never plaintext) of pre-shared campaign tokens:
+Edit these on the field's settings page — enable *Gate access to these files*,
+pick a method, and the selected method's own settings form appears inline (each
+method implements `fieldSettingsForm()`); or set `method_settings` directly in
+exported YAML. The `token` method also accepts a `tokens` list under
+`method_settings` — an array of **SHA-256 hashes** (never plaintext) of
+pre-shared campaign tokens:
 
 ```yaml
 third_party_settings:

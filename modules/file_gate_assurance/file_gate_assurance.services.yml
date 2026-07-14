@@ -12,3 +12,4 @@ services:
       - '@keyvalue.expirable'
       - '@datetime.time'
       - '@logger.channel.file_gate'
+      - '@config.factory'

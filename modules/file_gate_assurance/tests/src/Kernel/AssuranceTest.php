@@ -15,7 +15,12 @@ use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\file\Entity\File;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Controller\DownloadController;
+use Drupal\file_gate\Controller\MintController;
 use Firebase\JWT\JWT;
+use GuzzleHttp\Client;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -297,6 +302,166 @@ final class AssuranceTest extends KernelTestBase {
     // Same proof again → replay.
     $this->expectException(AccessDeniedHttpException::class);
     $this->download($this->mintQuery($file), $headers);
+  }
+
+  /**
+   * The assurance settings form builds and round-trips its values.
+   */
+  public function testAssuranceSettingsForm(): void {
+    $method = $this->container->get('plugin.manager.file_gate.gate_method')
+      ->createInstance('assurance', []);
+
+    $form = $method->fieldSettingsForm(['verify_at' => 'redeem']);
+    $this->assertArrayHasKey('verify_at', $form);
+    $this->assertArrayHasKey('issuer', $form);
+    $this->assertArrayHasKey('dpop', $form);
+    // Inherited from signed_url.
+    $this->assertArrayHasKey('ttl', $form);
+
+    $settings = $method->fieldSettingsSubmit([
+      'ttl' => '0',
+      'available_until' => '0',
+      'max_uses' => '0',
+      'verify_at' => 'client_cert',
+      'aal' => '3',
+      'issuer' => ' https://idp.example ',
+      'audience' => 'file-gate',
+      'required_acr' => "aal3\naal2",
+      'dpop' => 1,
+      'introspect' => 0,
+      'leeway' => '30',
+      'trusted_proxy_header' => 'X-Client-Cert-Dn',
+      'allowed_subjects' => 'CN=Jane Doe',
+    ]);
+    $this->assertSame('client_cert', $settings['verify_at']);
+    $this->assertSame(3, $settings['aal']);
+    $this->assertSame('https://idp.example', $settings['issuer']);
+    $this->assertSame(['aal3', 'aal2'], $settings['required_acr']);
+    $this->assertTrue($settings['dpop']);
+    $this->assertFalse($settings['introspect']);
+    $this->assertSame(30, $settings['leeway']);
+    $this->assertSame(['CN=Jane Doe'], $settings['allowed_subjects']);
+  }
+
+  /**
+   * A caller-asserted subject binds the grant to that user (per-user binding).
+   */
+  public function testSubjectBindingEnforced(): void {
+    $file = $this->createFile('doc.pdf');
+    $query = $this->mintViaController($file, 'user-123');
+    $this->assertArrayHasKey('sh', $query);
+
+    // The matching subject is served.
+    $ok = $this->download($query, $this->bearer($this->idpToken(['sub' => 'user-123'])));
+    $this->assertSame(200, $ok->getStatusCode());
+
+    // A different (but otherwise valid, sufficiently-assured) user is denied.
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($query, $this->bearer($this->idpToken(['sub' => 'someone-else'])));
+  }
+
+  /**
+   * Edge mTLS: a validated client-cert identity in the trusted header grants.
+   */
+  public function testClientCertModeGrants(): void {
+    $this->configure(['verify_at' => 'client_cert', 'trusted_proxy_header' => 'X-Client-Cert-Dn']);
+    $file = $this->createFile('doc.pdf');
+    $query = $this->mintQuery($file);
+
+    $ok = $this->download($query, ['X-Client-Cert-Dn' => 'CN=Jane Doe,OU=Agency']);
+    $this->assertSame(200, $ok->getStatusCode());
+  }
+
+  /**
+   * Edge mTLS: no client-cert header is denied.
+   */
+  public function testClientCertModeMissingHeaderDenied(): void {
+    $this->configure(['verify_at' => 'client_cert', 'trusted_proxy_header' => 'X-Client-Cert-Dn']);
+    $file = $this->createFile('doc.pdf');
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file));
+  }
+
+  /**
+   * Edge mTLS: a subject outside the allowlist is denied.
+   */
+  public function testClientCertModeSubjectNotAllowedDenied(): void {
+    $this->configure([
+      'verify_at' => 'client_cert',
+      'trusted_proxy_header' => 'X-Client-Cert-Dn',
+      'allowed_subjects' => ['CN=Jane Doe,OU=Agency'],
+    ]);
+    $file = $this->createFile('doc.pdf');
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), ['X-Client-Cert-Dn' => 'CN=Bob Roe,OU=Agency']);
+  }
+
+  /**
+   * Introspection: an active token is served.
+   */
+  public function testIntrospectionActiveGrants(): void {
+    $this->mockHttpClient([new GuzzleResponse(200, [], (string) json_encode(['active' => TRUE]))]);
+    $this->configure([
+      'introspect' => TRUE,
+      'introspection_endpoint' => 'https://idp.example.test/introspect',
+    ]);
+    $file = $this->createFile('doc.pdf');
+    $response = $this->download($this->mintQuery($file), $this->bearer($this->idpToken()));
+    $this->assertSame(200, $response->getStatusCode());
+  }
+
+  /**
+   * Introspection: a token the IdP reports inactive (revoked) is denied.
+   */
+  public function testIntrospectionRevokedDenied(): void {
+    $this->mockHttpClient([new GuzzleResponse(200, [], (string) json_encode(['active' => FALSE]))]);
+    $this->configure([
+      'introspect' => TRUE,
+      'introspection_endpoint' => 'https://idp.example.test/introspect',
+    ]);
+    $file = $this->createFile('doc.pdf');
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), $this->bearer($this->idpToken()));
+  }
+
+  /**
+   * Replaces the http_client service with a Guzzle mock (queued responses).
+   *
+   * Must run before the verifier is first instantiated. JWKS comes from the
+   * seeded cache, so the queue only needs the introspection response(s).
+   *
+   * @param array $responses
+   *   The queued Guzzle responses.
+   */
+  private function mockHttpClient(array $responses): void {
+    $handler = HandlerStack::create(new MockHandler($responses));
+    $this->container->set('http_client', new Client(['handler' => $handler]));
+  }
+
+  /**
+   * Mints through the mint controller, optionally asserting a subject.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   * @param string|null $subject
+   *   A caller-asserted subject to bind, or NULL.
+   *
+   * @return array
+   *   The download URL query.
+   */
+  private function mintViaController(FileInterface $file, ?string $subject = NULL): array {
+    $body = ['file' => $file->uuid()];
+    if ($subject !== NULL) {
+      $body['subject'] = $subject;
+    }
+    $request = Request::create('/api/file-gate/mint', 'POST', [], [], [], [], (string) json_encode($body));
+    $request->headers->set('Authorization', 'Basic ' . base64_encode('file-gate:' . self::SECRET));
+    $response = MintController::create($this->container)->mint($request);
+    $this->assertSame(200, $response->getStatusCode());
+    $data = json_decode((string) $response->getContent(), TRUE);
+    $query = [];
+    parse_str((string) parse_url($data['path'], PHP_URL_QUERY), $query);
+    return $query;
   }
 
   /**
