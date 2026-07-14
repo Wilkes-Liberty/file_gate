@@ -1,0 +1,15 @@
+# Routes defined by File Gate Form.
+
+# The native capture form for a `form`-gated file. Open at the routing layer —
+# the form itself 404s for a file that is not gated with the form method, and a
+# valid submission records a per-session grant before redirecting to the
+# download. {file} is the file UUID.
+file_gate_form.gate:
+  path: '/file-gate/form/{file}'
+  defaults:
+    _form: '\Drupal\file_gate_form\Form\FileGateForm'
+    _title: 'Download'
+  requirements:
+    # Open by design: the form 404s for a file not gated with the form method,
+    # and only a valid submission records a grant.
+    _access: 'TRUE'

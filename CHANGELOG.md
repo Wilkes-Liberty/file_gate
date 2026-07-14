@@ -42,6 +42,13 @@ All notable changes to **File Gate** are documented here. The format is based on
   an *asserted* level), not an AAL3 verifier — a plain signed URL is a bearer
   capability unless DPoP-bound. Requires `firebase/php-jwt` (a suggested
   dependency of the parent module).
+- **File Gate Form** submodule (`file_gate_form`) adding a coupled `form` gate
+  method: Drupal renders a lightweight email / lead-capture form at
+  `/file-gate/form/{file}` and grants the download on submission (a per-session
+  grant in the private tempstore, TTL-limited). Spam-guarded (honeypot + per-IP
+  rate limit); a `LeadCapturedEvent` lets sites persist submissions into Contact,
+  Webform, or a CRM without File Gate storing PII. The coupling is isolated in
+  this optional submodule so the headless path pulls in no form assumptions.
 - A `SignedUrl` claim-binding seam (`signedClaimKeys()` / `extraMintClaims()`)
   so gate methods can extend it and bind additional signed claims.
 - Per-method settings forms: gate methods expose `fieldSettingsForm()` /
@@ -83,6 +90,8 @@ All notable changes to **File Gate** are documented here. The format is based on
   still enforced, and origin-checked-before-usage-consumed); and the `assurance`
   method (valid/insufficient-acr/wrong-audience/wrong-issuer/expired/forged-key
   tokens, aal-tamper, advisory amr, asserted mode, and DPoP grant / missing
-  proof / thumbprint mismatch / wrong-htu / replay); and the `otp` method
+  proof / thumbprint mismatch / wrong-htu / replay); the `otp` method
   (request-then-redeem via the mail collector, single use, wrong code, attempt
-  lockout, endpoint guards, send throttle, and mint-not-supported).
+  lockout, endpoint guards, send throttle, and mint-not-supported); and the
+  `form` method (submit-grants-download, no-submission-denied, expired grant,
+  honeypot rejection, live-decision mint, and the settings form).
