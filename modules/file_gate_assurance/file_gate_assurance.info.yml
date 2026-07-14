@@ -1,0 +1,7 @@
+name: 'File Gate Assurance'
+type: module
+description: 'Gate file delivery behind a hardware-backed, phishing-resistant assurance level (PIV/CAC or FIDO2/WebAuthn) proven at any standards-compliant OIDC IdP. Provider-agnostic; DPoP (RFC 9449) sender-constraining is opt-in.'
+package: 'Security'
+core_version_requirement: ^11.4 || ^12
+dependencies:
+  - 'file_gate:file_gate'

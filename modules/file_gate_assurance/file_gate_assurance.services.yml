@@ -1,0 +1,14 @@
+services:
+
+  # Provider-agnostic OIDC assertion + DPoP verifier used by the "assurance"
+  # gate method. Discovers each configured issuer's JWKS, pins the signing
+  # algorithm to the published keys, and (opt-in) verifies an RFC 9449 DPoP
+  # proof bound to the token's cnf.jkt.
+  file_gate_assurance.verifier:
+    class: Drupal\file_gate_assurance\AssuranceVerifier
+    arguments:
+      - '@http_client'
+      - '@cache.default'
+      - '@keyvalue.expirable'
+      - '@datetime.time'
+      - '@logger.channel.file_gate'

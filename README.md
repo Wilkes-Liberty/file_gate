@@ -48,7 +48,9 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   request proves it passed the gate. Ships with **Signed URL** (HMAC),
   **Authenticated access**, **Token** (revocable per-grant links and pre-shared
   campaign tokens), and **Referrer lock** (a signed URL restricted to an allowed
-  origin); add your own in a few lines.
+  origin); the optional **File Gate Assurance** submodule adds hardware-backed,
+  phishing-resistant **PIV/CAC + FIDO2/WebAuthn** gating over any OIDC IdP (with
+  opt-in DPoP). Add your own in a few lines.
 - **Front-end agnostic / headless-first.** Mint over a server-to-server API;
   redeem in the browser. Nothing about React, Next.js, Vue, or a coupled Twig
   theme is assumed. Works for decoupled, coupled, and hybrid sites.
@@ -175,6 +177,18 @@ Per-field `method_settings` (in addition to all of *Signed URL*'s):
 |---|---|
 | `allowed_origins` | List of allowed origins, e.g. `https://app.example.com`. Matched as scheme + host + (non-default) port. An empty list denies every request (fail closed) — configure at least one. |
 | `on_missing_referrer` | What to do when no parseable `Origin`/`Referer` is available: `deny` (default) or `allow` (tolerate privacy setups that strip the header, leaning on the signature alone). |
+
+#### Assurance method (PIV/CAC + FIDO2/WebAuthn)
+
+The optional **File Gate Assurance** submodule (`file_gate_assurance`) adds the
+`assurance` method: a signed URL whose delivery also requires a hardware-backed,
+phishing-resistant NIST SP 800-63 assurance level proven at any OIDC IdP —
+PIV/CAC (HSPD-12 / FIPS 201) or FIDO2/WebAuthn — with opt-in DPoP (RFC 9449)
+sender-constraining. It is **federation** (an *asserted* level), not File Gate
+acting as an AAL3 verifier. See
+[`modules/file_gate_assurance/README.md`](modules/file_gate_assurance/README.md)
+and the design note in
+[`docs/design/piv-cac-webauthn.md`](docs/design/piv-cac-webauthn.md).
 
 ### 3. Global defaults
 
@@ -327,6 +341,7 @@ final class MyMethod extends GateMethodBase {
 | `email_capture` / `form` | idea | Native (coupled) email/form gate. |
 | `otp` | idea | One-time password e-mailed to the requester. |
 | `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
+| `assurance` | shipped | Signed URL gated on a hardware-backed OIDC assurance (PIV/CAC + FIDO2/WebAuthn), with opt-in DPoP. Ships in the **File Gate Assurance** submodule. |
 | `commerce` | idea | Gate behind a purchase/licence. |
 
 ## Permissions
