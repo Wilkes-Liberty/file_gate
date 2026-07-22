@@ -87,7 +87,7 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 ## Installation
 
 ```bash
-composer require drupal/file_gate
+composer require 'drupal/file_gate:^1.0.0-rc1'
 drush en file_gate
 ```
 
