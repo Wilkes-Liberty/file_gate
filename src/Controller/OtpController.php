@@ -146,7 +146,12 @@ final class OtpController implements ContainerInjectionInterface {
     }
     $this->flood->register('file_gate.otp_send', self::SEND_WINDOW, $throttle_id);
 
-    $this->issueAndSend($file, $email, (array) $gate['settings']);
+    // A failed delivery sent nothing, so it must not spend the caller's send
+    // budget. Clear the slot we just registered for this (file, email) — safe
+    // because no code went out, so this cannot aid mailbombing or brute force.
+    if (!$this->issueAndSend($file, $email, (array) $gate['settings'])) {
+      $this->flood->clear('file_gate.otp_send', $throttle_id);
+    }
 
     return new Response('', Response::HTTP_NO_CONTENT);
   }
@@ -160,8 +165,12 @@ final class OtpController implements ContainerInjectionInterface {
    *   The normalized recipient email.
    * @param array $settings
    *   The field's OTP method settings.
+   *
+   * @return bool
+   *   TRUE when the code was stored and the email was accepted for delivery;
+   *   FALSE when delivery failed (and the stored code was rolled back).
    */
-  private function issueAndSend(FileInterface $file, string $email, array $settings): void {
+  private function issueAndSend(FileInterface $file, string $email, array $settings): bool {
     $ttl = max(30, (int) ($settings['ttl'] ?? Otp::DEFAULT_TTL));
     $max = max(1, (int) ($settings['max_attempts'] ?? Otp::DEFAULT_MAX_ATTEMPTS));
     $length = min(10, max(4, (int) ($settings['code_length'] ?? Otp::DEFAULT_CODE_LENGTH)));
@@ -195,11 +204,12 @@ final class OtpController implements ContainerInjectionInterface {
       // Avoid leaving an outstanding code when the email could not be sent.
       $this->keyValueExpirableFactory->get(Otp::STORE_COLLECTION)->delete(Otp::storeKey($file->uuid(), $email));
       $this->logger->error('Failed to send an OTP email for file @uuid.', ['@uuid' => $file->uuid()]);
-      return;
+      return FALSE;
     }
 
     // Usage event: a code was issued (never log the code itself).
     $this->logger->info('Issued an OTP for file @uuid.', ['@uuid' => $file->uuid()]);
+    return TRUE;
   }
 
   /**

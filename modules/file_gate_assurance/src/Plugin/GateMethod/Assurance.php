@@ -323,7 +323,13 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
         '#type' => 'checkbox',
         '#title' => $this->t('Require a DPoP proof (RFC 9449)'),
         '#default_value' => !empty($settings['dpop']),
-        '#description' => $this->t('Sender-constrains the token to a key the client proves possession of.'),
+        '#description' => $this->t('Sender-constrains the token to a key the client proves possession of, and binds the proof to this exact access token.'),
+      ],
+      'htu_origin' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('DPoP htu origin override'),
+        '#default_value' => $settings['htu_origin'] ?? '',
+        '#description' => $this->t('Optional (DPoP). Behind a TLS-terminating or Host-rewriting proxy, set the public origin (e.g. <code>https://files.example.gov</code>) so the <code>htu</code> the client signs matches what File Gate computes. Empty derives it from the request (which honours Drupal’s reverse-proxy settings).'),
       ],
       'introspect' => [
         '#type' => 'checkbox',
@@ -378,7 +384,15 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     $settings['introspect'] = !empty($values['introspect']);
     $settings['leeway'] = (int) ($values['leeway'] ?? 60);
 
-    foreach (['issuer', 'audience', 'introspection_endpoint', 'introspection_client_id', 'trusted_proxy_header'] as $key) {
+    $string_keys = [
+      'issuer',
+      'audience',
+      'introspection_endpoint',
+      'introspection_client_id',
+      'trusted_proxy_header',
+      'htu_origin',
+    ];
+    foreach ($string_keys as $key) {
       $value = trim((string) ($values[$key] ?? ''));
       if ($value !== '') {
         $settings[$key] = $value;

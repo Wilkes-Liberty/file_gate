@@ -105,32 +105,31 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       return NULL;
     }
 
-    $jwks = $this->loadJwks($issuer);
-    if ($jwks === NULL) {
-      return NULL;
-    }
-
     $default_alg = $this->jwtHeaderAlg($token);
     if ($default_alg === NULL) {
       return NULL;
     }
 
-    try {
-      // parseKeySet pins each key's algorithm; JWT::decode then rejects "none",
-      // any HMAC alg, and any token whose header alg disagrees with its key.
-      $keys = JWK::parseKeySet($jwks, $default_alg);
-      $leeway = JWT::$leeway;
-      try {
-        JWT::$leeway = max(0, (int) ($config['leeway'] ?? 60));
-        $claims = JWT::decode($token, $keys);
-      }
-      finally {
-        JWT::$leeway = $leeway;
-      }
-    }
-    catch (\Throwable $e) {
-      $this->logger->warning('Assurance: token rejected: @msg', ['@msg' => $e->getMessage()]);
+    $jwks = $this->loadJwks($issuer);
+    if ($jwks === NULL) {
       return NULL;
+    }
+
+    $leeway = max(0, (int) ($config['leeway'] ?? 60));
+    $claims = $this->decodeToken($token, $jwks, $default_alg, $leeway);
+    if ($claims === NULL) {
+      // The IdP may have rotated its signing key since we cached the JWKS. Drop
+      // the cache, refetch once, and retry before giving up — otherwise a valid
+      // token signed by the new key is rejected until the cache expires.
+      $this->cache->delete($this->jwksCacheId($issuer));
+      $jwks = $this->loadJwks($issuer);
+      if ($jwks === NULL) {
+        return NULL;
+      }
+      $claims = $this->decodeToken($token, $jwks, $default_alg, $leeway);
+      if ($claims === NULL) {
+        return NULL;
+      }
     }
 
     // Pin issuer and audience: never trust a token minted for another party.
@@ -140,6 +139,11 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     if (!in_array($audience, (array) ($claims->aud ?? []), TRUE)) {
       return NULL;
     }
+    // A token with no expiry never expires; require one explicitly (php-jwt
+    // only enforces exp when the claim is present).
+    if (!isset($claims->exp)) {
+      return NULL;
+    }
 
     // DPoP (opt-in): the presented token must be sender-constrained to a key
     // the client proves possession of on this very request.
@@ -147,7 +151,8 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       $jkt = $this->verifyDpopProof(
         (string) $request->headers->get('DPoP', ''),
         $request->getMethod(),
-        $this->htu($request),
+        $this->htu($request, (string) ($config['htu_origin'] ?? '')),
+        $token,
       );
       if ($jkt === NULL) {
         return NULL;
@@ -174,6 +179,13 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     if ($endpoint === '') {
       return FALSE;
     }
+    // The request carries the access token and the client's Basic credentials.
+    // Refuse to send them over cleartext; only HTTPS (or an explicit loopback
+    // for local development) is allowed.
+    if (!$this->isSecureEndpoint($endpoint)) {
+      $this->logger->error('Assurance: refusing to introspect over a non-HTTPS endpoint (@url).', ['@url' => $endpoint]);
+      return FALSE;
+    }
     $options = [
       'timeout' => 8,
       'form_params' => ['token' => $token],
@@ -198,6 +210,55 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   }
 
   /**
+   * Decodes and signature-verifies an OIDC token against a JWKS.
+   *
+   * @param string $token
+   *   The encoded JWT.
+   * @param array $jwks
+   *   The issuer's JWKS.
+   * @param string $default_alg
+   *   The (already validated) header algorithm to pin the key set to.
+   * @param int $leeway
+   *   The clock-skew leeway, in seconds.
+   *
+   * @return object|null
+   *   The decoded claims, or NULL when decoding or signature verification fails
+   *   (e.g. an unknown/rotated key, "none"/HMAC, or a header/key alg mismatch).
+   */
+  private function decodeToken(string $token, array $jwks, string $default_alg, int $leeway): ?object {
+    try {
+      // parseKeySet pins each key's algorithm; JWT::decode then rejects "none",
+      // any HMAC alg, and any token whose header alg disagrees with its key.
+      $keys = JWK::parseKeySet($jwks, $default_alg);
+      $previous = JWT::$leeway;
+      try {
+        JWT::$leeway = $leeway;
+        return JWT::decode($token, $keys);
+      }
+      finally {
+        JWT::$leeway = $previous;
+      }
+    }
+    catch (\Throwable $e) {
+      $this->logger->warning('Assurance: token rejected: @msg', ['@msg' => $e->getMessage()]);
+      return NULL;
+    }
+  }
+
+  /**
+   * The cache id under which an issuer's JWKS is stored.
+   *
+   * @param string $issuer
+   *   The configured OIDC issuer URL.
+   *
+   * @return string
+   *   The cache id.
+   */
+  private function jwksCacheId(string $issuer): string {
+    return 'file_gate_assurance:jwks:' . hash('sha256', $issuer);
+  }
+
+  /**
    * Loads (and caches) the issuer's JWKS via OIDC discovery.
    *
    * The issuer and its discovery document come from admin configuration — never
@@ -212,7 +273,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    *   The JWKS (a ['keys' => [...]] array), or NULL on failure.
    */
   protected function loadJwks(string $issuer): ?array {
-    $cid = 'file_gate_assurance:jwks:' . hash('sha256', $issuer);
+    $cid = $this->jwksCacheId($issuer);
     if ($cached = $this->cache->get($cid)) {
       return $cached->data;
     }
@@ -226,8 +287,8 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       if (empty($jwks['keys'])) {
         return NULL;
       }
-      // Cache for an hour; a rotated key surfaces as a decode failure and the
-      // next miss refetches.
+      // Cache for an hour. On a key rotation verify() drops this entry and
+      // refetches once, so a rotated key does not lock out valid tokens.
       $this->cache->set($cid, $jwks, $this->time->getRequestTime() + 3600);
       return $jwks;
     }
@@ -273,12 +334,15 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    *   The request HTTP method the proof must be bound to.
    * @param string $htu
    *   The request URI (no query/fragment) the proof must be bound to.
+   * @param string $access_token
+   *   The access token the proof accompanies; bound via the `ath` claim.
    *
    * @return string|null
    *   The RFC 7638 thumbprint (jkt) of the proof's embedded key, or NULL when
-   *   the proof is missing, malformed, stale, replayed, or otherwise invalid.
+   *   the proof is missing, malformed, stale, replayed, not bound to the access
+   *   token, or otherwise invalid.
    */
-  private function verifyDpopProof(string $proof, string $htm, string $htu): ?string {
+  private function verifyDpopProof(string $proof, string $htm, string $htu, string $access_token): ?string {
     if ($proof === '' || substr_count($proof, '.') !== 2) {
       return NULL;
     }
@@ -315,6 +379,13 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     }
     $jti = (string) ($claims->jti ?? '');
     if ($jti === '' || $this->dpopReplayed($jti)) {
+      return NULL;
+    }
+    // Bind the proof to THIS access token (RFC 9449 §4.3): the ath claim is the
+    // base64url SHA-256 of the token, so a proof minted for one token cannot be
+    // replayed alongside a different token bound to the same key.
+    $expected_ath = $this->base64UrlEncode(hash('sha256', $access_token, TRUE));
+    if (!hash_equals($expected_ath, (string) ($claims->ath ?? ''))) {
       return NULL;
     }
 
@@ -368,14 +439,44 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   /**
    * The request's htu: absolute URI without query or fragment (RFC 9449).
    *
+   * The scheme+host is taken from the request, which honours Drupal's
+   * reverse-proxy / trusted-host configuration. Behind a proxy that terminates
+   * TLS or rewrites the Host, set an explicit origin (scheme://host[:port]) so
+   * the htu the client signs and the htu we compute cannot diverge.
+   *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The request.
+   * @param string $origin_override
+   *   An optional canonical origin (scheme://host[:port]) that replaces the
+   *   request-derived origin; empty to use the request.
    *
    * @return string
    *   The normalized htu.
    */
-  private function htu(Request $request): string {
-    return $this->normalizeUrl($request->getSchemeAndHttpHost() . $request->getBaseUrl() . $request->getPathInfo());
+  private function htu(Request $request, string $origin_override = ''): string {
+    $origin = $origin_override !== ''
+      ? rtrim($origin_override, '/')
+      : $request->getSchemeAndHttpHost();
+    return $this->normalizeUrl($origin . $request->getBaseUrl() . $request->getPathInfo());
+  }
+
+  /**
+   * Whether an endpoint URL is safe to send credentials to.
+   *
+   * @param string $url
+   *   The endpoint URL.
+   *
+   * @return bool
+   *   TRUE for HTTPS, or HTTP only to an explicit loopback host (local dev).
+   */
+  private function isSecureEndpoint(string $url): bool {
+    $parts = parse_url($url);
+    $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+    if ($scheme === 'https') {
+      return TRUE;
+    }
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    return $scheme === 'http' && in_array($host, ['127.0.0.1', '::1', 'localhost'], TRUE);
   }
 
   /**

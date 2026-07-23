@@ -6,11 +6,14 @@ namespace Drupal\file_gate\Plugin\GateMethod;
 
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
+use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\GateMethodBase;
+use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -42,6 +45,8 @@ use Symfony\Component\HttpFoundation\Request;
   description: new TranslatableMarkup('A trusted back end mints a short-lived, HMAC-signed URL after its own gate (lead form, login, …); the browser redeems it. Supports per-field TTL, an absolute availability window, and usage limits (one-time links). Fully front-end-agnostic.'),
 )]
 class SignedUrl extends GateMethodBase {
+
+  use GrantLockTrait;
 
   /**
    * The redemption-counter collection name (keyed by grant token).
@@ -79,6 +84,11 @@ class SignedUrl extends GateMethodBase {
   private KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
+   * The lock backend (serializes usage-counter increments).
+   */
+  private LockBackendInterface $lock;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -87,6 +97,7 @@ class SignedUrl extends GateMethodBase {
     $instance->streamWrapperManager = $container->get('stream_wrapper_manager');
     $instance->time = $container->get('datetime.time');
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
+    $instance->lock = $container->get('lock');
     return $instance;
   }
 
@@ -141,6 +152,12 @@ class SignedUrl extends GateMethodBase {
     $available_until = (int) ($settings['available_until'] ?? 0);
     if ($available_until > 0) {
       $exp = min($exp, $available_until);
+    }
+
+    // A window that has already closed leaves no live grant to issue. Refuse
+    // rather than hand back an already-expired link.
+    if ($exp <= $now) {
+      throw new GrantWindowClosedException('The file is no longer available for download.');
     }
 
     $claims = [GrantSignerInterface::CLAIM_EXPIRES => $exp];
@@ -248,7 +265,12 @@ class SignedUrl extends GateMethodBase {
   }
 
   /**
-   * Atomically-ish consumes one use of a usage-limited grant.
+   * Consumes one use of a usage-limited grant.
+   *
+   * The read-check-increment runs under a lock keyed on the grant token, so a
+   * concurrent burst cannot redeem a one-time link more than its cap allows
+   * (every request would otherwise read the same pre-increment counter). A
+   * request that cannot acquire the lock is denied (fail closed).
    *
    * @param string $token
    *   The grant's unique token (jti claim).
@@ -264,31 +286,36 @@ class SignedUrl extends GateMethodBase {
     if ($token === '' || $max <= 0) {
       return FALSE;
     }
-    $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
-    $count = (int) $store->get($token, 0);
-    if ($count >= $max) {
-      return FALSE;
-    }
-    // The counter only needs to outlive the grant itself.
-    $store->setWithExpire($token, $count + 1, max(1, $exp - $this->time->getRequestTime()));
-    return TRUE;
+    return (bool) $this->runLocked('file_gate_redemption:' . $token, function () use ($token, $max, $exp): bool {
+      $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+      $count = (int) $store->get($token, 0);
+      if ($count >= $max) {
+        return FALSE;
+      }
+      // The counter only needs to outlive the grant itself.
+      $store->setWithExpire($token, $count + 1, max(1, $exp - $this->time->getRequestTime()));
+      return TRUE;
+    });
   }
 
   /**
-   * The signed resource id for a file: its normalized stream URI.
+   * The signed resource id for a file: its UUID plus its normalized stream URI.
    *
-   * Normalizing (e.g. collapsing "private://./x" to "private://x") guarantees
-   * the string signed at mint time matches the string validated at redemption
-   * time, where core reconstructs the URI from the request path.
+   * The UUID binds the grant to this exact file entity, so two managed files
+   * that happen to reference the same private:// URI do not share a signature
+   * (a grant minted for one cannot be redeemed for the other). Normalizing the
+   * URI (e.g. collapsing "private://./x" to "private://x") guarantees the
+   * string signed at mint time matches the string validated at redemption,
+   * where core reconstructs the URI from the request path.
    *
    * @param \Drupal\file\FileInterface $file
    *   The file.
    *
    * @return string
-   *   The normalized "private://…" URI.
+   *   The resource id: "<uuid>|private://…".
    */
   private function resourceId(FileInterface $file): string {
-    return $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
+    return $file->uuid() . '|' . $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
   }
 
 }

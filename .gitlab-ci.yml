@@ -1,0 +1,17 @@
+# drupal.org GitLab CI for File Gate.
+#
+# Uses the Drupal Association's shared GitLab CI templates, which run composer
+# validation, PHPCS (Drupal + DrupalPractice), PHPStan, and the PHPUnit suite
+# against the core version the module declares support for. This is what makes
+# the module's `^11.4 || ^12` support claim verifiable rather than asserted.
+#
+# Docs: https://project.pages.drupalcode.org/gitlab_templates/
+include:
+  - project: $_GITLAB_TEMPLATES_REPO
+    ref: $_GITLAB_TEMPLATES_REF
+    file: templates/include.gitlab-ci.yml
+
+variables:
+  # Also run the suite against the next major (Drupal 12) so the second half of
+  # the `^11.4 || ^12` claim is exercised, not just the current core.
+  OPT_IN_TEST_NEXT_MAJOR: '1'

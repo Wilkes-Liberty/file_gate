@@ -8,6 +8,8 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
+use Drupal\Core\Lock\LockBackendInterface;
+use Drupal\file_gate\GrantLockTrait;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,12 +25,18 @@ use Symfony\Component\HttpFoundation\Response;
  * would break every other live link). Authenticated with the same shared secret
  * as mint (constant-time), and fails closed when no secret is configured.
  *
+ * The delete runs under a lock keyed on the token hash, the same lock a
+ * redemption takes: this prevents a redemption that read the row just before
+ * the delete from writing an incremented row back after it (which would
+ * resurrect a revoked token). See GrantLockTrait.
+ *
  * Only minted tokens live in the store; pre-shared campaign tokens are revoked
  * by removing their hash from the field's "tokens" configuration, not here.
  */
 final class RevokeController implements ContainerInjectionInterface {
 
   use SharedSecretAuthTrait;
+  use GrantLockTrait;
 
   /**
    * The token store collection name (keyed by the SHA-256 hash of the token).
@@ -46,12 +54,15 @@ final class RevokeController implements ContainerInjectionInterface {
    *   The expirable key/value factory (holds minted token hashes).
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
+   * @param \Drupal\Core\Lock\LockBackendInterface $lock
+   *   The lock backend (serializes revocation against redemption).
    */
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
     private readonly FloodInterface $flood,
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
     private readonly LoggerInterface $logger,
+    private readonly LockBackendInterface $lock,
   ) {}
 
   /**
@@ -63,6 +74,7 @@ final class RevokeController implements ContainerInjectionInterface {
       $container->get('flood'),
       $container->get('keyvalue.expirable'),
       $container->get('logger.channel.file_gate'),
+      $container->get('lock'),
     );
   }
 
@@ -76,7 +88,8 @@ final class RevokeController implements ContainerInjectionInterface {
    * @return \Symfony\Component\HttpFoundation\Response
    *   204 when the token was found and deleted; 400 (no token), 401 (bad
    *   secret), 404 (unknown/already-gone token), 429 (rate limited), or 503 (no
-   *   secret configured) otherwise.
+   *   secret configured, or the token is momentarily locked by a concurrent
+   *   redemption — retry) otherwise.
    */
   public function revoke(Request $request): Response {
     // Authenticate the server-to-server caller (fails closed, constant-time,
@@ -92,14 +105,26 @@ final class RevokeController implements ContainerInjectionInterface {
     }
 
     $token_hash = hash('sha256', $data['token']);
-    $store = $this->keyValueExpirableFactory->get(self::TOKEN_COLLECTION);
-    // 404 for a token that is unknown or already gone (expired or revoked). The
-    // presence check is a tiny race against a concurrent redemption, harmless
-    // given the caller is already fully trusted.
-    if (!$store->has($token_hash)) {
+    // Delete under the token lock so a concurrent redemption cannot resurrect
+    // the row after we remove it. On lock contention we return NULL and answer
+    // 503 (retryable) rather than delete outside the lock — deleting outside it
+    // would reopen the resurrection race for that one interleaving.
+    $deleted = $this->runLocked($this->tokenLockName($token_hash), function () use ($token_hash): bool {
+      $store = $this->keyValueExpirableFactory->get(self::TOKEN_COLLECTION);
+      // FALSE for a token that is unknown or already gone (expired or revoked).
+      if (!$store->has($token_hash)) {
+        return FALSE;
+      }
+      $store->delete($token_hash);
+      return TRUE;
+    }, NULL);
+
+    if ($deleted === NULL) {
+      return new JsonResponse(['error' => 'Token is momentarily locked; retry.'], Response::HTTP_SERVICE_UNAVAILABLE);
+    }
+    if ($deleted === FALSE) {
       return new JsonResponse(['error' => 'Token not found.'], Response::HTTP_NOT_FOUND);
     }
-    $store->delete($token_hash);
 
     // Usage event: a minted grant was revoked ahead of its expiry.
     $this->logger->info('Revoked a token grant from @ip.', [
