@@ -4,6 +4,9 @@ name: CI
 # drupal.org GitLab CI (.gitlab-ci.yml); this keeps the GitHub mirror honest too.
 # Self-contained on purpose: it does not call the org reusable workflows, which
 # currently fail at load on every consumer PR (tracked internally as DEV-211).
+#
+# Drupal 12 is not released yet, so it cannot be built here; the ^12 half of the
+# support claim is exercised by the GitLab CI next-major opt-in once 12 ships.
 
 on:
   push:
@@ -25,15 +28,17 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          tools: composer:v2
+          tools: composer:v2, cs2pr
           coverage: none
 
       - name: Install Coder
         run: |
+          composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
           composer global require drupal/coder:^8.3.24 --no-interaction
-          HOME_BIN="$(composer global config home)/vendor/bin"
-          "$HOME_BIN/phpcs" --config-set installed_paths "$(composer global config home)/vendor/drupal/coder/coder_sniffer"
-          echo "$HOME_BIN" >> "$GITHUB_PATH"
+          echo "$(composer global config home)/vendor/bin" >> "$GITHUB_PATH"
+
+      - name: Show installed standards
+        run: phpcs -i
 
       - name: Run PHPCS
         run: phpcs -p .
@@ -46,7 +51,6 @@ jobs:
       matrix:
         include:
           - { drupal: '^11.4', php: '8.3' }
-          - { drupal: '^12', php: '8.4' }
     steps:
       - name: Check out module
         uses: actions/checkout@v4
