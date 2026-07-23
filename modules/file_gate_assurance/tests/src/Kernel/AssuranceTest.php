@@ -235,10 +235,27 @@ final class AssuranceTest extends KernelTestBase {
 
     $headers = [
       'Authorization' => 'DPoP ' . $token,
-      'DPoP' => $this->dpopProof($client),
+      'DPoP' => $this->dpopProof($client, $token),
     ];
     $response = $this->download($this->mintQuery($file), $headers);
     $this->assertSame(200, $response->getStatusCode());
+  }
+
+  /**
+   * DPoP: a proof whose ath does not match the presented token is denied.
+   */
+  public function testDpopWrongAthDenied(): void {
+    $this->configure(['dpop' => TRUE]);
+    $client = $this->clientKey();
+    $file = $this->createFile('doc.pdf');
+    $token = $this->idpToken(['cnf' => ['jkt' => $client['jkt']]]);
+    $headers = [
+      'Authorization' => 'DPoP ' . $token,
+      // A proof bound to a different token's hash must not be accepted.
+      'DPoP' => $this->dpopProof($client, $token, ['ath' => 'not-the-right-hash']),
+    ];
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), $headers);
   }
 
   /**
@@ -265,7 +282,7 @@ final class AssuranceTest extends KernelTestBase {
     $token = $this->idpToken(['cnf' => ['jkt' => $bound['jkt']]]);
     $headers = [
       'Authorization' => 'DPoP ' . $token,
-      'DPoP' => $this->dpopProof($attacker),
+      'DPoP' => $this->dpopProof($attacker, $token),
     ];
     $this->expectException(AccessDeniedHttpException::class);
     $this->download($this->mintQuery($file), $headers);
@@ -281,7 +298,7 @@ final class AssuranceTest extends KernelTestBase {
     $token = $this->idpToken(['cnf' => ['jkt' => $client['jkt']]]);
     $headers = [
       'Authorization' => 'DPoP ' . $token,
-      'DPoP' => $this->dpopProof($client, ['htu' => 'https://elsewhere.example/x']),
+      'DPoP' => $this->dpopProof($client, $token, ['htu' => 'https://elsewhere.example/x']),
     ];
     $this->expectException(AccessDeniedHttpException::class);
     $this->download($this->mintQuery($file), $headers);
@@ -295,7 +312,7 @@ final class AssuranceTest extends KernelTestBase {
     $client = $this->clientKey();
     $file = $this->createFile('doc.pdf');
     $token = $this->idpToken(['cnf' => ['jkt' => $client['jkt']]]);
-    $proof = $this->dpopProof($client);
+    $proof = $this->dpopProof($client, $token);
     $headers = ['Authorization' => 'DPoP ' . $token, 'DPoP' => $proof];
 
     $this->assertSame(200, $this->download($this->mintQuery($file), $headers)->getStatusCode());
@@ -597,23 +614,28 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
-   * Builds a DPoP proof JWT for a client key.
+   * Builds a DPoP proof JWT for a client key, bound to an access token.
    *
    * @param array $client
    *   The client key from clientKey().
+   * @param string $access_token
+   *   The access token the proof accompanies; its base64url SHA-256 is bound
+   *   into the proof as the `ath` claim (RFC 9449 §4.3).
    * @param array $overrides
-   *   Claim overrides (e.g. a wrong htu).
+   *   Claim overrides (e.g. a wrong htu or a wrong ath).
    *
    * @return string
    *   The encoded proof.
    */
-  private function dpopProof(array $client, array $overrides = []): string {
+  private function dpopProof(array $client, string $access_token, array $overrides = []): string {
     $now = $this->container->get('datetime.time')->getRequestTime();
+    $ath = rtrim(strtr(base64_encode(hash('sha256', $access_token, TRUE)), '+/', '-_'), '=');
     $claims = array_merge([
       'htu' => self::HTU,
       'htm' => 'GET',
       'iat' => $now,
       'jti' => bin2hex(random_bytes(8)),
+      'ath' => $ath,
     ], $overrides);
     return JWT::encode($claims, $client['pem'], 'ES256', NULL, [
       'typ' => 'dpop+jwt',

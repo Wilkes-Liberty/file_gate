@@ -4,8 +4,10 @@
 # injected at runtime from the environment (e.g. in settings.php:
 #   $config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');
 # ) and must never be committed to configuration. While the secret is empty the
-# module fails CLOSED: minting returns HTTP 503 and every grant validation fails,
-# so gated files stay denied.
+# signed-URL and minted-token methods fail CLOSED: minting returns HTTP 503 and
+# grant validation fails, so files gated by those methods stay denied. (The
+# authenticated, commerce, and form methods enforce their own gate and do not
+# use this secret.)
 download_secret: ''
 # Default signed-URL lifetime, in seconds. Keep this short — the URL is only
 # needed for the moment between minting and the browser starting the download.

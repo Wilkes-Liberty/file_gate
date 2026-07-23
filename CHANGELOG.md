@@ -6,6 +6,52 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- Delivery responses now always send `X-Content-Type-Options: nosniff`, and
+  `inline` disposition is honoured only for a safe MIME allowlist (PDF, common
+  images, plain text, common audio/video). A user-uploaded SVG or HTML file is
+  always sent as an attachment, closing a stored-XSS vector when a site enabled
+  inline delivery.
+- Minted-token redemption and revocation are now serialized with a lock keyed on
+  the token hash. A redemption can no longer resurrect a token that was revoked
+  during the same instant, and a one-time (`max_uses = 1`) link can no longer be
+  redeemed more than once by a concurrent burst.
+- Assurance (DPoP): the proof is now bound to the specific access token via the
+  RFC 9449 `ath` claim, so a proof captured for one token cannot be paired with
+  another token bound to the same key.
+
+### Fixed
+- Signed grants are now bound to the file's entity UUID as well as its URI, so
+  two managed files that reference the same `private://` path no longer share a
+  signature. (Outstanding short-lived grants minted before this change are
+  invalidated; the front end simply re-mints.)
+- Minting a link whose absolute availability window has already closed now
+  returns `410 Gone` instead of a `200` carrying an already-expired link.
+- A download whose bytes are missing on disk now returns `404` without consuming
+  a one-time link's single use.
+- OTP: a failed e-mail delivery no longer spends the caller's per-(file, email)
+  send-throttle slot.
+- Assurance: rotate-tolerant JWKS handling — a token signed by a freshly rotated
+  key triggers a single JWKS refetch instead of failing until the cache expires.
+- Assurance: token verification now requires an `exp` claim (a token without one
+  no longer verifies), refuses a non-HTTPS introspection endpoint (except an
+  explicit loopback), and can pin the DPoP `htu` origin behind a TLS-terminating
+  proxy via a new **DPoP htu origin override** field setting.
+
+### Changed
+- Documentation: the "fails closed" note now states precisely that the empty
+  signing secret fails the `signed_url`/`token` methods closed; `authenticated`,
+  `commerce`, and `form` enforce their own gate and do not use the secret.
+
+### Added
+- Continuous integration: drupal.org GitLab CI (`.gitlab-ci.yml`) plus a
+  self-contained GitHub Actions workflow running PHPCS and the PHPUnit suite on
+  Drupal 11.4 and 12, so the `^11.4 || ^12` support claim is verified, not just
+  asserted.
+- Test coverage for Media-entity gating, the `authenticated` method, the
+  `nosniff`/inline hardening, the closed-availability `410`, the DPoP `ath`
+  binding, and the missing-bytes one-time-use behaviour.
+
 ## [1.0.0-rc1] - 2026-07-14
 
 ### Added

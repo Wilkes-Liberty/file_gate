@@ -7,11 +7,14 @@ namespace Drupal\file_gate\Plugin\GateMethod;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
+use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\GateMethodBase;
+use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -50,11 +53,12 @@ use Symfony\Component\HttpFoundation\Request;
  * - tokens: an array of SHA-256 hashes of pre-shared tokens (never plaintext).
  *
  * Tokens are stored and configured only as hashes, so a store or config dump
- * yields no usable bearer credentials. As with signed_url's usage counter, the
- * revocation store is a fast key/value store, not a lock: a redemption whose
- * use-increment interleaves with a concurrent manual revocation could re-create
- * the just-deleted row and admit that one request. Adequate for the intended
- * lead-gen / distribution use; not a hard licensing lock.
+ * yields no usable bearer credentials. The revocation store is a fast key/value
+ * store, not itself atomic, so the redemption read-modify-write and the revoke
+ * delete are serialized with a lock keyed on the token hash (see
+ * GrantLockTrait): a redemption cannot resurrect a just-revoked row, and a
+ * one-time token cannot be double-spent by a concurrent burst. A request that
+ * cannot acquire the lock is denied (fail closed).
  */
 #[GateMethod(
   id: 'token',
@@ -62,6 +66,8 @@ use Symfony\Component\HttpFoundation\Request;
   description: new TranslatableMarkup('Deliver via a revocable token. A trusted back end mints a per-grant token (its hash bound in the signature and stored so it can be revoked without rotating the secret); a field may also accept a pre-shared allowlist of token hashes as static campaign links. Supports TTL, an availability window, and usage limits for minted links.'),
 )]
 final class Token extends GateMethodBase {
+
+  use GrantLockTrait;
 
   /**
    * The token store collection name (keyed by the SHA-256 hash of the token).
@@ -94,6 +100,11 @@ final class Token extends GateMethodBase {
   private KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
+   * The lock backend (serializes redemption against revocation).
+   */
+  private LockBackendInterface $lock;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -102,6 +113,7 @@ final class Token extends GateMethodBase {
     $instance->streamWrapperManager = $container->get('stream_wrapper_manager');
     $instance->time = $container->get('datetime.time');
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
+    $instance->lock = $container->get('lock');
     return $instance;
   }
 
@@ -146,6 +158,12 @@ final class Token extends GateMethodBase {
    */
   public function mint(FileInterface $file): array {
     $exp = $this->expiry();
+
+    // A capped availability window that has already closed leaves no live grant
+    // to issue. Refuse rather than hand back an already-expired link.
+    if ($exp <= $this->time->getRequestTime()) {
+      throw new GrantWindowClosedException('The file is no longer available for download.');
+    }
 
     // A fresh, unguessable bearer token for this single grant. It is returned
     // to the caller in the URL, but only its hash is ever stored or signed.
@@ -195,22 +213,28 @@ final class Token extends GateMethodBase {
    *   when the token was revoked, never issued, or has reached its usage cap.
    */
   private function consumeMintedToken(string $token_hash, int $exp): bool {
-    $store = $this->tokenStore();
-    $record = $store->get($token_hash);
-    // No live row ⇒ the token was revoked or never issued. Fail closed.
-    if (!is_array($record)) {
-      return FALSE;
-    }
-    $max = (int) ($record['max'] ?? 0);
-    $uses = (int) ($record['uses'] ?? 0);
-    if ($max > 0 && $uses >= $max) {
-      return FALSE;
-    }
-    // Consume one use, preserving the record shape. The row only needs to
-    // outlive the grant itself.
-    $record['uses'] = $uses + 1;
-    $store->setWithExpire($token_hash, $record, max(1, $exp - $this->time->getRequestTime()));
-    return TRUE;
+    // Serialize the read-modify-write against a concurrent revocation (which
+    // takes the same lock before deleting) and against other redemptions of the
+    // same token. Without this, a redemption could resurrect a revoked row or a
+    // one-time token could be double-spent in a burst. Contention fails closed.
+    return (bool) $this->runLocked($this->tokenLockName($token_hash), function () use ($token_hash, $exp): bool {
+      $store = $this->tokenStore();
+      $record = $store->get($token_hash);
+      // No live row ⇒ the token was revoked or never issued. Fail closed.
+      if (!is_array($record)) {
+        return FALSE;
+      }
+      $max = (int) ($record['max'] ?? 0);
+      $uses = (int) ($record['uses'] ?? 0);
+      if ($max > 0 && $uses >= $max) {
+        return FALSE;
+      }
+      // Consume one use, preserving the record shape. The row only needs to
+      // outlive the grant itself.
+      $record['uses'] = $uses + 1;
+      $store->setWithExpire($token_hash, $record, max(1, $exp - $this->time->getRequestTime()));
+      return TRUE;
+    });
   }
 
   /**
@@ -271,20 +295,22 @@ final class Token extends GateMethodBase {
   }
 
   /**
-   * The signed resource id for a file: its normalized stream URI.
+   * The signed resource id for a file: its UUID plus its normalized stream URI.
    *
-   * Normalizing guarantees the string signed at mint time matches the string
-   * validated at redemption time, where core reconstructs the URI from the
-   * request.
+   * The UUID binds the grant to this exact file entity, so two managed files
+   * that happen to reference the same private:// URI do not share a signature
+   * (a grant minted for one cannot be redeemed for the other). Normalizing the
+   * URI guarantees the string signed at mint time matches the string validated
+   * at redemption, where core reconstructs the URI from the request.
    *
    * @param \Drupal\file\FileInterface $file
    *   The file.
    *
    * @return string
-   *   The normalized "private://…" URI.
+   *   The resource id: "<uuid>|private://…".
    */
   private function resourceId(FileInterface $file): string {
-    return $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
+    return $file->uuid() . '|' . $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
   }
 
   /**

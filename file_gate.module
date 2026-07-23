@@ -28,7 +28,7 @@ function file_gate_help(string $route_name, RouteMatchInterface $route_match): ?
       $output = '';
       $output .= '<p>' . t('File Gate controls access to <em>private://</em> files. It denies the normal <code>/system/files</code> path for files a "gated" field references, and delivers them instead through its own route after a pluggable <em>gate method</em> approves the request.') . '</p>';
       $output .= '<p>' . t('Gating is configured per field: edit a private file or image field and enable "Gate access to these files". Delivery is fully front-end-agnostic — a trusted back end mints a short-lived signed URL (<code>POST /api/file-gate/mint</code>) which the visitor redeems (<code>GET /api/file-gate/download</code>).') . '</p>';
-      $output .= '<p>' . t('The signing secret must be injected from the environment in settings.php and is never stored in configuration. While it is unset the module fails closed (every gated file is denied).') . '</p>';
+      $output .= '<p>' . t('The signing secret must be injected from the environment in settings.php and is never stored in configuration. While it is unset, every signed-URL and minted-token method fails closed: minting returns HTTP 503 and grant validation fails, so those files stay denied. The authenticated, commerce, and form methods enforce their own gate and do not use the secret.') . '</p>';
       return $output;
   }
   return NULL;

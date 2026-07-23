@@ -32,6 +32,28 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 final class DownloadController implements ContainerInjectionInterface {
 
   /**
+   * MIME types that are safe to serve inline (cannot carry active content).
+   *
+   * Anything not listed here is delivered as an attachment even when the site
+   * is configured for inline disposition, so a user-uploaded SVG or HTML file
+   * can never execute script at the Drupal origin. SVG and HTML are pointedly
+   * absent.
+   */
+  private const SAFE_INLINE_MIME_TYPES = [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+    'text/plain',
+    'audio/mpeg',
+    'audio/ogg',
+    'video/mp4',
+    'video/webm',
+  ];
+
+  /**
    * Constructs the download controller.
    *
    * @param \Drupal\Core\Entity\EntityRepositoryInterface $entityRepository
@@ -99,6 +121,14 @@ final class DownloadController implements ContainerInjectionInterface {
       throw new NotFoundHttpException();
     }
 
+    // Confirm the bytes exist before running the gate. grants() may consume a
+    // one-time redemption, so checking here means a file deleted from disk 404s
+    // without silently burning the visitor's single use.
+    $uri = (string) $file->getFileUri();
+    if (!is_file($uri)) {
+      throw new NotFoundHttpException();
+    }
+
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
     if (!$method->grants($file, $request)) {
       // Security event: a request reached a gated file without a valid grant
@@ -111,18 +141,23 @@ final class DownloadController implements ContainerInjectionInterface {
       throw new AccessDeniedHttpException();
     }
 
-    $uri = (string) $file->getFileUri();
-    if (!is_file($uri)) {
-      // The reference is gated and the grant is valid, but the bytes are gone.
-      throw new NotFoundHttpException();
-    }
+    $mime = $file->getMimeType() ?: 'application/octet-stream';
 
-    $disposition = $this->configFactory->get('file_gate.settings')->get('disposition') === 'inline'
+    // Inline delivery renders the file in the browser at the Drupal origin, so
+    // it is only safe for types that cannot carry active content. An SVG or
+    // HTML upload served inline would execute script same-origin (stored XSS),
+    // so anything outside the safe list is forced to a download regardless of
+    // the configured disposition.
+    $inline = $this->configFactory->get('file_gate.settings')->get('disposition') === 'inline'
+      && in_array($mime, self::SAFE_INLINE_MIME_TYPES, TRUE);
+    $disposition = $inline
       ? ResponseHeaderBag::DISPOSITION_INLINE
       : ResponseHeaderBag::DISPOSITION_ATTACHMENT;
 
     $response = new BinaryFileResponse($uri, Response::HTTP_OK, [], FALSE);
-    $response->headers->set('Content-Type', $file->getMimeType() ?: 'application/octet-stream');
+    $response->headers->set('Content-Type', $mime);
+    // Never let the browser MIME-sniff a gated response into a runnable type.
+    $response->headers->set('X-Content-Type-Options', 'nosniff');
     // Never cache a gated response anywhere: it was authorized for exactly one
     // grant/session, not for the public. Belt-and-braces with the route's
     // no_cache option and BinaryFileResponse being non-cacheable.
