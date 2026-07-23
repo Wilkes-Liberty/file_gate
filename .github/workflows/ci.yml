@@ -1,0 +1,87 @@
+name: CI
+
+# Test and lint CI for the GitHub mirror. The authoritative test matrix runs on
+# drupal.org GitLab CI (.gitlab-ci.yml); this keeps the GitHub mirror honest too.
+# Self-contained on purpose: it does not call the org reusable workflows, which
+# currently fail at load on every consumer PR (tracked internally as DEV-211).
+
+on:
+  push:
+    branches: ['1.x']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  phpcs:
+    name: Coding standards (Drupal + DrupalPractice)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Coder
+        run: |
+          composer global require drupal/coder:^8.3.24 --no-interaction
+          HOME_BIN="$(composer global config home)/vendor/bin"
+          "$HOME_BIN/phpcs" --config-set installed_paths "$(composer global config home)/vendor/drupal/coder/coder_sniffer"
+          echo "$HOME_BIN" >> "$GITHUB_PATH"
+
+      - name: Run PHPCS
+        run: phpcs -p .
+
+  phpunit:
+    name: PHPUnit (Drupal ${{ matrix.drupal }}, PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { drupal: '^11.4', php: '8.3' }
+          - { drupal: '^12', php: '8.4' }
+    steps:
+      - name: Check out module
+        uses: actions/checkout@v4
+        with:
+          path: file_gate_src
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: gd, pdo_sqlite, sqlite3
+          tools: composer:v2
+          coverage: none
+
+      - name: Build a Drupal codebase
+        run: |
+          composer create-project drupal/recommended-project:${{ matrix.drupal }} drupal \
+            --no-interaction --stability dev --no-install
+          cd drupal
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config --no-plugins allow-plugins true
+          composer config repositories.file_gate path ../file_gate_src
+          composer require \
+            drupal/core-dev:${{ matrix.drupal }} \
+            'drupal/file_gate:*@dev' \
+            'firebase/php-jwt:^6.10 || ^7.0' \
+            --no-interaction --with-all-dependencies
+
+      - name: Run the File Gate suite
+        env:
+          SIMPLETEST_DB: 'sqlite://localhost/:memory:'
+          SYMFONY_DEPRECATIONS_HELPER: disabled
+        run: |
+          cd drupal
+          php vendor/bin/phpunit -c web/core/phpunit.xml.dist \
+            web/modules/contrib/file_gate/tests \
+            web/modules/contrib/file_gate/modules
