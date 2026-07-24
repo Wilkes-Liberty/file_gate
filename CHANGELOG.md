@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-07-23
+
 ### Security
 - Delivery responses now always send `X-Content-Type-Options: nosniff`, and
   `inline` disposition is honoured only for a safe MIME allowlist (PDF, common
