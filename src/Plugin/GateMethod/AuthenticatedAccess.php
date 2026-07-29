@@ -31,7 +31,7 @@ final class AuthenticatedAccess extends GateMethodBase {
   /**
    * The current user.
    */
-  private AccountInterface $currentUser;
+  protected AccountInterface $currentUser;
 
   /**
    * {@inheritdoc}

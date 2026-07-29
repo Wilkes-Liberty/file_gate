@@ -73,17 +73,17 @@ final class Otp extends GateMethodBase {
   /**
    * The expirable key/value factory (backs the OTP store).
    */
-  private KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
+  protected KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
    * The config factory.
    */
-  private ConfigFactoryInterface $configFactory;
+  protected ConfigFactoryInterface $configFactory;
 
   /**
    * The time service.
    */
-  private TimeInterface $time;
+  protected TimeInterface $time;
 
   /**
    * {@inheritdoc}

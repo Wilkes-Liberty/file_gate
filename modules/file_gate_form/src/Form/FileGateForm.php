@@ -56,13 +56,13 @@ final class FileGateForm extends FormBase {
    *   The File Gate logger channel.
    */
   public function __construct(
-    private readonly EntityRepositoryInterface $entityRepository,
-    private readonly FileGateResolver $resolver,
-    private readonly PrivateTempStoreFactory $tempStoreFactory,
-    private readonly FloodInterface $flood,
-    private readonly TimeInterface $time,
-    private readonly EventDispatcherInterface $eventDispatcher,
-    private readonly LoggerInterface $logger,
+    protected readonly EntityRepositoryInterface $entityRepository,
+    protected readonly FileGateResolver $resolver,
+    protected readonly PrivateTempStoreFactory $tempStoreFactory,
+    protected readonly FloodInterface $flood,
+    protected readonly TimeInterface $time,
+    protected readonly EventDispatcherInterface $eventDispatcher,
+    protected readonly LoggerInterface $logger,
   ) {}
 
   /**
