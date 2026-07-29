@@ -1,17 +1,29 @@
-# drupal.org GitLab CI for File Gate.
+################
+# Drupal GitLabCI template for contrib modules.
 #
-# Uses the Drupal Association's shared GitLab CI templates, which run composer
-# validation, PHPCS (Drupal + DrupalPractice), PHPStan, and the PHPUnit suite
-# against the core version the module declares support for. This is what makes
-# the module's `^11.4 || ^12` support claim verifiable rather than asserted.
-#
-# Docs: https://project.pages.drupalcode.org/gitlab_templates/
+# Replicates DrupalCI testing via the centrally maintained include files.
+# https://www.drupal.org/docs/develop/git/using-gitlab-to-contribute-to-drupal
+################
+
 include:
   - project: $_GITLAB_TEMPLATES_REPO
     ref: $_GITLAB_TEMPLATES_REF
-    file: templates/include.gitlab-ci.yml
+    file:
+      - '/includes/include.drupalci.main.yml'
+      - '/includes/include.drupalci.variables.yml'
+      - '/includes/include.drupalci.workflows.yml'
 
 variables:
-  # Also run the suite against the next major (Drupal 12) so the second half of
-  # the `^11.4 || ^12` claim is exercised, not just the current core.
+  _GITLAB_TEMPLATES_REPO: project/gitlab_templates
+  _GITLAB_TEMPLATES_REF: main
+  # This module declares `^11.4 || ^12`. 11.4 is the current core, so the default
+  # phpunit job already exercises the floor — there is no previous major or minor
+  # inside the constraint to opt into.
+  #
+  # The `^12` half is deliberately MANUAL rather than autorun: the next major is
+  # a moving dev target, and a pipeline that goes red on upstream churn teaches
+  # nothing and trains people to ignore the badge. Run it before tagging, and
+  # drop `^12` from the constraint if it stops passing.
   OPT_IN_TEST_NEXT_MAJOR: '1'
+  # Forward-compat signal on the upcoming minor, available on demand.
+  OPT_IN_TEST_NEXT_MINOR: '1'
