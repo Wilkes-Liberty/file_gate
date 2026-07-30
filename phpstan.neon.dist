@@ -1,0 +1,55 @@
+# PHPStan configuration for File Gate.
+# Run on Drupal CI via commit-code-check.sh; phpstan-drupal is provided there.
+#
+# This file exists because its absence was not neutral. Without it the
+# drupalcode phpstan job analysed the module with the shared gitlab_templates
+# default, which is a weaker configuration than every sibling module pins --
+# and that is how ten `readonly` injected services on the two settings forms
+# stayed green through a stable release while being a fatal on PHP 8.3.
+# See CHANGELOG [Unreleased] and issue #26.
+includes:
+  - phar://phpstan.phar/conf/bleedingEdge.neon
+
+parameters:
+  level: 6
+  # Inline @phpstan-ignore comments may not match across phpstan versions.
+  reportUnmatchedIgnoredErrors: false
+  paths:
+    - .
+  excludePaths:
+    # Optional (?): there is no vendor/ under the module in DrupalCI, where the
+    # module is analysed in place; the marker stops PHPStan erroring when it is
+    # absent.
+    - vendor (?)
+  fileExtensions:
+    - php
+    - module
+    - inc
+    - install
+  ignoreErrors:
+    # new static() is a Drupal best practice for plugins and services.
+    - "#^Unsafe usage of new static#"
+    - identifier: missingType.iterableValue
+    - identifier: missingType.generics
+    # The mint and OTP controllers reach Media through method_exists() on
+    # purpose, so this module never hard-depends on the Media module: the call
+    # is already guarded by hasDefinition('media'), and the duck-typing is what
+    # keeps a site running a different media implementation from fataling.
+    # PHPStan resolves loadEntityByUuid('media', ...) to the concrete
+    # Drupal\media\Entity\Media and therefore calls the check redundant. It is
+    # not — deleting it to satisfy the analyser would remove a real guard.
+    # Revisit only if this module ever takes Media as a hard dependency.
+    -
+      identifier: function.alreadyNarrowedType
+      paths:
+        - src/Controller/MintController.php
+        - src/Controller/OtpController.php
+    # firebase/php-jwt is an optional dependency: `suggest` in composer.json,
+    # and file_gate_assurance.install reports it through hook_requirements when
+    # it is absent. Only the Assurance submodule uses it, and only for OIDC
+    # token verification. A consumer analysing this module without the library
+    # installed should not be told its own code is broken. Drop this entry if
+    # the library ever becomes a hard requirement.
+    -
+      identifier: class.notFound
+      path: modules/file_gate_assurance/*
