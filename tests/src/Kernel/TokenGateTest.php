@@ -340,12 +340,12 @@ final class TokenGateTest extends KernelTestBase {
   }
 
   /**
-   * A serialised and unserialised Token plugin can still use its injected services.
+   * A round-tripped Token plugin can still use its injected services.
    *
    * Regression guard: DependencySerializationTrait's __wakeup() cannot reach a
-   * private property on a child class, so a round-tripped plugin would come back
-   * with uninitialised typed properties and throw on the first service call. This
-   * test catches any future regression back to private.
+   * private property on a child class, so a round-tripped plugin would come
+   * back with uninitialised typed properties and throw on the first service
+   * call. This catches any future regression back to private.
    */
   public function testSerializeRoundTripRestoresServices(): void {
     $file = $this->createReferencedFile('field_gated', 'roundtrip.pdf');
@@ -354,6 +354,12 @@ final class TokenGateTest extends KernelTestBase {
     $plugin = $this->container->get('plugin.manager.file_gate.gate_method')
       ->createInstance('token', []);
 
+    // Restoring the plugin object graph IS the behaviour under test, so
+    // allowed_classes cannot be narrowed without defeating it. Passing TRUE does
+    // not satisfy the sniff either; it wants a genuinely limited list. The input
+    // is a string this test just produced from a local object, never user data,
+    // so the risk the sniff guards against does not apply.
+    // phpcs:ignore DrupalPractice.FunctionCalls.InsecureUnserialize.InsecureUnserialize
     $restored = unserialize(serialize($plugin));
 
     // mint() exercises every injected service: the time service (expiry
