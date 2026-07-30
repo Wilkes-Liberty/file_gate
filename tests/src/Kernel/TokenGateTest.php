@@ -355,10 +355,10 @@ final class TokenGateTest extends KernelTestBase {
       ->createInstance('token', []);
 
     // Restoring the plugin object graph IS the behaviour under test, so
-    // allowed_classes cannot be narrowed without defeating it. Passing TRUE does
-    // not satisfy the sniff either; it wants a genuinely limited list. The input
-    // is a string this test just produced from a local object, never user data,
-    // so the risk the sniff guards against does not apply.
+    // allowed_classes cannot be narrowed without defeating it. Passing TRUE
+    // does not satisfy the sniff either; it wants a genuinely limited list.
+    // The input is a string this test just produced from a local object,
+    // never user data, so the risk the sniff guards against does not apply.
     // phpcs:ignore DrupalPractice.FunctionCalls.InsecureUnserialize.InsecureUnserialize
     $restored = unserialize(serialize($plugin));
 
