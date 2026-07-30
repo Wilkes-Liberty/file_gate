@@ -6,6 +6,24 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **`readonly` injected services made both settings forms fatal on PHP 8.3.** `SettingsForm`
+  and `file_gate_form`'s `FileGateForm` declared their injected services `readonly`. Both
+  extend `ConfigFormBase`/`FormBase`, which bring in `DependencySerializationTrait`, and on
+  PHP below 8.4 that trait's `__wakeup()` cannot reinitialize a readonly property declared
+  in a child class — it is out of the declaring scope. Drupal caches form objects and
+  unserializes them when a form rebuilds, so the grant signer, gate-method manager and
+  entity type manager came back unusable.
+
+  PHP 8.3 is inside the supported range: this module declares `^11.4 || ^12`, and Drupal
+  11.4's minimum PHP is 8.3. Ten properties across the two forms were affected.
+
+  Nothing caught it because this module ships no `phpstan.neon.dist`, so the drupalcode
+  pipeline analyses it with the shared default config rather than the level and rule set
+  the sibling modules use. Confirmed by running PHPStan against the module with
+  `phpVersion: 80300`: ten `dependencySerializationTraitProperty.unsupportedReadOnlyProperty`
+  before, zero after. `menu_autopilot` 1.0.1 and `mcp_sentinel` fixed the same defect.
+
 ## [1.0.0] — 2026-07-23
 
 ### Security
