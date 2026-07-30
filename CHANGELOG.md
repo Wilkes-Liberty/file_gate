@@ -6,12 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-07-30
+
 ### Added
 - **A `phpstan.neon.dist`, and a PHPStan job in GitHub CI.** The module shipped neither, and
   the absence was not neutral: the drupalcode pipeline analysed it with the shared
   `gitlab_templates` default rather than the level and rule set every sibling module pins,
   and GitHub ran no static analysis at all. That is how ten `readonly` injected services
-  stayed green through a stable release while being a fatal on PHP 8.3 (fixed above).
+  stayed green through a stable release while being a fatal on PHP 8.3 (fixed below).
 
   The config matches the sibling modules — level 6, `bleedingEdge` — and the job runs on
   **PHP 8.3 rather than the newest available**, deliberately: the rule that caught the
@@ -46,9 +48,10 @@ All notable changes to **File Gate** are documented here. The format is based on
   PHP 8.3 is inside the supported range: this module declares `^11.4 || ^12`, and Drupal
   11.4's minimum PHP is 8.3. Ten properties across the two forms were affected.
 
-  Nothing caught it because this module ships no `phpstan.neon.dist`, so the drupalcode
-  pipeline analyses it with the shared default config rather than the level and rule set
-  the sibling modules use. Confirmed by running PHPStan against the module with
+  Nothing caught it because the module shipped no `phpstan.neon.dist`, so the drupalcode
+  pipeline analysed it with the shared default config rather than the level and rule set
+  the sibling modules use. That gap is closed in this same release (see Added).
+  Confirmed by running PHPStan against the module with
   `phpVersion: 80300`: ten `dependencySerializationTraitProperty.unsupportedReadOnlyProperty`
   before, zero after. `menu_autopilot` 1.0.1 and `mcp_sentinel` fixed the same defect.
 
