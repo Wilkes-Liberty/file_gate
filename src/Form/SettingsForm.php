@@ -43,9 +43,9 @@ final class SettingsForm extends ConfigFormBase {
   public function __construct(
     ConfigFactoryInterface $config_factory,
     TypedConfigManagerInterface $typedConfigManager,
-    protected readonly GrantSignerInterface $grantSigner,
-    protected readonly GateMethodManager $gateMethodManager,
-    protected readonly EntityTypeManagerInterface $entityTypeManager,
+    protected GrantSignerInterface $grantSigner,
+    protected GateMethodManager $gateMethodManager,
+    protected EntityTypeManagerInterface $entityTypeManager,
   ) {
     parent::__construct($config_factory, $typedConfigManager);
   }
