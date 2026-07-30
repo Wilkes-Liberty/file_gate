@@ -32,6 +32,7 @@
         "source": "https://git.drupalcode.org/project/file_gate"
     },
     "require": {
+        "php": ">=8.3",
         "drupal/core": "^11.4 || ^12"
     },
     "require-dev": {

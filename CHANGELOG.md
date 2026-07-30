@@ -6,6 +6,25 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-30
+
+### Changed
+- **`composer.json` now declares `"php": ">=8.3"`.** It previously specified no PHP
+  constraint at all, so the effective floor came only from whatever core happened to
+  require — the supported surface was implied rather than stated, and a reader had
+  to trace Drupal's own requirements to find it.
+
+  8.3 is the real floor, and unlike the sibling modules it is set by this module's own
+  code rather than by core: `GrantSignerInterface` declares typed class constants,
+  which are PHP 8.3 syntax and a parse error below it, and `SharedSecretAuthTrait`
+  declares constants in a trait, which needs 8.2. Drupal 11.4 requires `>=8.3.0`
+  independently, so the two agree.
+
+  This does not change which sites can install today: `^11.4 || ^12` already implies
+  the same floor. What it changes is that the claim is stated where Composer and a
+  human both read it, and it stops moving silently if core's floor moves or this
+  module adopts newer syntax.
+
 ## [1.0.1] — 2026-07-30
 
 ### Added
