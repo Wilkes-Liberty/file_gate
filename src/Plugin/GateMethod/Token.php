@@ -82,27 +82,27 @@ final class Token extends GateMethodBase {
   /**
    * The grant signer.
    */
-  private GrantSignerInterface $signer;
+  protected GrantSignerInterface $signer;
 
   /**
    * The stream wrapper manager (to normalize the file URI before signing).
    */
-  private StreamWrapperManagerInterface $streamWrapperManager;
+  protected StreamWrapperManagerInterface $streamWrapperManager;
 
   /**
    * The time service.
    */
-  private TimeInterface $time;
+  protected TimeInterface $time;
 
   /**
    * The expirable key/value factory (backs the token store).
    */
-  private KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
+  protected KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
    * The lock backend (serializes redemption against revocation).
    */
-  private LockBackendInterface $lock;
+  protected LockBackendInterface $lock;
 
   /**
    * {@inheritdoc}

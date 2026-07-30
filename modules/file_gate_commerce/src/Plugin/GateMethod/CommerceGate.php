@@ -45,12 +45,12 @@ final class CommerceGate extends GateMethodBase {
   /**
    * The entitlement checker.
    */
-  private EntitlementCheckerInterface $entitlementChecker;
+  protected EntitlementCheckerInterface $entitlementChecker;
 
   /**
    * The current user.
    */
-  private AccountInterface $currentUser;
+  protected AccountInterface $currentUser;
 
   /**
    * {@inheritdoc}

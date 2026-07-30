@@ -74,12 +74,12 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
   /**
    * The assurance verifier.
    */
-  private AssuranceVerifierInterface $verifier;
+  protected AssuranceVerifierInterface $verifier;
 
   /**
    * The caller-asserted subject for the grant being minted, if any.
    */
-  private ?string $mintSubject = NULL;
+  protected ?string $mintSubject = NULL;
 
   /**
    * {@inheritdoc}

@@ -52,12 +52,12 @@ final class FormGate extends GateMethodBase {
   /**
    * The private tempstore factory.
    */
-  private PrivateTempStoreFactory $tempStoreFactory;
+  protected PrivateTempStoreFactory $tempStoreFactory;
 
   /**
    * The time service.
    */
-  private TimeInterface $time;
+  protected TimeInterface $time;
 
   /**
    * {@inheritdoc}
