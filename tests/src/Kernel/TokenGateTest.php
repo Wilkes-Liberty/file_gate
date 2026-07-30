@@ -340,6 +340,35 @@ final class TokenGateTest extends KernelTestBase {
   }
 
   /**
+   * A serialised and unserialised Token plugin can still use its injected services.
+   *
+   * Regression guard: DependencySerializationTrait's __wakeup() cannot reach a
+   * private property on a child class, so a round-tripped plugin would come back
+   * with uninitialised typed properties and throw on the first service call. This
+   * test catches any future regression back to private.
+   */
+  public function testSerializeRoundTripRestoresServices(): void {
+    $file = $this->createReferencedFile('field_gated', 'roundtrip.pdf');
+
+    /** @var \Drupal\file_gate\Plugin\GateMethod\Token $plugin */
+    $plugin = $this->container->get('plugin.manager.file_gate.gate_method')
+      ->createInstance('token', []);
+
+    $restored = unserialize(serialize($plugin));
+
+    // mint() exercises every injected service: the time service (expiry
+    // calculation), the key/value factory (token store), the grant signer
+    // (signing), and the stream wrapper manager (resource ID). A typed-property
+    // access error on any of these means the service was not restored on
+    // __wakeup().
+    $params = $restored->mint($file);
+
+    $this->assertArrayHasKey('token', $params);
+    $this->assertArrayHasKey('exp', $params);
+    $this->assertArrayHasKey('sig', $params);
+  }
+
+  /**
    * Creates a private file referenced by an entity_test via the given field.
    *
    * @param string $field_name
