@@ -70,7 +70,7 @@ function file_gate_mail(string $key, array &$message, array $params): void {
  * would otherwise grant anonymous download whenever the referencing (published)
  * entity is viewable.
  */
-function file_gate_file_download($uri) {
+function file_gate_file_download(string $uri): ?int {
   // Only private-scheme files are gateable. Anything else is never our concern.
   if (\Drupal::service('stream_wrapper_manager')->getScheme($uri) !== 'private') {
     return NULL;
@@ -225,8 +225,22 @@ function _file_gate_field_config_edit_form_validate(array &$form, FormStateInter
     return;
   }
 
-  $field_config = $form_state->getFormObject()->getEntity();
+  $form_object = $form_state->getFormObject();
+  if (!$form_object instanceof EntityFormInterface) {
+    return;
+  }
+  $field_config = $form_object->getEntity();
+  if (!$field_config instanceof FieldConfigInterface) {
+    return;
+  }
   $field_storage = $field_config->getFieldStorageDefinition();
+  // hasData() is declared on the concrete FieldStorageConfig, not on
+  // FieldStorageConfigInterface and not on the base storage definition that
+  // getFieldStorageDefinition() is typed to return. A base field cannot be
+  // gated through this form anyway, so narrowing here loses nothing.
+  if (!$field_storage instanceof FieldStorageConfig) {
+    return;
+  }
   if ($field_storage->hasData() && $field_storage->getSetting('uri_scheme') !== 'private') {
     $form_state->setErrorByName('file_gate_gated', t('This field already stores files in the %scheme file system. Gating requires private storage, which cannot be changed once a field has data. Create a new private field to gate.', [
       '%scheme' => $field_storage->getSetting('uri_scheme'),
@@ -238,7 +252,14 @@ function _file_gate_field_config_edit_form_validate(array &$form, FormStateInter
  * Submit handler that persists the gating settings onto the field storage.
  */
 function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterface $form_state): void {
-  $field_config = $form_state->getFormObject()->getEntity();
+  $form_object = $form_state->getFormObject();
+  if (!$form_object instanceof EntityFormInterface) {
+    return;
+  }
+  $field_config = $form_object->getEntity();
+  if (!$field_config instanceof FieldConfigInterface) {
+    return;
+  }
   // Re-load the field storage fresh so we persist onto the just-saved entity
   // and do not clobber concurrent changes from the main form flow.
   $field_storage = FieldStorageConfig::loadByName($field_config->getTargetEntityTypeId(), $field_config->getName());
@@ -284,7 +305,7 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
  * cannot be gated — and records the gate method; when disabled it removes the
  * gating third-party settings and leaves the storage scheme untouched.
  *
- * @param \Drupal\field\Entity\FieldStorageConfig $field_storage
+ * @param \Drupal\field\FieldStorageConfigInterface $field_storage
  *   The field storage to mutate (not saved by this function).
  * @param bool $gated
  *   Whether the field should be gated.
@@ -294,7 +315,7 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
  * @return bool
  *   TRUE if the field storage was changed and needs saving; FALSE otherwise.
  */
-function _file_gate_apply_field_gating(FieldStorageConfig $field_storage, bool $gated, string $method): bool {
+function _file_gate_apply_field_gating(FieldStorageConfigInterface $field_storage, bool $gated, string $method): bool {
   $changed = FALSE;
 
   if ($gated) {

@@ -6,7 +6,35 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **A `phpstan.neon.dist`, and a PHPStan job in GitHub CI.** The module shipped neither, and
+  the absence was not neutral: the drupalcode pipeline analysed it with the shared
+  `gitlab_templates` default rather than the level and rule set every sibling module pins,
+  and GitHub ran no static analysis at all. That is how ten `readonly` injected services
+  stayed green through a stable release while being a fatal on PHP 8.3 (fixed above).
+
+  The config matches the sibling modules — level 6, `bleedingEdge` — and the job runs on
+  **PHP 8.3 rather than the newest available**, deliberately: the rule that caught the
+  `readonly` defect only reports below 8.4, so analysing solely on the newest PHP would
+  leave the supported floor the version least checked.
+
+  Two scoped ignores, each with its reason and the condition for removing it. The mint and
+  OTP controllers reach Media through `method_exists()` so the module never hard-depends on
+  the Media module; PHPStan resolves the entity to the concrete class and calls the check
+  redundant, but deleting it would remove a real guard. And `firebase/php-jwt` is optional
+  (`suggest`, plus a `hook_requirements` check), so a consumer analysing without it
+  installed should not be told their code is broken.
+
 ### Fixed
+- **Thirteen type errors the new analysis surfaced**, none behavioural but several papering
+  over a wrong assumption: `file_gate_file_download()` was untyped; two form handlers called
+  `getEntity()` on `FormInterface`, which does not declare it, and then called
+  `FieldConfig`/`FieldStorageConfig` methods on the `EntityInterface` that came back;
+  `_file_gate_apply_field_gating()` demanded the concrete `FieldStorageConfig` while its
+  only caller passes what `loadByName()` returns. The form handlers now narrow explicitly
+  and return early if the object is not what they expect, which is a no-op on the form they
+  are attached to and honest everywhere else.
+
 - **`readonly` injected services made both settings forms fatal on PHP 8.3.** `SettingsForm`
   and `file_gate_form`'s `FileGateForm` declared their injected services `readonly`. Both
   extend `ConfigFormBase`/`FormBase`, which bring in `DependencySerializationTrait`, and on

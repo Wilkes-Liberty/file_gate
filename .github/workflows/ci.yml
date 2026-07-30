@@ -89,3 +89,74 @@ jobs:
           php vendor/bin/phpunit -c web/core/phpunit.xml.dist \
             web/modules/contrib/file_gate/tests \
             web/modules/contrib/file_gate/modules
+
+  # Static analysis had no gate on either venue. The module shipped no
+  # phpstan.neon.dist, so the drupalcode job analysed it with the shared
+  # gitlab_templates default rather than the level and rules the sibling
+  # modules pin, and GitHub ran nothing at all. That is how ten `readonly`
+  # injected services stayed green through a stable release while being a
+  # fatal on PHP 8.3.
+  #
+  # PHP 8.3 deliberately, not the newest available: the rule that caught those
+  # only reports below 8.4, so analysing solely on the newest PHP would leave
+  # the supported floor the version least checked.
+  phpstan:
+    name: PHPStan (PHP 8.3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out module
+        uses: actions/checkout@v4
+        with:
+          path: file_gate_src
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: gd, pdo_sqlite, sqlite3
+          tools: composer:v2
+          coverage: none
+
+      # phpstan-drupal needs a real Drupal tree to resolve core classes;
+      # analysing the module alone reports hundreds of "class not found" and
+      # says nothing about this code.
+      - name: Build a Drupal codebase
+        run: |
+          composer create-project drupal/recommended-project:^11.4 drupal \
+            --no-interaction --stability dev --no-install
+          cd drupal
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config --no-plugins allow-plugins true
+          composer config repositories.file_gate path ../file_gate_src
+          # firebase/php-jwt is optional at runtime (suggest + hook_requirements)
+          # but installed here so the Assurance submodule is analysed against
+          # the library it actually calls.
+          composer require \
+            drupal/core-dev:^11.4 \
+            'drupal/file_gate:*@dev' \
+            'firebase/php-jwt:^6.10 || ^7.0' \
+            phpstan/phpstan:^2 \
+            phpstan/extension-installer:^1.4 \
+            mglaman/phpstan-drupal:^2 \
+            phpstan/phpstan-deprecation-rules:^2 \
+            --no-interaction --with-all-dependencies
+
+      - name: Confirm the working copy is what is analysed
+        run: |
+          cd drupal
+          test -L web/modules/contrib/file_gate \
+            || { echo "::error::file_gate is not symlinked to the working copy - the path repo did not apply"; exit 1; }
+          readlink web/modules/contrib/file_gate
+
+      - name: Run PHPStan
+        run: |
+          set -euo pipefail
+          cd drupal
+          # The module's own phpstan.neon.dist, so this and the drupalcode job
+          # ask the same question rather than two similar ones.
+          vendor/bin/phpstan analyze web/modules/contrib/file_gate \
+            -c web/modules/contrib/file_gate/phpstan.neon.dist \
+            --autoload-file=vendor/autoload.php \
+            --no-progress \
+            --memory-limit=2G

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\Tests\file_gate\Kernel;
 
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
@@ -509,8 +510,10 @@ final class TokenGateTest extends KernelTestBase {
    * @return \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface
    *   The expirable key/value store holding minted token hashes.
    */
-  private function tokenStore() {
-    return $this->container->get('keyvalue.expirable')->get(self::TOKEN_COLLECTION);
+  private function tokenStore(): KeyValueStoreExpirableInterface {
+    /** @var \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface $store */
+    $store = $this->container->get('keyvalue.expirable')->get(self::TOKEN_COLLECTION);
+    return $store;
   }
 
 }
