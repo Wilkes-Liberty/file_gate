@@ -67,7 +67,7 @@ final class BridgeController implements ContainerInjectionInterface {
       return $this->error('Unknown file.', Response::HTTP_NOT_FOUND);
     }
     $gate = $this->resolver->getGateForFile($file);
-    if ($gate === NULL || ($gate['method'] ?? '') !== 'assurance') {
+    if ($gate === NULL || $gate['method'] !== 'assurance') {
       return $this->error('File is not assurance-gated.', Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
@@ -78,26 +78,40 @@ final class BridgeController implements ContainerInjectionInterface {
 
     // Cryptographic grant must be valid first (no usage burn).
     if (!$method->signatureValid($file, $request)) {
-      $this->logger->warning('Assurance bridge refused: invalid grant for file @uuid from @ip.', [
-        '@uuid' => $uuid,
-        '@ip' => $request->getClientIp() ?? 'unknown',
-      ]);
+      $this->logger->warning(
+        'Assurance bridge refused: invalid grant for file @uuid from @ip.',
+        [
+          '@uuid' => $uuid,
+          '@ip' => $request->getClientIp() ?? 'unknown',
+        ],
+      );
       return $this->error('Invalid or expired grant.', Response::HTTP_FORBIDDEN);
     }
 
-    // Live OIDC (and optional DPoP) — same checks as redeem, without cookie fallback.
+    // Live OIDC (+ optional DPoP): same as redeem, no cookie fallback.
     if (!$method->liveAssuranceSatisfied($request)) {
-      $this->logger->warning('Assurance bridge refused: OIDC check failed for file @uuid from @ip.', [
-        '@uuid' => $uuid,
-        '@ip' => $request->getClientIp() ?? 'unknown',
-      ]);
+      $this->logger->warning(
+        'Assurance bridge refused: OIDC check failed for file @uuid from @ip.',
+        [
+          '@uuid' => $uuid,
+          '@ip' => $request->getClientIp() ?? 'unknown',
+        ],
+      );
       return $this->challengeJson($request, $method);
     }
 
     $ttl = (int) ($gate['settings']['bridge_ttl'] ?? SessionBridge::DEFAULT_TTL);
-    $cookie = $this->bridge->mintCookie($request, $uuid, $ttl, $request->isSecure());
+    $cookie = $this->bridge->mintCookie(
+      $request,
+      $uuid,
+      $ttl,
+      $request->isSecure(),
+    );
     if ($cookie === NULL) {
-      return $this->error('Could not mint bridge cookie (no signing secret).', Response::HTTP_SERVICE_UNAVAILABLE);
+      return $this->error(
+        'Could not mint bridge cookie (no signing secret).',
+        Response::HTTP_SERVICE_UNAVAILABLE,
+      );
     }
 
     $download = Url::fromRoute('file_gate.download', [], [

@@ -166,14 +166,14 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     if ($mode !== 'redeem') {
       return NULL;
     }
-    // Invalid/spent signature → hard deny (NULL → 403). Missing live proof
-    // with a still-valid grant → challenge.
+    // Invalid/spent signature → hard deny (NULL → 403).
     if (!$this->signatureValid($file, $request)) {
       return NULL;
     }
-    // Bearer present but failed checks → 401 JSON challenge (not step-up HTML).
+    // A presented Bearer/DPoP that failed live checks is a failed attempt, not
+    // "proof missing". Only the no-token case is eligible for step-up.
     if ($this->bearerToken($request) !== NULL) {
-      return $this->buildApiChallenge($request);
+      return NULL;
     }
 
     $query = $request->query->all();
@@ -186,9 +186,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       'absolute' => FALSE,
     ])->toString();
 
-    // API clients (Accept: application/json or X-Requested-With) get RFC 9470.
+    // API clients (Accept: application/json or XHR) get RFC 9470.
     $accept = (string) $request->headers->get('Accept', '');
-    if (str_contains($accept, 'application/json') || $request->headers->get('X-Requested-With') === 'XMLHttpRequest') {
+    $xhr = $request->headers->get('X-Requested-With') === 'XMLHttpRequest';
+    if (str_contains($accept, 'application/json') || $xhr) {
       return $this->buildApiChallenge($request, $step_up);
     }
 
@@ -197,7 +198,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   }
 
   /**
-   * Required acr values from field configuration (public for challenge builders).
+   * Required acr values from field configuration.
    *
    * @return list<string>
    *   Accepted acr strings.

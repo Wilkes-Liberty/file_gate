@@ -8,6 +8,8 @@ file_gate_assurance.step_up:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::stepUpPage'
   methods: [GET]
   requirements:
+    # Open by design: step-up is public; the controller validates the grant and
+    # later requires a live OIDC token before setting the bridge cookie.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -20,6 +22,8 @@ file_gate_assurance.bridge:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::establish'
   methods: [POST]
   requirements:
+    # Open by design: BridgeController authenticates via OIDC Bearer/DPoP and
+    # validates the signed grant; there is no Drupal session role for this.
     _access: 'TRUE'
   options:
     no_cache: TRUE
