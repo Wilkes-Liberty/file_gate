@@ -6,6 +6,20 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-30
+
+### Upgrading
+
+**`drush config:import` will now fail on a site whose configuration marks a field as gated
+while storing its files publicly.** That combination was previously accepted and silently
+produced no gate at all, so an import that used to succeed may now stop — correctly. Fix it
+by setting `settings.uri_scheme` to `private` in the exported field storage, or by removing
+the `file_gate.gated` third-party setting from a field that is not meant to be gated.
+
+Sites already in that state are reported on the status report after upgrading. Note that
+changing a field to the private scheme does **not** move files already stored publicly:
+they stay where they are, and stay readable, until they are re-uploaded or migrated.
+
 ### Added
 - **A gated field can no longer claim protection it does not provide.** Gating only
   applies to the private file system — public files are served straight off disk and
