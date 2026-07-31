@@ -26,6 +26,20 @@ services:
       - '@?audit_chain.logger'
       - '@logger.channel.file_gate'
 
+  # Signed_url jti inventory for list/bulk-revoke (GH #44).
+  file_gate.grant_inventory:
+    class: Drupal\file_gate\Service\GrantInventory
+    arguments:
+      - '@keyvalue.expirable'
+      - '@datetime.time'
+
+  # OTP redeem session cookie (no secrets in query, GH #43).
+  file_gate.otp_session:
+    class: Drupal\file_gate\Service\OtpSession
+    arguments:
+      - '@file_gate.secret_registry'
+      - '@datetime.time'
+
   # Target-agnostic HMAC grant signer. Deliberately knows nothing about files:
   # it signs/validates an opaque "resource id" string plus an expiry, so the same
   # signing core can back a future content_gate / entity_gate without change.

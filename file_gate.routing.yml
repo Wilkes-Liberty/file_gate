@@ -68,3 +68,40 @@ file_gate.otp:
     _access: 'TRUE'
   options:
     no_cache: TRUE
+
+# Browser OTP exchange: validate email+otp, set HttpOnly cookie (GH #43).
+# No shared secret — the code itself is the proof. Rate-limited inside.
+file_gate.otp_session:
+  path: '/api/file-gate/otp/session'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\OtpController::establishSession'
+  methods: [POST]
+  requirements:
+    # Open by design: establishSession validates the OTP itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
+
+# Signed_url grant inventory (list, GH #44). Shared-secret auth.
+file_gate.grants:
+  path: '/api/file-gate/grants'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\GrantInventoryController::list'
+  methods: [GET]
+  requirements:
+    # Open by design: GrantInventoryController authenticates the caller itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
+
+# Bulk revoke signed_url jtis for a field (GH #44).
+file_gate.grants_revoke_bulk:
+  path: '/api/file-gate/grants/revoke-bulk'
+  defaults:
+    _controller: '\Drupal\file_gate\Controller\GrantInventoryController::revokeBulk'
+  methods: [POST]
+  requirements:
+    # Open by design: GrantInventoryController authenticates the caller itself.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE

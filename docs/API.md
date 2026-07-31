@@ -72,10 +72,46 @@ HttpOnly bridge cookie `FG_AB`, re-GET the same URL. See
 on the bridge POST. Do not put `login_url` in the step-up query; configure
 **Step-up login URL** on the field only.
 
-The `otp` method reads `email` and `otp` query parameters (no `exp`/`sig`) and
-verifies the passcode against the one issued for that (file, email) — single use,
-within its TTL, under the attempt cap. OTP HMAC uses the **authenticated mint
-secret** (named or legacy), not only legacy `download_secret`.
+The `otp` method prefers a short-lived HttpOnly cookie `FG_OTP` set by
+`POST /api/file-gate/otp/session` (recommended — no secrets in the query string).
+Legacy query parameters `email` and `otp` still work for backward compatibility.
+OTP HMAC uses the **authenticated mint secret** (named or legacy).
+
+### `POST /api/file-gate/otp/session`
+
+Browser-facing OTP exchange (no mint secret). Body:
+
+```json
+{"file":"<uuid>","email":"user@example.com","otp":"123456"}
+```
+
+On success: sets `FG_OTP` (HttpOnly, path `/api/file-gate`) and returns
+`{"ok":true,"path":"/api/file-gate/download?f=…"}`. Then `GET` the download URL
+**without** `email`/`otp` query parameters.
+
+### `GET /api/file-gate/grants`
+
+Server-to-server inventory of outstanding usage-limited signed_url grants
+(shared-secret auth). Query:
+
+| Param | Notes |
+|-------|--------|
+| `field` | Required. `entity_type.field_name` (must be allowed for the secret). |
+| `sh` | Optional subject hash filter. |
+
+Response: `{"field","count","grants":[{jti,f,field,exp,max,sh,k,created},…]}`.
+
+### `POST /api/file-gate/grants/revoke-bulk`
+
+Server-to-server. Body examples:
+
+```json
+{"field":"node.field_nda","jtis":["abc…"]}
+{"field":"node.field_nda","all":true}
+```
+
+Marks listed jtis spent (same as single jti revoke) for grants in inventory for
+that field and secret scope.
 
 ### `POST /api/file-gate/revoke`
 

@@ -21,6 +21,16 @@ services:
       - '@file_gate.secret_registry'
       - '@datetime.time'
 
+  # Soft openid_connect session access token (GH #41).
+  file_gate_assurance.session_oidc_token:
+    class: Drupal\file_gate_assurance\SessionOidcToken
+    arguments:
+      - '@?openid_connect.session'
+
+  # IdP authorize URL builder (ACR + return_to, GH #42).
+  file_gate_assurance.step_up_authorize_url:
+    class: Drupal\file_gate_assurance\StepUpAuthorizeUrl
+
   file_gate_assurance.webauthn_storage:
     class: Drupal\file_gate_assurance\WebAuthn\WebAuthnCredentialStorage
     arguments:

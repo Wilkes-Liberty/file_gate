@@ -16,9 +16,11 @@ use Drupal\Core\Mail\MailManagerInterface;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
+use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
+use Drupal\file_gate\Service\OtpSession;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -79,6 +81,10 @@ final class OtpController implements ContainerInjectionInterface {
    *   Request-cycle secret id set by shared-secret auth.
    * @param \Drupal\file_gate\Service\FileGateAudit $audit
    *   Durable audit logger (audit_chain when enabled).
+   * @param \Drupal\file_gate\Service\OtpSession $otpSession
+   *   OTP redeem session cookie helper.
+   * @param \Drupal\file_gate\GateMethodManager $gateMethodManager
+   *   Gate method plugin manager.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -94,6 +100,8 @@ final class OtpController implements ContainerInjectionInterface {
     private readonly SecretRegistryInterface $secrets,
     private readonly ActiveSecret $activeSecret,
     private readonly FileGateAudit $audit,
+    private readonly OtpSession $otpSession,
+    private readonly GateMethodManager $gateMethodManager,
   ) {}
 
   /**
@@ -114,7 +122,62 @@ final class OtpController implements ContainerInjectionInterface {
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.active_secret'),
       $container->get('file_gate.audit'),
+      $container->get('file_gate.otp_session'),
+      $container->get('plugin.manager.file_gate.gate_method'),
     );
+  }
+
+  /**
+   * Exchanges email+otp for a short-lived cookie (no query secrets, GH #43).
+   *
+   * Public endpoint (no mint secret). JSON body carries file, email, and otp.
+   * On success sets FG_OTP and returns ok plus a download path for the file.
+   */
+  public function establishSession(Request $request): Response {
+    $ip = $request->getClientIp() ?? '0.0.0.0';
+    if (!$this->flood->isAllowed('file_gate.otp_session', 20, 60, $ip)) {
+      return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
+    }
+    $this->flood->register('file_gate.otp_session', 60, $ip);
+
+    $data = json_decode($request->getContent(), TRUE);
+    if (!is_array($data)) {
+      return new JsonResponse(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
+    }
+    $email = Otp::normalizeEmail((string) ($data['email'] ?? ''));
+    $code = trim((string) ($data['otp'] ?? ''));
+    if ($email === '' || $code === '') {
+      return new JsonResponse(['error' => 'Provide "email" and "otp".'], Response::HTTP_BAD_REQUEST);
+    }
+    $file = $this->resolveFile($data);
+    if ($file instanceof JsonResponse) {
+      return $file;
+    }
+    $gate = $this->resolver->getGateForFile($file);
+    if ($gate === NULL || $gate['method'] !== 'otp') {
+      return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    $method = $this->gateMethodManager->createInstance('otp', $gate['settings']);
+    if (!$method instanceof Otp || !$method->consumeCode($file->uuid(), $email, $code)) {
+      return new JsonResponse(['error' => 'Invalid or expired passcode.'], Response::HTTP_FORBIDDEN);
+    }
+
+    $cookie = $this->otpSession->mintCookie(
+      $file->uuid(),
+      $email,
+      OtpSession::DEFAULT_TTL,
+      $request->isSecure(),
+    );
+    if ($cookie === NULL) {
+      return new JsonResponse(['error' => 'Could not mint OTP session (no signing secret).'], Response::HTTP_SERVICE_UNAVAILABLE);
+    }
+    $path = '/api/file-gate/download?f=' . rawurlencode($file->uuid());
+    $response = new JsonResponse(['ok' => TRUE, 'path' => $path]);
+    $response->headers->setCookie($cookie);
+    $response->headers->set('Cache-Control', 'private, no-store');
+    $this->audit->log('otp_session', ['file_uuid' => $file->uuid()]);
+    return $response;
   }
 
   /**
