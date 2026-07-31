@@ -108,7 +108,11 @@ final class TokenGateTest extends KernelTestBase {
     $this->assertSame($file->uuid(), $query['f']);
 
     $record = $this->tokenStore()->get(hash('sha256', $query['token']));
-    $this->assertSame(['uses' => 0, 'max' => 0], $record);
+    $this->assertSame(0, $record['uses']);
+    $this->assertSame(0, $record['max']);
+    // Field + secret id are stored so revoke can fail closed on scope mismatch.
+    $this->assertSame('entity_test.field_gated', $record['field']);
+    $this->assertArrayHasKey('k', $record);
   }
 
   /**

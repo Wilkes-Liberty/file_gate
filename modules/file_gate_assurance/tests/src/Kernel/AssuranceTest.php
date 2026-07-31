@@ -719,7 +719,9 @@ final class AssuranceTest extends KernelTestBase {
     $response = BridgeController::create($this->container)->stepUpPage($request);
     $html = (string) $response->getContent();
     $this->assertStringNotContainsString('evil.example', $html);
-    $this->assertStringContainsString('https://idp.example.test/login', $html);
+    // loginUrl is json_encode'd into the page (slashes may be escaped).
+    $this->assertStringContainsString('idp.example.test', $html);
+    $this->assertMatchesRegularExpression('#loginUrl\s*=\s*"[^"]*idp\.example\.test[^"]*"#', $html);
   }
 
   /**
