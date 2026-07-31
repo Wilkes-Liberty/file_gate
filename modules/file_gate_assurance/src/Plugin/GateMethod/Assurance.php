@@ -6,12 +6,18 @@ namespace Drupal\file_gate_assurance\Plugin\GateMethod;
 
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
+use Drupal\Core\Url;
 use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
 use Drupal\file_gate_assurance\AssuranceVerifierInterface;
+use Drupal\file_gate_assurance\SessionBridge;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Signed URL gated on a hardware-backed, phishing-resistant OIDC assurance.
@@ -69,12 +75,17 @@ use Symfony\Component\HttpFoundation\Request;
   label: new TranslatableMarkup('Assurance (PIV/CAC + FIDO2/WebAuthn via OIDC)'),
   description: new TranslatableMarkup('A signed URL whose delivery also requires a hardware-backed, phishing-resistant assurance level (PIV/CAC or FIDO2/WebAuthn) proven at any OIDC IdP. Verifies the IdP assertion live at redemption (or trusts a stepped-up mint caller), optionally sender-constrained with DPoP. Federation (asserted level), not an AAL3 verifier.'),
 )]
-final class Assurance extends SignedUrl implements ContextualMintInterface {
+final class Assurance extends SignedUrl implements ContextualMintInterface, ChallengeAwareGateMethodInterface {
 
   /**
    * The assurance verifier.
    */
   protected AssuranceVerifierInterface $verifier;
+
+  /**
+   * Session bridge (plain-link primary path after step-up).
+   */
+  protected SessionBridge $sessionBridge;
 
   /**
    * The caller-asserted subject for the grant being minted, if any.
@@ -86,9 +97,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
     // parent::create() wires signed_url's services onto the new instance (via
-    // new static()); we add only the verifier.
+    // new static()); we add the verifier and session bridge.
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->verifier = $container->get('file_gate_assurance.verifier');
+    $instance->sessionBridge = $container->get('file_gate_assurance.session_bridge');
     return $instance;
   }
 
@@ -146,6 +158,70 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
   }
 
   /**
+   * {@inheritdoc}
+   */
+  public function challenge(FileInterface $file, Request $request): ?Response {
+    $mode = $this->configuration['verify_at'] ?? 'redeem';
+    // Only Model B (redeem) offers browser/API step-up for a missing proof.
+    if ($mode !== 'redeem') {
+      return NULL;
+    }
+    // Invalid/spent signature → hard deny (NULL → 403). Missing live proof
+    // with a still-valid grant → challenge.
+    if (!$this->signatureValid($file, $request)) {
+      return NULL;
+    }
+    // Bearer present but failed checks → 401 JSON challenge (not step-up HTML).
+    if ($this->bearerToken($request) !== NULL) {
+      return $this->buildApiChallenge($request);
+    }
+
+    $query = $request->query->all();
+    $login = (string) ($this->configuration['step_up_login_url'] ?? '');
+    if ($login !== '') {
+      $query['login_url'] = $login;
+    }
+    $step_up = Url::fromRoute('file_gate_assurance.step_up', [], [
+      'query' => $query,
+      'absolute' => FALSE,
+    ])->toString();
+
+    // API clients (Accept: application/json or X-Requested-With) get RFC 9470.
+    $accept = (string) $request->headers->get('Accept', '');
+    if (str_contains($accept, 'application/json') || $request->headers->get('X-Requested-With') === 'XMLHttpRequest') {
+      return $this->buildApiChallenge($request, $step_up);
+    }
+
+    // Plain-link primary: send the browser to the step-up page.
+    return new RedirectResponse($step_up, Response::HTTP_FOUND);
+  }
+
+  /**
+   * Required acr values from field configuration (public for challenge builders).
+   *
+   * @return list<string>
+   *   Accepted acr strings.
+   */
+  public function requiredAcrList(): array {
+    return array_values(array_filter(array_map('strval', (array) ($this->configuration['required_acr'] ?? []))));
+  }
+
+  /**
+   * Live OIDC (+ DPoP/introspection) check without session-bridge fallback.
+   *
+   * Used by the bridge controller when establishing the plain-link cookie.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The request presenting Authorization.
+   *
+   * @return bool
+   *   TRUE when live assurance passes.
+   */
+  public function liveAssuranceSatisfied(Request $request): bool {
+    return $this->liveOidcSatisfied($request);
+  }
+
+  /**
    * Whether the request satisfies the configured assurance.
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
@@ -170,7 +246,26 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
       return $this->clientCertSatisfied($request);
     }
 
+    // Plain-link primary: a short-lived bridge cookie set after step-up.
+    // Bridge is on by default for redeem; set bridge: false to require Bearer
+    // on every download GET.
+    $bridge_enabled = !array_key_exists('bridge', $this->configuration)
+      || !empty($this->configuration['bridge']);
+    if ($bridge_enabled) {
+      $uuid = (string) $request->query->get('f', '');
+      if ($uuid !== '' && $this->sessionBridge->isSatisfied($request, $uuid)) {
+        return TRUE;
+      }
+    }
+
     // Model B: verify a live OIDC token presented at redemption.
+    return $this->liveOidcSatisfied($request);
+  }
+
+  /**
+   * Live token path for verify_at=redeem.
+   */
+  private function liveOidcSatisfied(Request $request): bool {
     $token = $this->bearerToken($request);
     if ($token === NULL) {
       return FALSE;
@@ -181,14 +276,15 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     }
 
     // The decision is driven by `acr` (IdP policy). Empty allowlist ⇒ deny.
-    $required_acr = array_map('strval', (array) ($this->configuration['required_acr'] ?? []));
+    $required_acr = $this->requiredAcrList();
     if ($required_acr === [] || !in_array((string) $claims['acr'], $required_acr, TRUE)) {
       return FALSE;
     }
 
     // `amr` is advisory: enforced only when the field explicitly requires some.
     $required_amr = array_map('strval', (array) ($this->configuration['required_amr'] ?? []));
-    if ($required_amr !== [] && array_diff($required_amr, $claims['amr']) !== []) {
+    $token_amr = array_map('strval', (array) ($claims['amr'] ?? []));
+    if ($required_amr !== [] && array_diff($required_amr, $token_amr) !== []) {
       return FALSE;
     }
 
@@ -205,6 +301,36 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     }
 
     return TRUE;
+  }
+
+  /**
+   * Builds a 401 JSON challenge (RFC 9470-style WWW-Authenticate).
+   */
+  private function buildApiChallenge(Request $request, ?string $step_up = NULL): JsonResponse {
+    $acr = $this->requiredAcrList();
+    $acr_values = implode(' ', $acr);
+    $www = 'Bearer error="insufficient_user_authentication"';
+    if ($acr_values !== '') {
+      $www .= ', acr_values="' . addcslashes($acr_values, '"\\') . '"';
+    }
+    $step_up ??= Url::fromRoute('file_gate_assurance.step_up', [], [
+      'query' => $request->query->all(),
+      'absolute' => FALSE,
+    ])->toString();
+    $bridge = Url::fromRoute('file_gate_assurance.bridge', [], [
+      'query' => $request->query->all(),
+      'absolute' => FALSE,
+    ])->toString();
+    $response = new JsonResponse([
+      'error' => 'insufficient_user_authentication',
+      'error_description' => 'Present a live OIDC access token meeting the required acr, then call the bridge endpoint (or use the step-up page) so a plain-link download can proceed.',
+      'acr_values' => $acr,
+      'step_up' => $step_up,
+      'bridge' => $bridge,
+    ], Response::HTTP_UNAUTHORIZED);
+    $response->headers->set('WWW-Authenticate', $www);
+    $response->headers->set('Cache-Control', 'private, no-store');
+    return $response;
   }
 
   /**
@@ -319,6 +445,26 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
         '#default_value' => $lines((array) ($settings['required_amr'] ?? [])),
         '#description' => $this->t('Optional. One per line; enforced only when set. <code>amr</code> is advisory.'),
       ],
+      'bridge' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Plain-link session bridge (primary path)'),
+        '#default_value' => ($settings['bridge'] ?? TRUE) !== FALSE && ($settings['bridge'] ?? TRUE) !== 0 && ($settings['bridge'] ?? TRUE) !== '0',
+        '#description' => $this->t('After a successful OIDC step-up, set a short-lived HttpOnly cookie so the same signed URL works as a normal browser download (Range, Save as…). Recommended on. Disable only if every redeem must present Authorization.'),
+      ],
+      'bridge_ttl' => [
+        '#type' => 'number',
+        '#title' => $this->t('Bridge cookie lifetime'),
+        '#field_suffix' => $this->t('seconds'),
+        '#min' => 15,
+        '#max' => 600,
+        '#default_value' => (int) ($settings['bridge_ttl'] ?? 120),
+      ],
+      'step_up_login_url' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Step-up login URL (optional)'),
+        '#default_value' => $settings['step_up_login_url'] ?? '',
+        '#description' => $this->t('Front-end or IdP URL for plain-link users with no token yet. The step-up page appends <code>return_to</code>. After login, set <code>sessionStorage.file_gate_access_token</code> and return.'),
+      ],
       'dpop' => [
         '#type' => 'checkbox',
         '#title' => $this->t('Require a DPoP proof (RFC 9449)'),
@@ -380,6 +526,8 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     $mode = $values['verify_at'] ?? 'redeem';
     $settings['verify_at'] = in_array($mode, ['redeem', 'mint', 'client_cert'], TRUE) ? $mode : 'redeem';
     $settings['aal'] = (int) ($values['aal'] ?? 0);
+    $settings['bridge'] = !empty($values['bridge']);
+    $settings['bridge_ttl'] = (int) ($values['bridge_ttl'] ?? 120);
     $settings['dpop'] = !empty($values['dpop']);
     $settings['introspect'] = !empty($values['introspect']);
     $settings['leeway'] = (int) ($values['leeway'] ?? 60);
@@ -387,6 +535,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface {
     $string_keys = [
       'issuer',
       'audience',
+      'step_up_login_url',
       'introspection_endpoint',
       'introspection_client_id',
       'trusted_proxy_header',

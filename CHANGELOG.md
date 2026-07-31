@@ -6,6 +6,16 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **Assurance plain-link primary path (#33 / d.o #3612909).** For
+  `verify_at: redeem`, a browser that opens the signed download URL without a
+  live OIDC token is redirected (or given a 401 JSON challenge) to step-up.
+  After POST `/api/file-gate/assurance/bridge` with a valid Bearer/DPoP token,
+  a short-lived HttpOnly cookie (`FG_AB`) satisfies the assurance layer so the
+  **same plain URL** streams the file. HMAC grant and `max_uses` still apply;
+  bridge establish never burns a use. RFC 9470-style `WWW-Authenticate` for API
+  clients. See `docs/assurance-redeem.md`.
+
 ## [1.2.0] - 2026-07-31
 
 ### Security

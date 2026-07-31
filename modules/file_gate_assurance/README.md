@@ -38,11 +38,12 @@ binds the asserted level (`aal`) into the signature. The assurance check runs
 *before* the signature/usage check, so a failed check never spends a
 usage-limited grant. Two modes, chosen by `verify_at`:
 
-- **`redeem` (default — Model B):** the browser presents a live OIDC token at the
-  download endpoint (via a JavaScript `fetch`, not a plain navigation) and the
-  method verifies its signature (JWKS, algorithm pinned to the published keys),
-  `iss`, `aud`, `exp`/`nbf`, and `acr` — optionally requiring a DPoP proof. Real,
-  live, per-request enforcement.
+- **`redeem` (default — Model B, plain-link primary):** open the signed download
+  URL normally. Without a live proof, File Gate challenges (302 step-up page or
+  401 JSON). After `POST /api/file-gate/assurance/bridge` with a valid OIDC
+  token (optional DPoP), a short-lived HttpOnly cookie lets the **same plain
+  URL** stream the file. Direct `Authorization` on download still works. See
+  [`docs/assurance-redeem.md`](../../docs/assurance-redeem.md).
 - **`mint` (Model A):** the trusted mint caller has already stepped the user up;
   File Gate binds the level as an audit claim and trusts the caller (consistent
   with the mint trust model). Works with plain direct-navigation downloads, but

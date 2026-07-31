@@ -23,6 +23,8 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use Drupal\file_gate_assurance\Controller\BridgeController;
+use Drupal\file_gate_assurance\SessionBridge;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -123,12 +125,54 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
-   * A request with no token is denied.
+   * A plain GET with no token is challenged (redirect to step-up), not 403.
    */
-  public function testMissingTokenDenied(): void {
+  public function testMissingTokenChallengesStepUp(): void {
     $file = $this->createFile('doc.pdf');
-    $this->expectException(AccessDeniedHttpException::class);
-    $this->download($this->mintQuery($file));
+    $response = $this->download($this->mintQuery($file));
+    $this->assertSame(302, $response->getStatusCode());
+    $this->assertStringContainsString('/api/file-gate/assurance/step-up', (string) $response->headers->get('Location'));
+  }
+
+  /**
+   * JSON clients get a 401 challenge with WWW-Authenticate (RFC 9470-style).
+   */
+  public function testMissingTokenJsonChallenge(): void {
+    $file = $this->createFile('doc.pdf');
+    $response = $this->download($this->mintQuery($file), [
+      'Accept' => 'application/json',
+    ]);
+    $this->assertSame(401, $response->getStatusCode());
+    $this->assertStringContainsString('insufficient_user_authentication', (string) $response->headers->get('WWW-Authenticate'));
+    $data = json_decode((string) $response->getContent(), TRUE);
+    $this->assertSame('insufficient_user_authentication', $data['error'] ?? NULL);
+    $this->assertNotEmpty($data['bridge'] ?? NULL);
+  }
+
+  /**
+   * Bridge POST then plain GET with cookie streams the file.
+   */
+  public function testSessionBridgePlainLinkPrimary(): void {
+    $file = $this->createFile('bridge.pdf');
+    $query = $this->mintQuery($file);
+    $token = $this->idpToken();
+
+    $bridge_request = Request::create('/api/file-gate/assurance/bridge?' . http_build_query($query), 'POST');
+    $bridge_request->headers->set('Authorization', 'Bearer ' . $token);
+    $bridge_request->headers->set('Accept', 'application/json');
+    $bridge_response = BridgeController::create($this->container)->establish($bridge_request);
+    $this->assertSame(200, $bridge_response->getStatusCode(), (string) $bridge_response->getContent());
+    $cookies = $bridge_response->headers->getCookies();
+    $this->assertNotEmpty($cookies);
+    $bridge_cookie = $cookies[0];
+    $this->assertSame(SessionBridge::COOKIE_NAME, $bridge_cookie->getName());
+
+    // Plain download with only the bridge cookie (no Authorization).
+    $download_request = Request::create('/api/file-gate/download', 'GET', $query);
+    $download_request->cookies->set($bridge_cookie->getName(), $bridge_cookie->getValue());
+    $response = DownloadController::create($this->container)->download($download_request);
+    $this->assertInstanceOf(BinaryFileResponse::class, $response);
+    $this->assertSame(200, $response->getStatusCode());
   }
 
   /**

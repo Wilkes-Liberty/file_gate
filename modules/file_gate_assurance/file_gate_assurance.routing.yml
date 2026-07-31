@@ -1,0 +1,25 @@
+# Assurance step-up (plain-link primary path) and session bridge.
+
+# HTML step-up page: browser lands here when opening a signed download URL
+# without a live OIDC proof. Completes bridge then returns to download.
+file_gate_assurance.step_up:
+  path: '/api/file-gate/assurance/step-up'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::stepUpPage'
+  methods: [GET]
+  requirements:
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
+
+# Establish HttpOnly bridge cookie after live OIDC (+ optional DPoP).
+# Does not stream the file and does not burn max_uses.
+file_gate_assurance.bridge:
+  path: '/api/file-gate/assurance/bridge'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::establish'
+  methods: [POST]
+  requirements:
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
