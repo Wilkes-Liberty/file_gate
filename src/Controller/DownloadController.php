@@ -8,6 +8,7 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\file\FileInterface;
+use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
 use Psr\Log\LoggerInterface;
@@ -131,6 +132,13 @@ final class DownloadController implements ContainerInjectionInterface {
 
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
     if (!$method->grants($file, $request)) {
+      // Optional step-up / challenge (e.g. assurance plain-link primary path).
+      if ($method instanceof ChallengeAwareGateMethodInterface) {
+        $challenge = $method->challenge($file, $request);
+        if ($challenge instanceof Response) {
+          return $challenge;
+        }
+      }
       // Security event: a request reached a gated file without a valid grant
       // (missing/expired/tampered signature, or a spent one-time link).
       $this->logger->warning('Denied gated download of file @uuid (@method) from @ip: grant rejected.', [

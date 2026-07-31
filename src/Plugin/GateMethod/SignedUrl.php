@@ -126,19 +126,41 @@ class SignedUrl extends GateMethodBase {
    * {@inheritdoc}
    */
   public function grants(FileInterface $file, Request $request): bool {
+    if (!$this->signatureValid($file, $request)) {
+      return FALSE;
+    }
+    $claims = $this->claimsFromRequest($request);
+    // Enforce a usage limit when the grant carries one (burn only on delivery).
+    if (isset($claims['max'])) {
+      return $this->consumeUse(
+        (string) ($claims['jti'] ?? ''),
+        (int) $claims['max'],
+        (int) $claims[GrantSignerInterface::CLAIM_EXPIRES],
+      );
+    }
+    return TRUE;
+  }
+
+  /**
+   * Whether the request carries a cryptographically valid, unexpired grant.
+   *
+   * Does not consume usage limits. Used by assurance session-bridge establish
+   * so a step-up proof never burns a one-time link before the file streams.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file being requested.
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The request (query must carry the mint claims + sig).
+   *
+   * @return bool
+   *   TRUE when the HMAC and field scope check pass.
+   */
+  public function signatureValid(FileInterface $file, Request $request): bool {
     $sig = (string) $request->query->get('sig', '');
     if ($sig === '') {
       return FALSE;
     }
-    // Reconstruct exactly the claim set a mint could have produced. Any claim
-    // an attacker adds or alters changes the canonical payload and fails the
-    // HMAC. k= selects the key only; it is not part of the signed payload.
-    $claims = [];
-    foreach ($this->signedClaimKeys() as $key) {
-      if ($request->query->has($key)) {
-        $claims[$key] = $request->query->get($key);
-      }
-    }
+    $claims = $this->claimsFromRequest($request);
     if (!isset($claims[GrantSignerInterface::CLAIM_EXPIRES])) {
       return FALSE;
     }
@@ -152,15 +174,41 @@ class SignedUrl extends GateMethodBase {
     if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
       return FALSE;
     }
-    // Enforce a usage limit when the grant carries one.
+    // Soft check: usage already exhausted ⇒ treat as invalid for bridge too.
     if (isset($claims['max'])) {
-      return $this->consumeUse(
-        (string) ($claims['jti'] ?? ''),
-        (int) $claims['max'],
-        (int) $claims[GrantSignerInterface::CLAIM_EXPIRES],
-      );
+      $token = (string) ($claims['jti'] ?? '');
+      $max = (int) $claims['max'];
+      if ($token === '' || $max <= 0) {
+        return FALSE;
+      }
+      $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+      if ((int) $store->get($token, 0) >= $max) {
+        return FALSE;
+      }
     }
     return TRUE;
+  }
+
+  /**
+   * Reconstructs the signed claim bag from the request query.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The request.
+   *
+   * @return array<string, mixed>
+   *   Claim key => query value for every key this method signs.
+   */
+  protected function claimsFromRequest(Request $request): array {
+    // Reconstruct exactly the claim set a mint could have produced. Any claim
+    // an attacker adds or alters changes the canonical payload and fails the
+    // HMAC. k= selects the key only; it is not part of the signed payload.
+    $claims = [];
+    foreach ($this->signedClaimKeys() as $key) {
+      if ($request->query->has($key)) {
+        $claims[$key] = $request->query->get($key);
+      }
+    }
+    return $claims;
   }
 
   /**
