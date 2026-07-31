@@ -346,17 +346,11 @@ final class WebAuthnController implements ContainerInjectionInterface {
     }
     $sh = (string) $request->query->get('sh', '');
     foreach ($candidates as $handle) {
-      if ($handle === '') {
-        continue;
-      }
+      // When the grant binds a subject hash, the handle must match it.
       if ($sh !== '' && !hash_equals($sh, hash('sha256', $handle))) {
         continue;
       }
       return $handle;
-    }
-    // No subject binding on the grant: only field-fixed handle is allowed.
-    if ($sh === '' && $fixed !== '') {
-      return $fixed;
     }
     return NULL;
   }

@@ -32,5 +32,4 @@ services:
     arguments:
       - '@file_gate_assurance.webauthn_storage'
       - '@keyvalue.expirable'
-      - '@datetime.time'
       - '@settings'

@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate_assurance\WebAuthn;
 
-use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Site\Settings;
-use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Uid\Uuid;
 use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
@@ -58,7 +57,6 @@ final class WebAuthnCeremony {
   public function __construct(
     private readonly WebAuthnCredentialStorage $storage,
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
-    private readonly TimeInterface $time,
     private readonly Settings $settings,
   ) {}
 
@@ -382,11 +380,14 @@ final class WebAuthnCeremony {
   /**
    * Builds the WebAuthn JSON serializer.
    */
-  private function serializer(): SerializerInterface {
+  private function serializer(): Serializer {
     $attestation = new AttestationStatementSupportManager([
       new NoneAttestationStatementSupport(),
     ]);
-    return (new WebauthnSerializerFactory($attestation))->create();
+    $serializer = (new WebauthnSerializerFactory($attestation))->create();
+    // WebauthnSerializerFactory returns SerializerInterface; cast for normalize().
+    assert($serializer instanceof Serializer);
+    return $serializer;
   }
 
   /**

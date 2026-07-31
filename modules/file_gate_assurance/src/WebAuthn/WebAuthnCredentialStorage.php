@@ -42,13 +42,16 @@ final class WebAuthnCredentialStorage {
     if ($user_handle === '') {
       return [];
     }
-    $rows = $this->database->select(self::TABLE, 'c')
+    $result = $this->database->select(self::TABLE, 'c')
       ->fields('c')
       ->condition('user_handle', $user_handle)
       ->orderBy('id')
-      ->execute()
-      ->fetchAll(\PDO::FETCH_ASSOC);
-    return array_values(array_map(static fn ($r) => (array) $r, $rows ?: []));
+      ->execute();
+    $rows = [];
+    while ($row = $result->fetchAssoc()) {
+      $rows[] = $row;
+    }
+    return $rows;
   }
 
   /**
