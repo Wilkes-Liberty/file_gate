@@ -26,9 +26,12 @@ final class WebAuthnEnrollmentForm extends FormBase {
 
   /**
    * Constructs the form.
+   *
+   * @param \Drupal\file_gate_assurance\WebAuthn\WebAuthnCredentialStorage $storage
+   *   Native WebAuthn credential storage.
    */
   public function __construct(
-    private readonly WebAuthnCredentialStorage $storage,
+    protected WebAuthnCredentialStorage $storage,
   ) {}
 
   /**
