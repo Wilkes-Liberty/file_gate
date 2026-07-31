@@ -269,7 +269,7 @@ class SignedUrl extends GateMethodBase {
     // Index usage-limited grants for inventory / bulk-revoke (GH #44).
     if ($max_uses > 0 && !empty($claims['jti'])) {
       $gate = $this->resolver->getGateForFile($file);
-      $field = is_array($gate) ? (string) ($gate['field'] ?? '') : '';
+      $field = is_array($gate) ? (string) $gate['field'] : '';
       $this->grantInventory->record(
         (string) $claims['jti'],
         $file->uuid(),

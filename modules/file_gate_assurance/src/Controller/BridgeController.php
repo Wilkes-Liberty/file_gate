@@ -97,7 +97,7 @@ final class BridgeController implements ContainerInjectionInterface {
 
     // Live OIDC (+ optional DPoP). Prefer Authorization; else same-origin SSO
     // session token from openid_connect when allowed (GH #41).
-    $auth_request = $this->requestWithSessionToken($request, $gate['settings'] ?? []);
+    $auth_request = $this->requestWithSessionToken($request, $gate['settings']);
     if (!$method->liveAssuranceSatisfied($auth_request)) {
       $this->logger->warning(
         'Assurance bridge refused: OIDC check failed for file @uuid from @ip.',

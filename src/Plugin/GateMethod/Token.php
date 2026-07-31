@@ -479,8 +479,8 @@ final class Token extends GateMethodBase {
         $tokens[] = $line;
       }
     }
-    if ($tokens) {
-      $settings['tokens'] = array_values($tokens);
+    if ($tokens !== []) {
+      $settings['tokens'] = $tokens;
     }
     return $settings;
   }
