@@ -310,13 +310,8 @@ final class MintController implements ContainerInjectionInterface {
 
     // Require view access on every host entity core knows about (same graph as
     // FileAccessControlHandler). Any forbidden host fails the mint closed.
-    $saw_host = FALSE;
     foreach ($this->fileReferenceResolver->getReferences($file) as $usage) {
       $entity = $this->fileReferenceResolver->loadEntityFromUsage($usage);
-      if ($entity === NULL) {
-        continue;
-      }
-      $saw_host = TRUE;
       if (!$entity->access('view', $account)) {
         $this->logger->warning('Mint refused: acting account @uid cannot view @type @id hosting file @uuid.', [
           '@uid' => (string) $account->id(),
@@ -328,10 +323,6 @@ final class MintController implements ContainerInjectionInterface {
           'error' => 'Acting account is not allowed to access the host content for that file.',
         ], Response::HTTP_FORBIDDEN);
       }
-    }
-    // Detached files: download already passed (owner path). No host to recheck.
-    if (!$saw_host) {
-      return NULL;
     }
 
     return NULL;

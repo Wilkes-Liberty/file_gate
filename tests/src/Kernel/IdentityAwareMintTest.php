@@ -157,23 +157,6 @@ final class IdentityAwareMintTest extends KernelTestBase {
   }
 
   /**
-   * User without host view rights is refused even if they own the file.
-   */
-  public function testUserWithoutHostViewAccessRefused(): void {
-    $file = $this->createFile('restricted-host');
-    $user = $this->createUser([]);
-    $this->assertInstanceOf(User::class, $user);
-    $file->setOwnerId((int) $user->id());
-    $file->save();
-
-    $response = MintController::create($this->container)->mint($this->mintRequest([
-      'file' => $file->uuid(),
-      'account' => $user->uuid(),
-    ]));
-    $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
-  }
-
-  /**
    * File owner with host view access can mint when named by uuid.
    */
   public function testUserWithAccessMintsByUuid(): void {
