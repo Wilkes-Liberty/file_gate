@@ -51,6 +51,8 @@ interface GrantSignerInterface {
    * @param array $claims
    *   The claims to bind. Must include self::CLAIM_EXPIRES. Values must be
    *   scalars.
+   * @param string|null $secret_id
+   *   Opaque named secret id, or NULL for the legacy download_secret.
    *
    * @return string
    *   The HMAC signature.
@@ -58,7 +60,7 @@ interface GrantSignerInterface {
    * @throws \LogicException
    *   If called with no signing secret configured, or with no expiry claim.
    */
-  public function sign(string $resource_id, array $claims): string;
+  public function sign(string $resource_id, array $claims, ?string $secret_id = NULL): string;
 
   /**
    * Validates a presented grant against a resource.
@@ -69,14 +71,16 @@ interface GrantSignerInterface {
    *   The claims presented by the client (as reconstructed from the request).
    * @param string $sig
    *   The signature presented by the client.
+   * @param string|null $secret_id
+   *   Opaque named secret id from the URL k= param, or NULL for legacy.
+   *   A deleted/missing secret fails closed (FALSE).
    *
    * @return bool
-   *   TRUE only if a secret is configured, the "exp" claim is in the future,
-   *   any "nbf" claim is in the past, and the signature matches. Fails closed
-   *   (FALSE) in every other case. Note: this does NOT enforce usage limits —
-   *   that is stateful and handled by the gate method.
+   *   TRUE only if material exists for the secret, the "exp" claim is in the
+   *   future, any "nbf" claim is in the past, and the signature matches. Does
+   *   NOT enforce field scope or usage limits — gate methods do that.
    */
-  public function validate(string $resource_id, array $claims, string $sig): bool;
+  public function validate(string $resource_id, array $claims, string $sig, ?string $secret_id = NULL): bool;
 
   /**
    * The default grant lifetime in seconds.

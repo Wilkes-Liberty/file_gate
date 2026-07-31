@@ -6,6 +6,28 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **Scoped signing secrets (#30 / d.o #3614157).** Named mint credentials map to
+  field storage allowlists so a front end that may mint whitepapers cannot mint
+  an NDA. Config holds `secret_scopes` (id → field keys); values stay in
+  `$settings['file_gate.secrets']`. Basic-auth username (or
+  `X-File-Gate-Secret-Id`) selects the secret; minted URLs carry `k=<id>`.
+  Scope is enforced at mint and redemption (narrowing revokes outstanding
+  grants). Deleted secrets fail closed at redeem. Named secrets with a value
+  but empty/missing scope grant nothing and ERROR on the status report. The
+  legacy `download_secret` without `k=` remains whole-corpus for existing
+  installs.
+- **Optional identity-aware mint (#31 / d.o #3614158).** Mint body may include
+  `account` (user UUID) or `uid`. When present, File Gate fails closed unless
+  that account may download the file and view referencing host entities.
+  Omitted for anonymous lead-capture flows.
+
+### Added
+- **Admin dashboard (#28 / d.o #3612910).** Settings page shows mints, deliveries,
+  denials, auth failures, per-method and top-file tables from the `file_gate`
+  dblog channel when Database Logging is enabled (table fallback; Charts not
+  required).
+
 ## [1.1.0] - 2026-07-30
 
 ### Upgrading

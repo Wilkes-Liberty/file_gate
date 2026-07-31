@@ -9,6 +9,13 @@
 # authenticated, commerce, and form methods enforce their own gate and do not
 # use this secret.)
 download_secret: ''
+# Named secret field scopes (exportable). Values live in settings.php only:
+#   $settings['file_gate.secrets'] = ['s_public' => getenv('…'), …];
+# Each key is an opaque secret id; each value is a list of field storage ids
+# (entity_type.field_name) that credential may mint. A named secret with no
+# entry (or an empty list) can mint nothing. The legacy download_secret (no k=
+# in the URL) remains whole-corpus for backward compatibility.
+secret_scopes: {}
 # Default signed-URL lifetime, in seconds. Keep this short — the URL is only
 # needed for the moment between minting and the browser starting the download.
 ttl: 120

@@ -7,8 +7,13 @@
 Mints a short-lived signed download URL. **Server-to-server only** — the caller
 must present the shared secret; never call this from a browser.
 
-**Authentication.** The secret is sent as the HTTP Basic password (username is
-ignored) or in an `X-File-Gate-Secret` header. The comparison is constant-time.
+**Authentication.** Constant-time comparison of:
+
+- **Legacy:** Basic password or `X-File-Gate-Secret` matching
+  `download_secret` (username ignored if it is not a configured named id).
+- **Named:** Basic **username = secret id**, password = value; or
+  `X-File-Gate-Secret-Id` + `X-File-Gate-Secret`. Scope is the field storage
+  allowlist for that id (`secret_scopes`).
 
 **Request body** (JSON) — exactly one of:
 
@@ -17,14 +22,17 @@ ignored) or in an `X-File-Gate-Secret` header. The comparison is constant-time.
 | `media` | string | A media entity UUID (requires the Media module). Its source file is used; the media must be published. |
 | `file` | string | A managed file UUID (media-agnostic). |
 | `subject` | string | Optional. A caller-asserted subject the grant is bound to (used by the `assurance` method for per-user binding); only its hash is stored/signed. |
+| `account` | string | Optional. Acting user UUID. When set, mint fails closed unless that user may download the file (and view host entities). Prefer over `uid`. |
+| `uid` | int | Optional. Acting user id (same check as `account`). |
 
 **Responses:**
 
 | Status | Meaning |
 |---|---|
-| `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int> }`. `path` is root-relative — prepend your public origin. |
+| `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int> }`. `path` is root-relative — prepend your public origin. Named secrets add `k=<id>` to the query. |
 | `400` | Invalid JSON, or neither `file` nor `media` supplied, or the gate method does not support minted URLs. |
 | `401` | Missing or wrong secret. |
+| `403` | Authenticated but this credential's field scope does not include the file. |
 | `404` | Unknown file/media. |
 | `409` | The host media is unpublished. |
 | `422` | The file is not gated, or the media has no file. |
@@ -40,6 +48,7 @@ Redeemed by the visitor's browser. Query parameters:
 | `f` | The file UUID (required). |
 | `exp` | Grant expiry, Unix time (from the mint response). |
 | `sig` | HMAC signature. |
+| `k` | Opaque secret id for named credentials (key selection only; not an HMAC claim). Absent = legacy site secret. |
 | `token` | Present for the `token` method: the plaintext token. A minted link also carries `exp`/`sig`; a pre-shared campaign link carries only `token`. |
 | `jti`, `max` | Present only for usage-limited grants (one-time / N-use links). |
 | `nbf` | Present only when a not-before window was set. |

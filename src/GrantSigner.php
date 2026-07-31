@@ -23,20 +23,23 @@ final class GrantSigner implements GrantSignerInterface {
    * Constructs the grant signer.
    *
    * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
-   *   The config factory (reads the secret and default TTL).
+   *   The config factory (default TTL).
    * @param \Drupal\Component\Datetime\TimeInterface $time
-   *   The time service (single request-time source, testable).
+   *   The time service.
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   Secret registry (legacy + named materials).
    */
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
     private readonly TimeInterface $time,
+    private readonly SecretRegistryInterface $secrets,
   ) {}
 
   /**
    * {@inheritdoc}
    */
   public function hasSecret(): bool {
-    return $this->secret() !== '';
+    return $this->secrets->hasAnySecret();
   }
 
   /**
@@ -44,20 +47,16 @@ final class GrantSigner implements GrantSignerInterface {
    */
   public function defaultTtl(): int {
     $ttl = (int) $this->configFactory->get('file_gate.settings')->get('ttl');
-    // Guard against a missing or non-positive configured TTL.
     return $ttl > 0 ? $ttl : self::FALLBACK_TTL;
   }
 
   /**
    * {@inheritdoc}
    */
-  public function sign(string $resource_id, array $claims): string {
-    $secret = $this->secret();
-    // Defensive: callers (e.g. the mint controller) must reject the request
-    // before reaching this point when no secret is configured. Refuse rather
-    // than emit an unverifiable signature.
+  public function sign(string $resource_id, array $claims, ?string $secret_id = NULL): string {
+    $secret = $this->secrets->secretMaterial($secret_id);
     if ($secret === '') {
-      throw new \LogicException('Cannot mint a grant: no File Gate signing secret is configured.');
+      throw new \LogicException('Cannot mint a grant: no File Gate signing secret is configured for this credential.');
     }
     if (!isset($claims[self::CLAIM_EXPIRES])) {
       throw new \LogicException('A grant must include an expiry (exp) claim.');
@@ -68,34 +67,26 @@ final class GrantSigner implements GrantSignerInterface {
   /**
    * {@inheritdoc}
    */
-  public function validate(string $resource_id, array $claims, string $sig): bool {
-    $secret = $this->secret();
-    // Fail closed: no secret ⇒ nothing can ever be valid. Checked BEFORE any
-    // comparison so an unconfigured site denies every gated request.
+  public function validate(string $resource_id, array $claims, string $sig, ?string $secret_id = NULL): bool {
+    $secret = $this->secrets->secretMaterial($secret_id);
+    // Fail closed: missing/deleted secret ⇒ unverifiable.
     if ($secret === '') {
       return FALSE;
     }
     $now = $this->time->getRequestTime();
-    // Reject expired (or malformed) grants before any cryptographic work.
     $exp = (int) ($claims[self::CLAIM_EXPIRES] ?? 0);
     if ($exp <= 0 || $exp < $now) {
       return FALSE;
     }
-    // Honour an optional "not before" window.
     if (isset($claims[self::CLAIM_NOT_BEFORE]) && (int) $claims[self::CLAIM_NOT_BEFORE] > $now) {
       return FALSE;
     }
     $expected = $this->compute($resource_id, $claims, $secret);
-    // Constant-time comparison: never leak, via timing, how much of the
-    // signature matched.
     return hash_equals($expected, $sig);
   }
 
   /**
    * Computes the HMAC signature binding a resource id to its claims.
-   *
-   * The resource id and the canonicalised claims are joined with a literal "|"
-   * so the two cannot be confused for one another (a field-splitting guard).
    *
    * @param string $resource_id
    *   The opaque resource identifier.
@@ -114,20 +105,8 @@ final class GrantSigner implements GrantSignerInterface {
   /**
    * Canonicalises a claims bag into a deterministic string.
    *
-   * Claims are sorted by key and rendered as "key=value" pairs joined by "&",
-   * so the same claims always produce the same signable payload regardless of
-   * the order the client presents them in.
-   *
-   * Every key and value is rawurlencode()d before joining. This is a security
-   * requirement, not cosmetics: the encoding makes the claims → string mapping
-   * injective, so a literal "&" or "=" inside a value can never impersonate a
-   * claim delimiter. Without it the mapping collides — {jti: "a", max: "1"}
-   * and {jti: "a&max=1"} both render "jti=a&max=1" — letting a client fold a
-   * signed claim into an adjacent value and drop it from the reconstructed
-   * claim bag while keeping a valid signature (e.g. dropping "max" to defeat a
-   * one-time link, or the assurance "sh" claim to defeat per-user binding).
-   * Encoding pins each claim boundary so any such reshaping changes the payload
-   * and fails the HMAC.
+   * Every key and value is rawurlencode()d before joining so the claims →
+   * string mapping is injective (claim-folding bypass defense).
    *
    * @param array $claims
    *   The claims (scalar values).
@@ -142,16 +121,6 @@ final class GrantSigner implements GrantSignerInterface {
       $parts[] = rawurlencode((string) $key) . '=' . rawurlencode((string) $value);
     }
     return implode('&', $parts);
-  }
-
-  /**
-   * Reads the configured signing secret.
-   *
-   * @return string
-   *   The secret, or an empty string when none is configured.
-   */
-  private function secret(): string {
-    return (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
   }
 
 }

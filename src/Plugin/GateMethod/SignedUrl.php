@@ -12,9 +12,12 @@ use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
+use Drupal\file_gate\ActiveSecret;
+use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
+use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -89,6 +92,21 @@ class SignedUrl extends GateMethodBase {
   protected LockBackendInterface $lock;
 
   /**
+   * Active secret for this mint request.
+   */
+  protected ActiveSecret $activeSecret;
+
+  /**
+   * Secret registry (field scope at redemption).
+   */
+  protected SecretRegistryInterface $secrets;
+
+  /**
+   * Gate resolver (field key for the file at redemption).
+   */
+  protected FileGateResolver $resolver;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -98,6 +116,9 @@ class SignedUrl extends GateMethodBase {
     $instance->time = $container->get('datetime.time');
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
     $instance->lock = $container->get('lock');
+    $instance->activeSecret = $container->get('file_gate.active_secret');
+    $instance->secrets = $container->get('file_gate.secret_registry');
+    $instance->resolver = $container->get('file_gate.resolver');
     return $instance;
   }
 
@@ -111,7 +132,7 @@ class SignedUrl extends GateMethodBase {
     }
     // Reconstruct exactly the claim set a mint could have produced. Any claim
     // an attacker adds or alters changes the canonical payload and fails the
-    // HMAC.
+    // HMAC. k= selects the key only; it is not part of the signed payload.
     $claims = [];
     foreach ($this->signedClaimKeys() as $key) {
       if ($request->query->has($key)) {
@@ -121,7 +142,14 @@ class SignedUrl extends GateMethodBase {
     if (!isset($claims[GrantSignerInterface::CLAIM_EXPIRES])) {
       return FALSE;
     }
-    if (!$this->signer->validate($this->resourceId($file), $claims, $sig)) {
+    $secret_id = $this->secretIdFromRequest($request);
+    if (!$this->signer->validate($this->resourceId($file), $claims, $sig, $secret_id)) {
+      return FALSE;
+    }
+    // Enforce field scope at redemption so narrowing a secret revokes
+    // outstanding grants (not only future mints).
+    $gate = $this->resolver->getGateForFile($file);
+    if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
       return FALSE;
     }
     // Enforce a usage limit when the grant carries one.
@@ -180,11 +208,35 @@ class SignedUrl extends GateMethodBase {
       $claims['max'] = $max_uses;
     }
 
-    $sig = $this->signer->sign($this->resourceId($file), $claims);
+    $secret_id = $this->activeSecretId();
+    $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
 
     // The claims travel in the URL (bound by the signature); the controller
-    // appends them, plus "sig", to the download link.
-    return $claims + ['sig' => $sig];
+    // appends them, plus "sig", to the download link. k= names the secret for
+    // redemption (JWT kid); absent k means the legacy site secret.
+    $params = $claims + ['sig' => $sig];
+    if ($secret_id !== NULL && $secret_id !== '') {
+      $params['k'] = $secret_id;
+    }
+    return $params;
+  }
+
+  /**
+   * Secret id authenticated for this mint request, or NULL for legacy.
+   */
+  protected function activeSecretId(): ?string {
+    return $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
+  }
+
+  /**
+   * Secret id from the download query k= param (NULL if absent/empty).
+   */
+  protected function secretIdFromRequest(Request $request): ?string {
+    if (!$request->query->has('k')) {
+      return NULL;
+    }
+    $k = (string) $request->query->get('k');
+    return $k !== '' ? $k : NULL;
   }
 
   /**

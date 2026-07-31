@@ -1,5 +1,24 @@
 services:
 
+  # Resolves legacy + named mint/signing secrets and field scopes.
+  file_gate.secret_registry:
+    class: Drupal\file_gate\SecretRegistry
+    arguments:
+      - '@config.factory'
+      - '@settings'
+
+  # Secret id for the current mint/revoke/otp request (set by shared-secret auth).
+  file_gate.active_secret:
+    class: Drupal\file_gate\ActiveSecret
+
+  # Admin dashboard aggregates from the file_gate logger / dblog.
+  file_gate.metrics:
+    class: Drupal\file_gate\Service\FileGateMetrics
+    arguments:
+      - '@database'
+      - '@module_handler'
+      - '@datetime.time'
+
   # Target-agnostic HMAC grant signer. Deliberately knows nothing about files:
   # it signs/validates an opaque "resource id" string plus an expiry, so the same
   # signing core can back a future content_gate / entity_gate without change.
@@ -8,6 +27,7 @@ services:
     arguments:
       - '@config.factory'
       - '@datetime.time'
+      - '@file_gate.secret_registry'
 
   # Plugin manager for gate methods (Plugin/GateMethod/*). Third parties add new
   # ways to prove a request has passed the gate (token, email capture, …).

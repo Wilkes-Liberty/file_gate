@@ -13,9 +13,12 @@ use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
+use Drupal\file_gate\ActiveSecret;
+use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
+use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -105,6 +108,21 @@ final class Token extends GateMethodBase {
   protected LockBackendInterface $lock;
 
   /**
+   * Active secret for this mint request.
+   */
+  protected ActiveSecret $activeSecret;
+
+  /**
+   * Secret registry (field scope at redemption).
+   */
+  protected SecretRegistryInterface $secrets;
+
+  /**
+   * Gate resolver (field key at redemption).
+   */
+  protected FileGateResolver $resolver;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -114,6 +132,9 @@ final class Token extends GateMethodBase {
     $instance->time = $container->get('datetime.time');
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
     $instance->lock = $container->get('lock');
+    $instance->activeSecret = $container->get('file_gate.active_secret');
+    $instance->secrets = $container->get('file_gate.secret_registry');
+    $instance->resolver = $container->get('file_gate.resolver');
     return $instance;
   }
 
@@ -142,7 +163,16 @@ final class Token extends GateMethodBase {
         GrantSignerInterface::CLAIM_EXPIRES => (int) $exp,
         self::CLAIM_TOKEN_HASH => $token_hash,
       ];
-      if (!$this->signer->validate($this->resourceId($file), $claims, $sig)) {
+      $secret_id = NULL;
+      if ($request->query->has('k')) {
+        $k = (string) $request->query->get('k');
+        $secret_id = $k !== '' ? $k : NULL;
+      }
+      if (!$this->signer->validate($this->resourceId($file), $claims, $sig, $secret_id)) {
+        return FALSE;
+      }
+      $gate = $this->resolver->getGateForFile($file);
+      if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
         return FALSE;
       }
       return $this->consumeMintedToken($token_hash, (int) $exp);
@@ -189,15 +219,20 @@ final class Token extends GateMethodBase {
       GrantSignerInterface::CLAIM_EXPIRES => $exp,
       self::CLAIM_TOKEN_HASH => $token_hash,
     ];
-    $sig = $this->signer->sign($this->resourceId($file), $claims);
+    $secret_id = $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
+    $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
 
     // Only the plaintext token travels in the URL; grants() recomputes its
     // hash, so the stored key is never exposed.
-    return [
+    $params = [
       GrantSignerInterface::CLAIM_EXPIRES => $exp,
       'token' => $token,
       'sig' => $sig,
     ];
+    if ($secret_id !== NULL) {
+      $params['k'] = $secret_id;
+    }
+    return $params;
   }
 
   /**
