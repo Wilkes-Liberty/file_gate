@@ -357,12 +357,58 @@ resolvable file URL — the bytes are delivered only through the gated endpoint.
 - **No path disclosure.** The signed URL carries the file UUID, not the
   `private://` path; delivery streams `BinaryFileResponse` with
   `Cache-Control: private, no-store`.
-- **Trust boundary.** The mint endpoint trusts the secret-holding caller; it does
-  **not** re-verify the front end's own gate. Keep the endpoint on a trusted
-  network (and rate-limited) and keep the secret secret.
 - **Usage limits are approximate.** The redemption counter is a fast key/value
   store, not a lock; a tight race could allow one extra redemption. Adequate for
   lead-gen and casual limits, not for hard licensing.
+
+### The trust boundary — read this before deploying
+
+**Mint authorizes nothing.** It authenticates the *caller* with the shared
+secret and then mints whatever was asked for. It performs **no entity access
+check and no field access check**. The only content test anywhere in the path is
+that a *media* host must be published; minting by file UUID does not check even
+that.
+
+So the secret's blast radius is **the entire gated corpus**. Anyone holding it
+can mint a working download URL for any gated file whose UUID they can guess or
+obtain, regardless of who they are or whether they could view the referencing
+entity.
+
+That is a deliberate design — File Gate delegates the gate decision to a trusted
+back end that has already run its own (a lead form, a login, an entitlement
+check) — but it has two consequences worth stating plainly:
+
+- **Never provision the secret into a public web tier.** If a front-end
+  container that serves anonymous traffic holds it, that tier holds a skeleton
+  key to every gated file. Mint from a server-side route or a back-end service,
+  not from code that ships to the browser or from an environment an attacker
+  reaching the front end can read.
+- **The secret is worth rotating like a credential**, because it is one. It also
+  doubles as the HMAC signing key, so rotating it invalidates outstanding
+  grants — which is the point when you suspect exposure.
+
+If you need mint to enforce per-user rights rather than delegate them, that is
+not built yet. Scoping a secret to particular fields or media bundles, so a
+front end that only serves whitepapers cannot mint an NDA, is also not built.
+Both are tracked in the issue queue.
+
+### Gating requires the private file system
+
+Gating only applies to files on the private file system. Public files are served
+straight off disk by the web server or a CDN and never reach Drupal, so there is
+no request to gate.
+
+The field edit form enforces this by forcing the private scheme when you enable
+gating. A configuration import does **not** run that form, so an exported
+`field.storage.*.yml` carrying `file_gate.gated: true` alongside
+`uri_scheme: public` would install a field that claims to be gated and is not.
+The module rejects that import and reports any site already in that state on the
+status report — but if you hand-edit exported configuration, this is the pairing
+to keep intact.
+
+Changing an existing field to the private scheme does not move files that are
+already stored publicly. They stay where they are, and stay readable, until they
+are re-uploaded or migrated.
 
 ## Extending: writing a gate method
 

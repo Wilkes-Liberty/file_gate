@@ -53,6 +53,14 @@ final class FileGateResolver {
     // Only private-scheme files can ever be gated — public files are served
     // straight off disk by the web server/CDN and never reach Drupal, so there
     // is no request to gate.
+    //
+    // Returning NULL here is correct but says nothing, and a field marked
+    // gated whose files are public is the module's worst state: the config
+    // claims protection that does not exist. Detecting it is deliberately not
+    // done on this hot path — GatedFieldSchemeValidator rejects the
+    // combination at config import, and file_gate_requirements() reports any
+    // site already in it. Both look at field storages directly, so neither
+    // costs a per-request query.
     if ($this->streamWrapperManager->getScheme((string) $file->getFileUri()) !== 'private') {
       return NULL;
     }
