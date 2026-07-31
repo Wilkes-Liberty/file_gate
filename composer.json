@@ -39,6 +39,7 @@
         "firebase/php-jwt": "^6.10 || ^7.0"
     },
     "suggest": {
-        "firebase/php-jwt": "Required only by the File Gate Assurance submodule (file_gate_assurance) for OIDC token verification: ^6.10 || ^7.0."
+        "firebase/php-jwt": "Required only by the File Gate Assurance submodule (file_gate_assurance) for OIDC token verification: ^6.10 || ^7.0.",
+        "web-auth/webauthn-lib": "Required for native WebAuthn mode in file_gate_assurance: ^5.0."
     }
 }

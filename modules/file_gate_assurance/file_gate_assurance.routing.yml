@@ -27,3 +27,68 @@ file_gate_assurance.bridge:
     _access: 'TRUE'
   options:
     no_cache: TRUE
+
+# --- Native WebAuthn (Phase B) ------------------------------------------------
+
+file_gate_assurance.webauthn_register_options:
+  path: '/api/file-gate/webauthn/register/options'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::registerOptions'
+  methods: [POST]
+  requirements:
+    _permission: 'register file gate webauthn+administer file gate'
+  options:
+    no_cache: TRUE
+
+file_gate_assurance.webauthn_register:
+  path: '/api/file-gate/webauthn/register'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::registerComplete'
+  methods: [POST]
+  requirements:
+    _permission: 'register file gate webauthn+administer file gate'
+  options:
+    no_cache: TRUE
+
+file_gate_assurance.webauthn_credentials:
+  path: '/api/file-gate/webauthn/credentials'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::listCredentials'
+  methods: [GET]
+  requirements:
+    _permission: 'register file gate webauthn+administer file gate'
+  options:
+    no_cache: TRUE
+
+file_gate_assurance.webauthn_credential_delete:
+  path: '/api/file-gate/webauthn/credentials/delete'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::deleteCredential'
+  methods: [POST]
+  requirements:
+    _permission: 'register file gate webauthn+administer file gate'
+  options:
+    no_cache: TRUE
+
+# Grant-bound assertion (public; controller validates the signed grant).
+file_gate_assurance.webauthn_assert_options:
+  path: '/api/file-gate/webauthn/assert/options'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::assertOptions'
+  methods: [POST]
+  requirements:
+    # Open by design: options only issued for a valid signed grant query.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE
+
+file_gate_assurance.webauthn_assert:
+  path: '/api/file-gate/webauthn/assert'
+  defaults:
+    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::assertComplete'
+  methods: [POST]
+  requirements:
+    # Open by design: assertion + grant validation establish the bridge cookie.
+    _access: 'TRUE'
+  options:
+    no_cache: TRUE

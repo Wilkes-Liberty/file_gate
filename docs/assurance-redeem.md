@@ -93,6 +93,26 @@ async function redeem(downloadUrl, getAccessToken) {
 | **Keycloak / Okta / Entra** | Configure step-up ACR for WebAuthn or smart card; copy exact `acr` strings into the field. |
 | **Edge CAC only** | Use `verify_at: client_cert` instead of redeem; plain link works without bridge. |
 
+## Native WebAuthn mode (`verify_at: webauthn`)
+
+When the field uses native WebAuthn, File Gate is the **Relying Party** for the
+download step (not the site login IdP):
+
+1. Register credentials: `POST /api/file-gate/webauthn/register/options` then
+   `POST /api/file-gate/webauthn/register` (permission
+   *Register File Gate WebAuthn credentials*).
+2. Mint a grant; pass `subject` (or set a fixed `webauthn_user_handle` on the
+   field) so the grant’s `sh=` matches the credential handle.
+3. Open the signed URL → step-up page runs `navigator.credentials.get()` →
+   `POST /api/file-gate/webauthn/assert` sets the same `FG_AB` bridge cookie →
+   plain download.
+
+Configure **RP ID**, **allowed origins**, and optional fixed user handle on the
+field. Origins may also be set in `settings.php` as
+`$settings['file_gate.webauthn']`.
+
+Requires `composer require web-auth/webauthn-lib`.
+
 ## Related
 
 - Design: `docs/design/piv-cac-webauthn.md`

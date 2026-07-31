@@ -78,6 +78,7 @@ jobs:
             drupal/core-dev:${{ matrix.drupal }} \
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
+            'web-auth/webauthn-lib:^5.0' \
             --no-interaction --with-all-dependencies
 
       - name: Run the File Gate suite
@@ -129,13 +130,12 @@ jobs:
           composer config prefer-stable true
           composer config --no-plugins allow-plugins true
           composer config repositories.file_gate path ../file_gate_src
-          # firebase/php-jwt is optional at runtime (suggest + hook_requirements)
-          # but installed here so the Assurance submodule is analysed against
-          # the library it actually calls.
+          # Assurance deps: JWT for OIDC; webauthn-lib for native WebAuthn mode.
           composer require \
             drupal/core-dev:^11.4 \
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
+            'web-auth/webauthn-lib:^5.0' \
             phpstan/phpstan:^2 \
             phpstan/extension-installer:^1.4 \
             mglaman/phpstan-drupal:^2 \

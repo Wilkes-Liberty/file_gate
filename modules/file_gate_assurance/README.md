@@ -48,6 +48,11 @@ usage-limited grant. Two modes, chosen by `verify_at`:
   File Gate binds the level as an audit claim and trusts the caller (consistent
   with the mint trust model). Works with plain direct-navigation downloads, but
   the URL is a bearer capability — not itself AAL3-bound.
+- **`webauthn` (native RP):** File Gate runs the WebAuthn assertion ceremony for
+  a registered authenticator (`web-auth/webauthn-lib`), then sets the same
+  session bridge cookie. Register keys via
+  `/api/file-gate/webauthn/register/*` (permission *Register File Gate WebAuthn
+  credentials*). Configure RP ID + allowed origins on the field.
 
 ## Configuration
 

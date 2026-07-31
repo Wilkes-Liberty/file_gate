@@ -15,6 +15,12 @@ All notable changes to **File Gate** are documented here. The format is based on
   **same plain URL** streams the file. HMAC grant and `max_uses` still apply;
   bridge establish never burns a use. RFC 9470-style `WWW-Authenticate` for API
   clients. See `docs/assurance-redeem.md`.
+- **Native WebAuthn RP mode (`verify_at: webauthn`) (#33 / d.o #3612909).** File
+  Gate can verify a FIDO2 assertion for a registered authenticator (using
+  `web-auth/webauthn-lib`), then set the same session bridge cookie for
+  plain-link download. Registration endpoints for permitted users; assertion
+  endpoints bound to the signed grant. Honest scope: resource-level RP, not a
+  full-site AAL3 verifier.
 
 ## [1.2.0] - 2026-07-31
 

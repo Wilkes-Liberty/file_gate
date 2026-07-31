@@ -10,19 +10,104 @@ declare(strict_types=1);
 use Drupal\Core\Extension\Requirement\RequirementSeverity;
 
 /**
+ * Implements hook_schema().
+ */
+function file_gate_assurance_schema(): array {
+  $schema['file_gate_webauthn_credential'] = [
+    'description' => 'Registered WebAuthn credentials for native mode.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'user_handle' => [
+        'description' => 'WebAuthn user handle (uid or mint subject).',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ],
+      'credential_id' => [
+        'description' => 'Base64url credential id.',
+        'type' => 'varchar',
+        'length' => 512,
+        'not null' => TRUE,
+      ],
+      'public_key' => [
+        'description' => 'Base64url COSE public key.',
+        'type' => 'text',
+        'size' => 'medium',
+        'not null' => TRUE,
+      ],
+      'counter' => [
+        'description' => 'Signature counter.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ],
+      'transports' => [
+        'description' => 'JSON list of transports.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '[]',
+      ],
+      'label' => [
+        'description' => 'Admin label.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ],
+      'uid' => [
+        'description' => 'Drupal owner uid when registered by a user.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ],
+      'created' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ],
+      'changed' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ],
+    ],
+    'primary key' => ['id'],
+    'unique keys' => [
+      'credential_id' => ['credential_id'],
+    ],
+    'indexes' => [
+      'user_handle' => ['user_handle'],
+    ],
+  ];
+  return $schema;
+}
+
+/**
  * Implements hook_runtime_requirements().
  *
- * OIDC token verification needs the firebase/php-jwt library. It is declared in
- * the submodule's composer.json but the parent module does not require it (to
- * keep File Gate's core dependency-light), so guard against its absence.
+ * OIDC needs firebase/php-jwt; native WebAuthn needs web-auth/webauthn-lib.
+ * Both are declared in the submodule composer.json.
  */
 function file_gate_assurance_runtime_requirements(): array {
   $requirements = [];
   if (!class_exists('Firebase\JWT\JWT')) {
     $requirements['file_gate_assurance_jwt'] = [
-      'title' => t('File Gate Assurance'),
-      'description' => t('The <code>firebase/php-jwt</code> library is required for OIDC token verification. Install it with <code>composer require firebase/php-jwt</code>.'),
+      'title' => t('File Gate Assurance (OIDC)'),
+      'description' => t('Install <code>firebase/php-jwt</code> for OIDC verification: <code>composer require firebase/php-jwt</code>.'),
       'severity' => RequirementSeverity::Error,
+    ];
+  }
+  if (!class_exists('Webauthn\CeremonyStep\CeremonyStepManagerFactory')) {
+    $requirements['file_gate_assurance_webauthn'] = [
+      'title' => t('File Gate Assurance (WebAuthn)'),
+      'description' => t('Install <code>web-auth/webauthn-lib</code> for native WebAuthn: <code>composer require web-auth/webauthn-lib</code>.'),
+      'severity' => RequirementSeverity::Warning,
     ];
   }
   return $requirements;
