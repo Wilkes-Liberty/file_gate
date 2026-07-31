@@ -15,6 +15,8 @@ use Drupal\file\Entity\File;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\MintController;
+use Drupal\file_gate\GrantSigner;
+use Drupal\file_gate\SecretRegistry;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
@@ -223,11 +225,11 @@ final class ScopedSecretsTest extends KernelTestBase {
       self::PUBLIC_ID => self::PUBLIC_SECRET,
     ]);
     // Force a new registry instance that re-reads Settings.
-    $this->container->set('file_gate.secret_registry', new \Drupal\file_gate\SecretRegistry(
+    $this->container->set('file_gate.secret_registry', new SecretRegistry(
       $this->container->get('config.factory'),
       $this->container->get('settings'),
     ));
-    $this->container->set('file_gate.grant_signer', new \Drupal\file_gate\GrantSigner(
+    $this->container->set('file_gate.grant_signer', new GrantSigner(
       $this->container->get('config.factory'),
       $this->container->get('datetime.time'),
       $this->container->get('file_gate.secret_registry'),

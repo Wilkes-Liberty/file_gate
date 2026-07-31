@@ -74,8 +74,11 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 - **Auditing & analytics.** A dedicated logger channel records security events
   (denied downloads, failed mint auth, fail-closed refusals) and usage events
   (mints and deliveries).
-- **Admin dashboard.** Reports the secret status, sets global defaults, lists
-  gate methods, and links every gated field to its settings.
+- **Admin dashboard.** Secret status, defaults, gate methods, gated fields, plus
+  mint/delivery/denial tables from the `file_gate` dblog channel when Database
+  Logging is enabled.
+- **Optional identity-aware mint.** Pass `account` (user UUID) or `uid` on mint
+  so a grant cannot exceed that user's download and host-entity view rights.
 
 ## Requirements
 

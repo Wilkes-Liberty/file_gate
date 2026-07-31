@@ -22,6 +22,8 @@ must present the shared secret; never call this from a browser.
 | `media` | string | A media entity UUID (requires the Media module). Its source file is used; the media must be published. |
 | `file` | string | A managed file UUID (media-agnostic). |
 | `subject` | string | Optional. A caller-asserted subject the grant is bound to (used by the `assurance` method for per-user binding); only its hash is stored/signed. |
+| `account` | string | Optional. Acting user UUID. When set, mint fails closed unless that user may download the file (and view host entities). Prefer over `uid`. |
+| `uid` | int | Optional. Acting user id (same check as `account`). |
 
 **Responses:**
 

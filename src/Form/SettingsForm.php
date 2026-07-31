@@ -14,6 +14,7 @@ use Drupal\Core\Link;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\GrantSignerInterface;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\file_gate\Service\FileGateMetrics;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -42,6 +43,8 @@ final class SettingsForm extends ConfigFormBase {
    *   The entity type manager (to build the gated-fields overview).
    * @param \Drupal\file_gate\SecretRegistryInterface $secrets
    *   Secret registry (named secret status).
+   * @param \Drupal\file_gate\Service\FileGateMetrics $metrics
+   *   Dashboard metrics.
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
@@ -50,6 +53,7 @@ final class SettingsForm extends ConfigFormBase {
     protected GateMethodManager $gateMethodManager,
     protected EntityTypeManagerInterface $entityTypeManager,
     protected SecretRegistryInterface $secrets,
+    protected FileGateMetrics $metrics,
   ) {
     parent::__construct($config_factory, $typedConfigManager);
   }
@@ -65,6 +69,7 @@ final class SettingsForm extends ConfigFormBase {
       $container->get('plugin.manager.file_gate.gate_method'),
       $container->get('entity_type.manager'),
       $container->get('file_gate.secret_registry'),
+      $container->get('file_gate.metrics'),
     );
   }
 
@@ -208,6 +213,86 @@ final class SettingsForm extends ConfigFormBase {
       '#theme' => 'item_list',
       '#items' => $method_items,
     ];
+
+    // --- Dashboard (dblog aggregates when available) -------------------------
+    $summary = $this->metrics->summary(14);
+    $form['dashboard'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Dashboard (last @days days)', ['@days' => $summary['days']]),
+      '#open' => TRUE,
+    ];
+    if (!$summary['available']) {
+      $form['dashboard']['empty'] = [
+        '#markup' => '<p>' . $this->t(
+          'Enable the <strong>Database Logging</strong> (dblog) module to populate mint, delivery, and denial counts from the <code>file_gate</code> log channel. Charts module is not required — this table is the fallback.',
+        ) . '</p>',
+      ];
+    }
+    else {
+      $form['dashboard']['totals'] = [
+        '#type' => 'table',
+        '#header' => [
+          $this->t('Mints'),
+          $this->t('Deliveries'),
+          $this->t('Denials / refusals'),
+          $this->t('Auth failures'),
+        ],
+        '#rows' => [
+          [
+            (string) $summary['mints'],
+            (string) $summary['deliveries'],
+            (string) $summary['denials'],
+            (string) $summary['auth_failures'],
+          ],
+        ],
+      ];
+      if ($summary['by_method'] !== []) {
+        $method_rows = [];
+        foreach ($summary['by_method'] as $row) {
+          $method_rows[] = [$row['method'], (string) $row['count']];
+        }
+        $form['dashboard']['by_method'] = [
+          '#type' => 'table',
+          '#caption' => $this->t('By gate method'),
+          '#header' => [$this->t('Method'), $this->t('Events')],
+          '#rows' => $method_rows,
+        ];
+      }
+      if ($summary['top_files'] !== []) {
+        $file_rows = [];
+        foreach ($summary['top_files'] as $row) {
+          $file_rows[] = [$row['uuid'], (string) $row['count']];
+        }
+        $form['dashboard']['top_files'] = [
+          '#type' => 'table',
+          '#caption' => $this->t('Top files (mint + delivery)'),
+          '#header' => [$this->t('File UUID'), $this->t('Count')],
+          '#rows' => $file_rows,
+        ];
+      }
+      if ($summary['by_day'] !== []) {
+        $day_rows = [];
+        foreach (array_reverse($summary['by_day']) as $row) {
+          $day_rows[] = [
+            $row['date'],
+            (string) $row['mints'],
+            (string) $row['deliveries'],
+            (string) $row['denials'],
+          ];
+        }
+        $form['dashboard']['by_day'] = [
+          '#type' => 'table',
+          '#caption' => $this->t('Per day'),
+          '#header' => [
+            $this->t('Date (UTC)'),
+            $this->t('Mints'),
+            $this->t('Deliveries'),
+            $this->t('Denials'),
+          ],
+          '#rows' => $day_rows,
+        ];
+      }
+    }
 
     // --- Gated-fields overview (read-only) -----------------------------------
     $gated = $this->gatedFieldsOverview();

@@ -11,6 +11,14 @@ services:
   file_gate.active_secret:
     class: Drupal\file_gate\ActiveSecret
 
+  # Admin dashboard aggregates from the file_gate logger / dblog.
+  file_gate.metrics:
+    class: Drupal\file_gate\Service\FileGateMetrics
+    arguments:
+      - '@database'
+      - '@module_handler'
+      - '@datetime.time'
+
   # Target-agnostic HMAC grant signer. Deliberately knows nothing about files:
   # it signs/validates an opaque "resource id" string plus an expiry, so the same
   # signing core can back a future content_gate / entity_gate without change.

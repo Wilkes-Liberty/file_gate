@@ -10,14 +10,17 @@ use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Flood\FloodInterface;
+use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Url;
 use Drupal\file\FileInterface;
+use Drupal\file\FileUsage\FileUsageInterface;
+use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
-use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\user\UserInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -37,6 +40,9 @@ use Symfony\Component\HttpFoundation\Response;
  *   caller, consistent with the mint trust model below);
  * - returns a relative, host-agnostic signed path the front end prepends its
  *   own public origin to.
+ * - optionally, when the body includes an acting account (uuid or uid), fails
+ *   closed unless that account may download the file (and view referencing
+ *   entities when present) — defense in depth for authenticated mint paths.
  *
  * The gate the front end runs (email capture, form, login) is NOT re-verified
  * here — trust is delegated to the secret-holding caller. Keep the endpoint on
@@ -71,6 +77,8 @@ final class MintController implements ContainerInjectionInterface {
    *   Secret registry (auth + field scope).
    * @param \Drupal\file_gate\ActiveSecret $activeSecret
    *   Request-cycle authenticated secret id for mint signing.
+   * @param \Drupal\file\FileUsage\FileUsageInterface $fileUsage
+   *   File usage (host entities for identity-aware mint).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -83,6 +91,7 @@ final class MintController implements ContainerInjectionInterface {
     private readonly TimeInterface $time,
     private readonly SecretRegistryInterface $secrets,
     private readonly ActiveSecret $activeSecret,
+    private readonly FileUsageInterface $fileUsage,
   ) {}
 
   /**
@@ -100,6 +109,7 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('datetime.time'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.active_secret'),
+      $container->get('file.usage'),
     );
   }
 
@@ -163,6 +173,13 @@ final class MintController implements ContainerInjectionInterface {
       return new JsonResponse([
         'error' => 'This credential is not allowed to mint that file.',
       ], Response::HTTP_FORBIDDEN);
+    }
+
+    // Optional identity-aware mint (#31): when the caller names an acting
+    // account, the mint must not exceed what that account could download.
+    $identity_denied = $this->assertActingAccountAccess($file, $data);
+    if ($identity_denied !== NULL) {
+      return $identity_denied;
     }
 
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
@@ -247,6 +264,108 @@ final class MintController implements ContainerInjectionInterface {
     }
 
     return new JsonResponse(['error' => 'Provide a "file" or "media" UUID.'], Response::HTTP_BAD_REQUEST);
+  }
+
+  /**
+   * Optional acting-account access check for identity-aware mint.
+   *
+   * When the payload includes account (uuid) or uid, resolve the user and
+   * require file download access (and view access on referencing entities).
+   * Unresolvable accounts fail closed. Omitted parameters skip this check.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file being minted.
+   * @param array $data
+   *   Decoded mint JSON body.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse|null
+   *   403 when the check fails; NULL when not requested or when allowed.
+   */
+  private function assertActingAccountAccess(FileInterface $file, array $data): ?JsonResponse {
+    $has_uuid = !empty($data['account']) && is_string($data['account']);
+    $has_uid = array_key_exists('uid', $data) && $data['uid'] !== NULL && $data['uid'] !== '';
+    if (!$has_uuid && !$has_uid) {
+      return NULL;
+    }
+
+    $account = $this->resolveActingAccount($data);
+    if (!$account instanceof AccountInterface) {
+      $this->logger->warning('Mint refused: acting account could not be resolved for file @uuid.', [
+        '@uuid' => $file->uuid(),
+      ]);
+      return new JsonResponse([
+        'error' => 'Acting account could not be resolved.',
+      ], Response::HTTP_FORBIDDEN);
+    }
+
+    if (!$file->access('download', $account)) {
+      $this->logger->warning('Mint refused: acting account @uid cannot download file @uuid.', [
+        '@uid' => (string) $account->id(),
+        '@uuid' => $file->uuid(),
+      ]);
+      return new JsonResponse([
+        'error' => 'Acting account is not allowed to download that file.',
+      ], Response::HTTP_FORBIDDEN);
+    }
+
+    // When a host entity references the file, require view access on it too.
+    $usage = $this->fileUsage->listUsage($file);
+    foreach ($usage as $module_usage) {
+      if (!is_array($module_usage)) {
+        continue;
+      }
+      foreach ($module_usage as $entity_type => $ids) {
+        if (!$this->entityTypeManager->hasDefinition($entity_type) || !is_array($ids)) {
+          continue;
+        }
+        $storage = $this->entityTypeManager->getStorage($entity_type);
+        foreach (array_keys($ids) as $entity_id) {
+          $entity = $storage->load($entity_id);
+          if ($entity === NULL) {
+            continue;
+          }
+          if (!$entity->access('view', $account)) {
+            $this->logger->warning('Mint refused: acting account @uid cannot view @type @id hosting file @uuid.', [
+              '@uid' => (string) $account->id(),
+              '@type' => $entity_type,
+              '@id' => (string) $entity_id,
+              '@uuid' => $file->uuid(),
+            ]);
+            return new JsonResponse([
+              'error' => 'Acting account is not allowed to access the host content for that file.',
+            ], Response::HTTP_FORBIDDEN);
+          }
+        }
+      }
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Resolves an acting account from mint payload account (uuid) or uid.
+   *
+   * Prefer uuid (account). uid is accepted for back ends that already hold one.
+   *
+   * @param array $data
+   *   Decoded mint JSON body.
+   *
+   * @return \Drupal\Core\Session\AccountInterface|null
+   *   The user account, or NULL if unresolvable.
+   */
+  private function resolveActingAccount(array $data): ?AccountInterface {
+    if (!empty($data['account']) && is_string($data['account'])) {
+      $user = $this->entityRepository->loadEntityByUuid('user', $data['account']);
+      return $user instanceof UserInterface ? $user : NULL;
+    }
+    if (array_key_exists('uid', $data) && $data['uid'] !== NULL && $data['uid'] !== '') {
+      if (!is_numeric($data['uid'])) {
+        return NULL;
+      }
+      $user = $this->entityTypeManager->getStorage('user')->load((int) $data['uid']);
+      return $user instanceof UserInterface ? $user : NULL;
+    }
+    return NULL;
   }
 
 }
