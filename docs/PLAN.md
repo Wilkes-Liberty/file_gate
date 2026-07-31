@@ -146,11 +146,11 @@ Update this table when creating or closing issues. Do not invent keys.
 
 | Topic | GH | d.o | State |
 |-------|----|-----|--------|
-| Open redirect | [#40](https://github.com/Wilkes-Liberty/file_gate/issues/40) | [#3614254](https://www.drupal.org/project/file_gate/issues/3614254) | **Closed / Fixed in 1.4.0** (mark d.o Fixed if not yet) |
-| OTP named secrets | [#39](https://github.com/Wilkes-Liberty/file_gate/issues/39) | [#3614253](https://www.drupal.org/project/file_gate/issues/3614253) | **Closed / Fixed in 1.4.0** (mark d.o Fixed if not yet) |
-| Enrollment UI | [#38](https://github.com/Wilkes-Liberty/file_gate/issues/38) | [#3614251](https://www.drupal.org/project/file_gate/issues/3614251) | **Closed / Fixed in 1.4.0** (mark d.o Fixed if not yet) |
-| Manual E2E | [#37](https://github.com/Wilkes-Liberty/file_gate/issues/37) | [#3614250](https://www.drupal.org/project/file_gate/issues/3614250) | **Closed / Fixed in 1.4.0** (mark d.o Fixed if not yet) |
-| A2 mint OIDC | [#36](https://github.com/Wilkes-Liberty/file_gate/issues/36) | [#3614249](https://www.drupal.org/project/file_gate/issues/3614249) | **Closed / Fixed in 1.4.0** (mark d.o Fixed if not yet) |
+| Open redirect | [#40](https://github.com/Wilkes-Liberty/file_gate/issues/40) | [#3614254](https://www.drupal.org/project/file_gate/issues/3614254) | **Closed / Fixed in 1.4.0** |
+| OTP named secrets | [#39](https://github.com/Wilkes-Liberty/file_gate/issues/39) | [#3614253](https://www.drupal.org/project/file_gate/issues/3614253) | **Closed / Fixed in 1.4.0** |
+| Enrollment UI | [#38](https://github.com/Wilkes-Liberty/file_gate/issues/38) | [#3614251](https://www.drupal.org/project/file_gate/issues/3614251) | **Closed / Fixed in 1.4.0** |
+| Manual E2E | [#37](https://github.com/Wilkes-Liberty/file_gate/issues/37) | [#3614250](https://www.drupal.org/project/file_gate/issues/3614250) | **Closed / Fixed in 1.4.0** |
+| A2 mint OIDC | [#36](https://github.com/Wilkes-Liberty/file_gate/issues/36) | [#3614249](https://www.drupal.org/project/file_gate/issues/3614249) | **Closed / Fixed in 1.4.0** |
 | Session bridge from Drupal SSO | [#41](https://github.com/Wilkes-Liberty/file_gate/issues/41) | [#3614264](https://www.drupal.org/project/file_gate/issues/3614264) | Open |
 | IdP step-up authorize helper | [#42](https://github.com/Wilkes-Liberty/file_gate/issues/42) | [#3614265](https://www.drupal.org/project/file_gate/issues/3614265) | Open |
 | OTP without query string | [#43](https://github.com/Wilkes-Liberty/file_gate/issues/43) | [#3614266](https://www.drupal.org/project/file_gate/issues/3614266) | Open |
