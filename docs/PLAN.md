@@ -151,12 +151,12 @@ Update this table when creating or closing issues. Do not invent keys.
 | Enrollment UI | [#38](https://github.com/Wilkes-Liberty/file_gate/issues/38) | [#3614251](https://www.drupal.org/project/file_gate/issues/3614251) | **Closed / Fixed in 1.4.0** |
 | Manual E2E | [#37](https://github.com/Wilkes-Liberty/file_gate/issues/37) | [#3614250](https://www.drupal.org/project/file_gate/issues/3614250) | **Closed / Fixed in 1.4.0** |
 | A2 mint OIDC | [#36](https://github.com/Wilkes-Liberty/file_gate/issues/36) | [#3614249](https://www.drupal.org/project/file_gate/issues/3614249) | **Closed / Fixed in 1.4.0** |
-| Session bridge from Drupal SSO | [#41](https://github.com/Wilkes-Liberty/file_gate/issues/41) | [#3614264](https://www.drupal.org/project/file_gate/issues/3614264) | **Code on branch** (ship next minor) |
-| IdP step-up authorize helper | [#42](https://github.com/Wilkes-Liberty/file_gate/issues/42) | [#3614265](https://www.drupal.org/project/file_gate/issues/3614265) | **Code on branch** |
-| OTP without query string | [#43](https://github.com/Wilkes-Liberty/file_gate/issues/43) | [#3614266](https://www.drupal.org/project/file_gate/issues/3614266) | **Code on branch** |
-| Grant inventory API | [#44](https://github.com/Wilkes-Liberty/file_gate/issues/44) | [#3614267](https://www.drupal.org/project/file_gate/issues/3614267) | **Code on branch** |
-| Commerce scale | [#45](https://github.com/Wilkes-Liberty/file_gate/issues/45) | [#3614268](https://www.drupal.org/project/file_gate/issues/3614268) | **Code on branch** |
-| Pre-shared token TTL | [#46](https://github.com/Wilkes-Liberty/file_gate/issues/46) | [#3614269](https://www.drupal.org/project/file_gate/issues/3614269) | **Code on branch** |
+| Session bridge from Drupal SSO | [#41](https://github.com/Wilkes-Liberty/file_gate/issues/41) | [#3614264](https://www.drupal.org/project/file_gate/issues/3614264) | **Merged 1.x** (tag in next minor) |
+| IdP step-up authorize helper | [#42](https://github.com/Wilkes-Liberty/file_gate/issues/42) | [#3614265](https://www.drupal.org/project/file_gate/issues/3614265) | **Merged 1.x** |
+| OTP without query string | [#43](https://github.com/Wilkes-Liberty/file_gate/issues/43) | [#3614266](https://www.drupal.org/project/file_gate/issues/3614266) | **Merged 1.x** |
+| Grant inventory API | [#44](https://github.com/Wilkes-Liberty/file_gate/issues/44) | [#3614267](https://www.drupal.org/project/file_gate/issues/3614267) | **Merged 1.x** |
+| Commerce scale | [#45](https://github.com/Wilkes-Liberty/file_gate/issues/45) | [#3614268](https://www.drupal.org/project/file_gate/issues/3614268) | **Merged 1.x** |
+| Pre-shared token TTL | [#46](https://github.com/Wilkes-Liberty/file_gate/issues/46) | [#3614269](https://www.drupal.org/project/file_gate/issues/3614269) | **Merged 1.x** |
 
 ### Platform (Jira DEV + GH)
 
