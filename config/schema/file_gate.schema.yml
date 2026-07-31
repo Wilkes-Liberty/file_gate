@@ -9,6 +9,15 @@ file_gate.settings:
       label: 'Signing / mint secret'
       # Empty in config; injected from the environment at runtime. Never commit a
       # real value here.
+    secret_scopes:
+      type: sequence
+      label: 'Named secret field scopes'
+      sequence:
+        type: sequence
+        label: 'Field storage keys for one secret id'
+        sequence:
+          type: string
+          label: 'Field storage id (entity_type.field_name)'
     ttl:
       type: integer
       label: 'Default signed-URL TTL (seconds)'

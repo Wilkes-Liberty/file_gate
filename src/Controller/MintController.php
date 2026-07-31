@@ -16,6 +16,8 @@ use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\ActiveSecret;
+use Drupal\file_gate\SecretRegistryInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -65,6 +67,10 @@ final class MintController implements ContainerInjectionInterface {
    *   The File Gate logger channel.
    * @param \Drupal\Component\Datetime\TimeInterface $time
    *   The time service (to report the grant's real remaining TTL).
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   Secret registry (auth + field scope).
+   * @param \Drupal\file_gate\ActiveSecret $activeSecret
+   *   Request-cycle authenticated secret id for mint signing.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -75,6 +81,8 @@ final class MintController implements ContainerInjectionInterface {
     private readonly FloodInterface $flood,
     private readonly LoggerInterface $logger,
     private readonly TimeInterface $time,
+    private readonly SecretRegistryInterface $secrets,
+    private readonly ActiveSecret $activeSecret,
   ) {}
 
   /**
@@ -90,6 +98,8 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('flood'),
       $container->get('logger.channel.file_gate'),
       $container->get('datetime.time'),
+      $container->get('file_gate.secret_registry'),
+      $container->get('file_gate.active_secret'),
     );
   }
 
@@ -107,9 +117,19 @@ final class MintController implements ContainerInjectionInterface {
   public function mint(Request $request): JsonResponse {
     // Authenticate the server-to-server caller: fails closed with no secret
     // (503), rejects a bad/absent secret (401), and rate-limits per IP (429).
-    // Returns an error response to send as-is, or NULL when the caller may
-    // proceed.
-    $denied = $this->authenticateSharedSecret($request, $this->configFactory, $this->flood, $this->logger, 'file_gate.mint');
+    // Sets file_gate.secret_id on the request (NULL = legacy whole-corpus).
+    $config = $this->configFactory->get('file_gate.settings');
+    $this->activeSecret->clear();
+    $denied = $this->authenticateSharedSecret(
+      $request,
+      $this->secrets,
+      $this->flood,
+      $this->logger,
+      'file_gate.mint',
+      (int) ($config->get('flood_limit') ?: 50),
+      (int) ($config->get('flood_window') ?: 60),
+      $this->activeSecret,
+    );
     if ($denied !== NULL) {
       return $denied;
     }
@@ -128,6 +148,21 @@ final class MintController implements ContainerInjectionInterface {
     $gate = $this->resolver->getGateForFile($file);
     if ($gate === NULL) {
       return new JsonResponse(['error' => 'The requested file is not gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    // Field scope: named secrets may only mint fields in their allowlist.
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    if (!$this->secrets->allowsField($secret_id, $gate['field'])) {
+      $this->logger->warning('Mint refused: secret @id is not allowed to mint field @field (file @uuid) from @ip.', [
+        '@id' => $secret_id ?? 'legacy',
+        '@field' => $gate['field'],
+        '@uuid' => $file->uuid(),
+        '@ip' => $request->getClientIp() ?? 'unknown',
+      ]);
+      return new JsonResponse([
+        'error' => 'This credential is not allowed to mint that file.',
+      ], Response::HTTP_FORBIDDEN);
     }
 
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);

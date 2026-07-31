@@ -6,6 +6,18 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **Scoped signing secrets (#30 / d.o #3614157).** Named mint credentials map to
+  field storage allowlists so a front end that may mint whitepapers cannot mint
+  an NDA. Config holds `secret_scopes` (id → field keys); values stay in
+  `$settings['file_gate.secrets']`. Basic-auth username (or
+  `X-File-Gate-Secret-Id`) selects the secret; minted URLs carry `k=<id>`.
+  Scope is enforced at mint and redemption (narrowing revokes outstanding
+  grants). Deleted secrets fail closed at redeem. Named secrets with a value
+  but empty/missing scope grant nothing and ERROR on the status report. The
+  legacy `download_secret` without `k=` remains whole-corpus for existing
+  installs.
+
 ## [1.1.0] - 2026-07-30
 
 ### Upgrading

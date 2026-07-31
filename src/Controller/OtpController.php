@@ -16,6 +16,7 @@ use Drupal\Core\Mail\MailManagerInterface;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
+use Drupal\file_gate\SecretRegistryInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -70,6 +71,8 @@ final class OtpController implements ContainerInjectionInterface {
    *   The time service.
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   Secret registry (auth).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -82,6 +85,7 @@ final class OtpController implements ContainerInjectionInterface {
     private readonly LanguageManagerInterface $languageManager,
     private readonly TimeInterface $time,
     private readonly LoggerInterface $logger,
+    private readonly SecretRegistryInterface $secrets,
   ) {}
 
   /**
@@ -99,6 +103,7 @@ final class OtpController implements ContainerInjectionInterface {
       $container->get('language_manager'),
       $container->get('datetime.time'),
       $container->get('logger.channel.file_gate'),
+      $container->get('file_gate.secret_registry'),
     );
   }
 
@@ -114,7 +119,16 @@ final class OtpController implements ContainerInjectionInterface {
    *   204 when a code was sent; 400/401/404/409/422/429/503 otherwise.
    */
   public function request(Request $request): Response {
-    $denied = $this->authenticateSharedSecret($request, $this->configFactory, $this->flood, $this->logger, 'file_gate.otp');
+    $config = $this->configFactory->get('file_gate.settings');
+    $denied = $this->authenticateSharedSecret(
+      $request,
+      $this->secrets,
+      $this->flood,
+      $this->logger,
+      'file_gate.otp',
+      (int) ($config->get('flood_limit') ?: 50),
+      (int) ($config->get('flood_window') ?: 60),
+    );
     if ($denied !== NULL) {
       return $denied;
     }
@@ -137,6 +151,13 @@ final class OtpController implements ContainerInjectionInterface {
     $gate = $this->resolver->getGateForFile($file);
     if ($gate === NULL || $gate['method'] !== 'otp') {
       return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    if (!$this->secrets->allowsField($secret_id, $gate['field'])) {
+      return new JsonResponse([
+        'error' => 'This credential is not allowed to mint that file.',
+      ], Response::HTTP_FORBIDDEN);
     }
 
     // Throttle per (file, email) to bound mailbombing and brute force.

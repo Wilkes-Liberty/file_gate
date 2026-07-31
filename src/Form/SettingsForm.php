@@ -13,6 +13,7 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Link;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\GrantSignerInterface;
+use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -39,6 +40,8 @@ final class SettingsForm extends ConfigFormBase {
    *   The gate method plugin manager (to list available methods).
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
    *   The entity type manager (to build the gated-fields overview).
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   Secret registry (named secret status).
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
@@ -46,6 +49,7 @@ final class SettingsForm extends ConfigFormBase {
     protected GrantSignerInterface $grantSigner,
     protected GateMethodManager $gateMethodManager,
     protected EntityTypeManagerInterface $entityTypeManager,
+    protected SecretRegistryInterface $secrets,
   ) {
     parent::__construct($config_factory, $typedConfigManager);
   }
@@ -60,6 +64,7 @@ final class SettingsForm extends ConfigFormBase {
       $container->get('file_gate.grant_signer'),
       $container->get('plugin.manager.file_gate.gate_method'),
       $container->get('entity_type.manager'),
+      $container->get('file_gate.secret_registry'),
     );
   }
 
@@ -91,12 +96,56 @@ final class SettingsForm extends ConfigFormBase {
     ];
     $form['status']['secret'] = [
       '#type' => 'item',
-      '#title' => $this->t('Signing secret'),
+      '#title' => $this->t('Legacy signing secret'),
       '#markup' => $this->grantSigner->hasSecret()
-        ? $this->t('<strong>Configured.</strong> Gating is active.')
+        ? $this->t('<strong>Configured.</strong> At least one secret is available (legacy and/or named).')
         : $this->t('<strong>Not configured.</strong> The module is failing closed — minting returns 503 and every gated file is denied until a secret is provided.'),
-      '#description' => $this->t("The secret is never stored in configuration. Inject it from the environment in <code>settings.php</code>, e.g.<br /><code>\$config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');</code>"),
+      '#description' => $this->t("Secrets are never stored in configuration. Legacy (whole corpus): <code>\$config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');</code><br />Named (field-scoped): <code>\$settings['file_gate.secrets'] = ['s1' =&gt; getenv('…')];</code> with scopes below. Basic-auth username = secret id; password = value. Minted URLs carry <code>k=&lt;id&gt;</code> for named secrets."),
     ];
+
+    // --- Named secret scopes (exportable map; values stay in settings.php) --
+    $scope_lines = [];
+    $scopes = $config->get('secret_scopes');
+    if (is_array($scopes)) {
+      foreach ($scopes as $id => $fields) {
+        if (!is_string($id) || $id === '') {
+          continue;
+        }
+        $list = is_array($fields) ? $fields : [];
+        $scope_lines[] = $id . ': ' . implode(', ', array_map('strval', $list));
+      }
+    }
+    $form['secret_scopes_text'] = [
+      '#type' => 'textarea',
+      '#title' => $this->t('Named secret scopes'),
+      '#default_value' => implode("\n", $scope_lines),
+      '#description' => $this->t('One secret id per line: <code>opaque_id: entity_type.field_name, entity_type.other_field</code>. Values for those ids must be injected via <code>$settings["file_gate.secrets"]</code>. A named secret with a value but no (or empty) scope can mint nothing and is reported on the status report. Leave empty if you only use the legacy single secret.'),
+      '#rows' => 5,
+    ];
+
+    $named_rows = [];
+    foreach ($this->secrets->namedSecretIds() as $id) {
+      $fields = $this->secrets->scopeFields($id);
+      $named_rows[] = [
+        $id,
+        $fields === [] ? $this->t('None (unscoped)') : implode(', ', $fields),
+        $this->secrets->isNamedSecretUnscoped($id)
+          ? $this->t('ERROR: value present, no scope')
+          : ($fields === [] ? $this->t('No value in settings') : $this->t('OK')),
+      ];
+    }
+    if ($named_rows !== []) {
+      $form['status']['named'] = [
+        '#type' => 'table',
+        '#header' => [
+          $this->t('Secret id'),
+          $this->t('Scoped fields'),
+          $this->t('Status'),
+        ],
+        '#rows' => $named_rows,
+        '#caption' => $this->t('Named secrets (from settings + scopes)'),
+      ];
+    }
 
     // --- Defaults ------------------------------------------------------------
     $form['ttl'] = [
@@ -197,8 +246,45 @@ final class SettingsForm extends ConfigFormBase {
       ->set('disposition', $form_state->getValue('disposition'))
       ->set('flood_limit', (int) $form_state->getValue('flood_limit'))
       ->set('flood_window', (int) $form_state->getValue('flood_window'))
+      ->set('secret_scopes', $this->parseSecretScopes((string) $form_state->getValue('secret_scopes_text')))
       ->save();
     parent::submitForm($form, $form_state);
+  }
+
+  /**
+   * Parses the scopes textarea into secret_id => field keys.
+   *
+   * @param string $text
+   *   Lines of "id: field.a, field.b".
+   *
+   * @return array<string, list<string>>
+   *   Scope map.
+   */
+  private function parseSecretScopes(string $text): array {
+    $scopes = [];
+    foreach (preg_split('/\R/', $text) ?: [] as $line) {
+      $line = trim($line);
+      if ($line === '' || !str_contains($line, ':')) {
+        continue;
+      }
+      [$id, $rest] = explode(':', $line, 2);
+      $id = trim($id);
+      if ($id === '') {
+        continue;
+      }
+      $fields = [];
+      foreach (explode(',', $rest) as $field) {
+        $field = trim($field);
+        if ($field !== '') {
+          $fields[] = $field;
+        }
+      }
+      $fields = array_values(array_unique($fields));
+      sort($fields);
+      $scopes[$id] = $fields;
+    }
+    ksort($scopes);
+    return $scopes;
   }
 
   /**

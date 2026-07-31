@@ -53,16 +53,33 @@ function file_gate_requirements(string $phase): array {
     $offenders[] = $storage->id() . ' (' . (string) $settings['uri_scheme'] . ')';
   }
 
-  if ($offenders === []) {
-    return $requirements;
+  if ($offenders !== []) {
+    $requirements['file_gate_public_gated_fields'] = [
+      'title' => t('File Gate: gated fields are not on the private file system'),
+      'value' => t('@list', ['@list' => implode(', ', $offenders)]),
+      'severity' => REQUIREMENT_ERROR,
+      'description' => t('These fields are marked as gated but store files publicly, so the gate never runs and the files are readable by anyone with the URL. The configuration says they are protected and they are not. Change the field to the private file system — note that existing files are not moved by that change, so they must be re-uploaded or migrated before the gate covers them.'),
+    ];
   }
 
-  $requirements['file_gate_public_gated_fields'] = [
-    'title' => t('File Gate: gated fields are not on the private file system'),
-    'value' => t('@list', ['@list' => implode(', ', $offenders)]),
-    'severity' => REQUIREMENT_ERROR,
-    'description' => t('These fields are marked as gated but store files publicly, so the gate never runs and the files are readable by anyone with the URL. The configuration says they are protected and they are not. Change the field to the private file system — note that existing files are not moved by that change, so they must be re-uploaded or migrated before the gate covers them.'),
-  ];
+  // Named secrets with material but no field scope can authenticate and still
+  // mint nothing — surface that as ERROR so it is not a silent dead credential.
+  /** @var \Drupal\file_gate\SecretRegistryInterface $secrets */
+  $secrets = \Drupal::service('file_gate.secret_registry');
+  $unscoped = [];
+  foreach ($secrets->namedSecretIds() as $id) {
+    if ($secrets->isNamedSecretUnscoped($id)) {
+      $unscoped[] = $id;
+    }
+  }
+  if ($unscoped !== []) {
+    $requirements['file_gate_unscoped_named_secrets'] = [
+      'title' => t('File Gate: named secrets with no field scope'),
+      'value' => t('@list', ['@list' => implode(', ', $unscoped)]),
+      'severity' => REQUIREMENT_ERROR,
+      'description' => t('These secret ids have values in <code>$settings["file_gate.secrets"]</code> but no (or empty) entry under <code>secret_scopes</code>. A named secret with no scope can mint nothing (fail closed). Add field storage keys (entity_type.field_name) for each id, or remove the unused secret. The legacy <code>download_secret</code> without a key id remains whole-corpus for older installs.'),
+    ];
+  }
 
   return $requirements;
 }

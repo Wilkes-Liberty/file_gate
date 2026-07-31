@@ -10,6 +10,7 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\file_gate\GrantLockTrait;
+use Drupal\file_gate\SecretRegistryInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -56,6 +57,8 @@ final class RevokeController implements ContainerInjectionInterface {
    *   The File Gate logger channel.
    * @param \Drupal\Core\Lock\LockBackendInterface $lock
    *   The lock backend (serializes revocation against redemption).
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   Secret registry.
    */
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
@@ -63,6 +66,7 @@ final class RevokeController implements ContainerInjectionInterface {
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
     private readonly LoggerInterface $logger,
     private readonly LockBackendInterface $lock,
+    private readonly SecretRegistryInterface $secrets,
   ) {}
 
   /**
@@ -75,6 +79,7 @@ final class RevokeController implements ContainerInjectionInterface {
       $container->get('keyvalue.expirable'),
       $container->get('logger.channel.file_gate'),
       $container->get('lock'),
+      $container->get('file_gate.secret_registry'),
     );
   }
 
@@ -94,7 +99,16 @@ final class RevokeController implements ContainerInjectionInterface {
   public function revoke(Request $request): Response {
     // Authenticate the server-to-server caller (fails closed, constant-time,
     // flood-limited). Returns an error response to send as-is, or NULL.
-    $denied = $this->authenticateSharedSecret($request, $this->configFactory, $this->flood, $this->logger, 'file_gate.revoke');
+    $config = $this->configFactory->get('file_gate.settings');
+    $denied = $this->authenticateSharedSecret(
+      $request,
+      $this->secrets,
+      $this->flood,
+      $this->logger,
+      'file_gate.revoke',
+      (int) ($config->get('flood_limit') ?: 50),
+      (int) ($config->get('flood_window') ?: 60),
+    );
     if ($denied !== NULL) {
       return $denied;
     }

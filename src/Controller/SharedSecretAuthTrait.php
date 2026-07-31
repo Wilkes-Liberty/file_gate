@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate\Controller;
 
-use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Flood\FloodInterface;
+use Drupal\file_gate\ActiveSecret;
+use Drupal\file_gate\SecretRegistryInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -14,12 +15,9 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Shared-secret authentication for File Gate's server-to-server endpoints.
  *
- * The mint and revoke endpoints are both called server-to-server by a trusted
- * back end and authenticate the caller with the same shared secret (the one
- * that doubles as the HMAC signing key). This trait single-sources that
- * security-sensitive decision so the two controllers cannot drift: it fails
- * closed when no secret is configured, compares the presented secret in
- * constant time, and applies the per-IP flood limit.
+ * Mint, revoke, and OTP authenticate with the same credential resolution:
+ * legacy download_secret (whole corpus) or a named secret (field-scoped).
+ * On success the request attribute file_gate.secret_id is set (NULL = legacy).
  */
 trait SharedSecretAuthTrait {
 
@@ -38,46 +36,52 @@ trait SharedSecretAuthTrait {
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The incoming request.
-   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
-   *   The config factory (reads the secret and flood settings).
+   * @param \Drupal\file_gate\SecretRegistryInterface $secrets
+   *   The secret registry.
    * @param \Drupal\Core\Flood\FloodInterface $flood
    *   The flood service.
    * @param \Psr\Log\LoggerInterface $logger
-   *   The File Gate logger channel (records fail-closed and auth failures).
+   *   The File Gate logger channel.
    * @param string $flood_event
-   *   The flood event name that scopes the rate limit (and labels the log
-   *   entries) for this endpoint, e.g. "file_gate.mint".
+   *   Flood event name, e.g. "file_gate.mint".
+   * @param int $flood_limit
+   *   Successful-request flood limit (from config).
+   * @param int $flood_window
+   *   Successful-request flood window in seconds.
+   * @param \Drupal\file_gate\ActiveSecret|null $active_secret
+   *   Optional request-cycle holder for the secret id (for mint signing).
    *
    * @return \Symfony\Component\HttpFoundation\JsonResponse|null
-   *   An error response to return as-is (503 when no secret is configured, 401
-   *   for a bad/absent secret, 429 when rate limited), or NULL when the caller
-   *   is authenticated and within the flood limit.
+   *   Error response, or NULL when authenticated (secret id on the request).
    */
-  protected function authenticateSharedSecret(Request $request, ConfigFactoryInterface $config_factory, FloodInterface $flood, LoggerInterface $logger, string $flood_event): ?JsonResponse {
-    $config = $config_factory->get('file_gate.settings');
-    $secret = (string) $config->get('download_secret');
+  protected function authenticateSharedSecret(
+    Request $request,
+    SecretRegistryInterface $secrets,
+    FloodInterface $flood,
+    LoggerInterface $logger,
+    string $flood_event,
+    int $flood_limit = 50,
+    int $flood_window = 60,
+    ?ActiveSecret $active_secret = NULL,
+  ): ?JsonResponse {
     $ip = $request->getClientIp() ?? '0.0.0.0';
 
-    // Fail closed: with no secret nothing can be authenticated or signed, so
-    // refuse outright rather than accept an unverifiable caller.
-    if ($secret === '') {
+    // Fail closed: with no secret material nothing can be authenticated.
+    if (!$secrets->hasAnySecret()) {
       $logger->warning('@event refused: no File Gate secret is configured (failing closed).', [
         '@event' => $flood_event,
       ]);
       return new JsonResponse(['error' => 'File Gate is not configured.'], Response::HTTP_SERVICE_UNAVAILABLE);
     }
 
-    // Authenticate the caller (constant-time comparison).
-    $provided = $this->providedSecret($request);
-    if ($provided === NULL || !hash_equals($secret, $provided)) {
+    $credentials = $secrets->resolveCredentials($request);
+    if ($credentials === NULL) {
       $failed_auth_event = $flood_event . '.auth_fail';
       if (!$flood->isAllowed($failed_auth_event, self::FAILED_AUTH_LIMIT, self::FAILED_AUTH_WINDOW, $ip)) {
         return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
       }
       $flood->register($failed_auth_event, self::FAILED_AUTH_WINDOW, $ip);
 
-      // Security event: someone hit a server-to-server endpoint with a
-      // bad/absent secret.
       $logger->warning('@event authentication failed from @ip.', [
         '@event' => $flood_event,
         '@ip' => $ip,
@@ -87,40 +91,19 @@ trait SharedSecretAuthTrait {
       ]);
     }
 
-    // Basic abuse resistance on a publicly reachable path.
-    $limit = (int) ($config->get('flood_limit') ?: 50);
-    $window = (int) ($config->get('flood_window') ?: 60);
+    // Stash the secret id for mint scope checks and HMAC key selection.
+    // NULL = legacy download_secret (unscoped whole-corpus credential).
+    $request->attributes->set(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID, $credentials['id']);
+    $active_secret?->set($credentials['id']);
+
+    $limit = $flood_limit > 0 ? $flood_limit : 50;
+    $window = $flood_window > 0 ? $flood_window : 60;
     if (!$flood->isAllowed($flood_event, $limit, $window, $ip)) {
       return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
     }
     $flood->register($flood_event, $window, $ip);
 
     return NULL;
-  }
-
-  /**
-   * Extracts the caller-provided secret from the request.
-   *
-   * Accepts either an HTTP Basic Authorization password (so the secret stays
-   * out of the URL and access logs) or an X-File-Gate-Secret header.
-   *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The request.
-   *
-   * @return string|null
-   *   The provided secret, or NULL if none was supplied.
-   */
-  protected function providedSecret(Request $request): ?string {
-    $authorization = (string) $request->headers->get('Authorization', '');
-    if (str_starts_with($authorization, 'Basic ')) {
-      $decoded = base64_decode(substr($authorization, 6), TRUE);
-      if ($decoded !== FALSE && str_contains($decoded, ':')) {
-        [, $password] = explode(':', $decoded, 2);
-        return $password;
-      }
-    }
-    $header = $request->headers->get('X-File-Gate-Secret');
-    return $header !== NULL ? (string) $header : NULL;
   }
 
 }

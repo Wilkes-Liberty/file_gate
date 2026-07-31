@@ -95,18 +95,40 @@ drush en file_gate
 
 ### 1. Provide the signing secret (required)
 
-The secret is **never** stored in configuration. Inject it from the environment
-in `settings.php`:
+Secrets are **never** stored in exported configuration. While none are set the
+module fails closed.
+
+**Legacy (single secret, whole gated corpus)** — fine for one trusted mint
+backend:
 
 ```php
 $config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');
 ```
 
-Generate a strong random value (e.g. `openssl rand -hex 32`) and set
-`DRUPAL_FILE_GATE_SECRET` in your environment. While it is empty the module fails
-closed. This secret doubles as the mint endpoint's credential; keep it off the
-public network and never expose it to the browser (only the derived signature is
-ever public).
+**Named secrets (field-scoped)** — use when different front ends must not mint
+each other's files. Values in `$settings` (not `$config`); scopes in config
+(admin form or export):
+
+```php
+// settings.php — values never export.
+$settings['file_gate.secrets'] = [
+  's_public' => getenv('FILE_GATE_SECRET_PUBLIC'),
+  's_nda' => getenv('FILE_GATE_SECRET_NDA'),
+];
+// Scopes (exportable) — or set under Admin → File Gate "Named secret scopes":
+//   s_public: node.field_whitepaper
+//   s_nda: node.field_nda_pdf
+$config['file_gate.settings']['secret_scopes'] = [
+  's_public' => ['node.field_whitepaper'],
+  's_nda' => ['node.field_nda_pdf'],
+];
+```
+
+Mint with Basic auth **username = secret id**, **password = value**. Minted URLs
+include `k=<id>` so redemption uses the same key. Scope is checked at mint and
+again at download (narrowing a secret revokes outstanding grants). A named
+secret with a value but no scope can mint nothing and is reported on the status
+report. Keep secrets off the public network; only signatures reach the browser.
 
 ### 2. Gate a field
 
