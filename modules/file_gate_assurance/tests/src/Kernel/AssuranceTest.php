@@ -707,6 +707,24 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
+   * Query login_url is ignored; only field step_up_login_url is trusted.
+   */
+  public function testStepUpIgnoresQueryLoginUrl(): void {
+    $this->configure(['step_up_login_url' => 'https://idp.example.test/login']);
+    $file = $this->createFile('stepup.pdf');
+    $query = $this->mintViaController($file);
+    // Attacker-controlled query param must not become the redirect target.
+    $query['login_url'] = 'https://evil.example/phish';
+    $request = Request::create('/api/file-gate/assurance/step-up', 'GET', $query);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $html = (string) $response->getContent();
+    $this->assertStringNotContainsString('evil.example', $html);
+    // loginUrl is json_encode'd into the page (slashes may be escaped).
+    $this->assertStringContainsString('idp.example.test', $html);
+    $this->assertMatchesRegularExpression('#loginUrl\s*=\s*"[^"]*idp\.example\.test[^"]*"#', $html);
+  }
+
+  /**
    * Creates a private file referenced by an entity_test via the gated field.
    *
    * @param string $filename

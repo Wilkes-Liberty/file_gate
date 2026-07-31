@@ -89,10 +89,18 @@ final class MethodSettingsFormTest extends KernelTestBase {
   }
 
   /**
-   * A method with no settings exposes an empty form.
+   * Authenticated exposes an optional role allowlist.
    */
-  public function testAuthenticatedHasNoSettings(): void {
-    $this->assertSame([], $this->method('authenticated')->fieldSettingsForm([]));
+  public function testAuthenticatedRoleAllowlistSettings(): void {
+    $form = $this->method('authenticated')->fieldSettingsForm([]);
+    $this->assertArrayHasKey('roles', $form);
+    $this->assertSame('textarea', $form['roles']['#type']);
+    $this->assertSame('', $form['roles']['#default_value']);
+
+    $settings = $this->method('authenticated')->fieldSettingsSubmit([
+      'roles' => "member\npremium",
+    ]);
+    $this->assertSame(['member', 'premium'], $settings['roles']);
   }
 
 }

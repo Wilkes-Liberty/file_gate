@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Drupal\file_gate\Plugin\GateMethod;
 
 use Drupal\Component\Datetime\TimeInterface;
-use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\GateMethodBase;
+use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -27,9 +27,10 @@ use Symfony\Component\HttpFoundation\Request;
  *
  * A live-decision method: mint() returns NULL (there is no pre-issued signed
  * grant); the redemption carries "email" and "otp" query parameters instead.
- * Codes are stored as an HMAC-SHA256 keyed by the File Gate secret; brute force
- * is bounded by the TTL, the per-code attempt cap (lockout), and the send
- * endpoint's rate limiting.
+ * Codes are stored as an HMAC-SHA256 keyed by the mint credential's secret
+ * material (named secret or legacy download_secret; dual-key rotation
+ * materials are accepted at redeem). Brute force is bounded by the TTL, the
+ * per-code attempt cap (lockout), and the send endpoint's rate limiting.
  *
  * SECURITY: the passcode is delivered by e-mail, which is not a confidential
  * channel — it proves *control* of the address, not that the message is secret.
@@ -78,12 +79,15 @@ final class Otp extends GateMethodBase {
   /**
    * The config factory.
    */
-  protected ConfigFactoryInterface $configFactory;
-
   /**
    * The time service.
    */
   protected TimeInterface $time;
+
+  /**
+   * Secret registry (HMAC materials for named + previous keys).
+   */
+  protected SecretRegistryInterface $secrets;
 
   /**
    * {@inheritdoc}
@@ -91,8 +95,8 @@ final class Otp extends GateMethodBase {
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
     $instance = new static($configuration, $plugin_id, $plugin_definition);
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
-    $instance->configFactory = $container->get('config.factory');
     $instance->time = $container->get('datetime.time');
+    $instance->secrets = $container->get('file_gate.secret_registry');
     return $instance;
   }
 
@@ -125,11 +129,25 @@ final class Otp extends GateMethodBase {
       return FALSE;
     }
 
-    $secret = (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
-    if (hash_equals((string) ($record['hash'] ?? ''), self::codeHash($code, $secret))) {
-      // Correct: consume the code (single use).
-      $store->delete($key);
-      return TRUE;
+    // Prefer the secret id stored at issue; fall back to legacy for rows minted
+    // before GH #39. Try current + previous materials (rotation grace).
+    $secret_id = NULL;
+    if (array_key_exists('k', $record)) {
+      $raw_k = $record['k'];
+      $secret_id = (is_string($raw_k) && $raw_k !== '') ? $raw_k : NULL;
+    }
+    $materials = $this->secrets->validationMaterials($secret_id);
+    // Pre-#39 rows had no k= and used only download_secret.
+    if ($materials === [] && !array_key_exists('k', $record)) {
+      $materials = $this->secrets->validationMaterials(NULL);
+    }
+    $stored = (string) ($record['hash'] ?? '');
+    foreach ($materials as $secret) {
+      if ($secret !== '' && hash_equals($stored, self::codeHash($code, $secret))) {
+        // Correct: consume the code (single use).
+        $store->delete($key);
+        return TRUE;
+      }
     }
 
     // Wrong code: count the attempt against the cap, preserving the window.

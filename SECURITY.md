@@ -20,18 +20,21 @@ if you have one.
 File Gate is only as strong as its deployment. Operators must:
 
 - **Keep the signing secret in the environment**, never in exported
-  configuration, and rotate it if it may have leaked. Rotating the secret
-  immediately invalidates every outstanding signed URL.
+  configuration, and rotate carefully. Prefer dual-key grace
+  (`file_gate.previous_secrets` / `previous_download_secrets`) so outstanding
+  grants stay valid; dropping previous without waiting for TTL mass-invalidates
+  links. See `docs/SECRET_ROTATION.md`.
 - **Keep the mint endpoint on a trusted network.** It authenticates the caller
   with the shared secret but does not re-verify the front end's own gate — the
-  secret-holder is trusted to have gated the request. Restrict the endpoint to
+  secret-holder is trusted to have gated the request (unless A2 mint-time OIDC
+  or require_acting_account is enabled). Restrict mint/revoke/OTP to
   server-to-server traffic and keep flood limiting enabled.
 - **Store gated files in `private://`.** Public files are served by the web
   server/CDN and cannot be gated; enabling gating on a field forces and locks the
   private scheme to prevent this mistake.
-- **Understand that usage limits are approximate.** The redemption counter is a
-  fast key/value store, not a lock; a tight race could permit one extra
-  redemption. Do not rely on it for hard licensing.
+- **Usage limits are locked.** Redemption counters and token consume use
+  `GrantLockTrait` so concurrent redeem/revoke cannot double-spend or resurrect
+  a revoked row under normal contention (fail closed on lock failure).
 
 ## What the module guarantees
 

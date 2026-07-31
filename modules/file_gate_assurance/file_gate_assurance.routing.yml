@@ -28,6 +28,21 @@ file_gate_assurance.bridge:
   options:
     no_cache: TRUE
 
+# User-facing WebAuthn enrollment UI (native RP).
+file_gate_assurance.webauthn_enrollment:
+  path: '/user/{user}/file-gate-webauthn'
+  defaults:
+    _form: '\Drupal\file_gate_assurance\Form\WebAuthnEnrollmentForm'
+    _title: 'File Gate security keys'
+  requirements:
+    user: \d+
+    _custom_access: '\Drupal\file_gate_assurance\Form\WebAuthnEnrollmentForm::access'
+  options:
+    parameters:
+      user:
+        type: entity:user
+    no_cache: TRUE
+
 # --- Native WebAuthn (Phase B) ------------------------------------------------
 
 file_gate_assurance.webauthn_register_options:

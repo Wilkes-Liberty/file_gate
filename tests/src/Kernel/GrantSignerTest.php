@@ -158,6 +158,22 @@ final class GrantSignerTest extends KernelTestBase {
   }
 
   /**
+   * Previous secret materials validate during dual-key rotation.
+   */
+  public function testPreviousSecretValidates(): void {
+    $this->setSecret('new-key-material');
+    $this->setSetting('file_gate.previous_download_secrets', ['old-key-material']);
+    // Sign with old material by temporarily setting it current.
+    $this->setSecret('old-key-material');
+    $claims = ['exp' => $this->now() + 100];
+    $sig = $this->signer()->sign(self::RESOURCE, $claims);
+    // Rotate to new key; previous still validates.
+    $this->setSecret('new-key-material');
+    $this->setSetting('file_gate.previous_download_secrets', ['old-key-material']);
+    $this->assertTrue($this->signer()->validate(self::RESOURCE, $claims, $sig));
+  }
+
+  /**
    * Sign() refuses when no secret is configured.
    */
   public function testSignThrowsWithoutSecret(): void {

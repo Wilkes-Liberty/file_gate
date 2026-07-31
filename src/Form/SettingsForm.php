@@ -195,6 +195,33 @@ final class SettingsForm extends ConfigFormBase {
       '#description' => $this->t('Length of the rate-limit window.'),
     ];
 
+    $form['download_flood'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Download denial rate limiting'),
+      '#open' => FALSE,
+      '#description' => $this->t('Throttles failed grant attempts on the public download endpoint per client IP. Set requests to 0 to disable.'),
+    ];
+    $form['download_flood']['download_flood_limit'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Denied requests'),
+      '#min' => 0,
+      '#default_value' => (int) ($config->get('download_flood_limit') ?? 120),
+    ];
+    $form['download_flood']['download_flood_window'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Window'),
+      '#field_suffix' => $this->t('seconds'),
+      '#min' => 1,
+      '#default_value' => (int) ($config->get('download_flood_window') ?: 60),
+    ];
+
+    $form['require_acting_account'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Require acting account on every mint'),
+      '#default_value' => !empty($config->get('require_acting_account')),
+      '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>. Can also be required per field via method settings. See docs/API.md.'),
+    ];
+
     // --- Available gate methods ----------------------------------------------
     $method_items = [];
     foreach ($this->gateMethodManager->getDefinitions() as $id => $definition) {
@@ -331,6 +358,9 @@ final class SettingsForm extends ConfigFormBase {
       ->set('disposition', $form_state->getValue('disposition'))
       ->set('flood_limit', (int) $form_state->getValue('flood_limit'))
       ->set('flood_window', (int) $form_state->getValue('flood_window'))
+      ->set('download_flood_limit', (int) $form_state->getValue('download_flood_limit'))
+      ->set('download_flood_window', (int) $form_state->getValue('download_flood_window'))
+      ->set('require_acting_account', (bool) $form_state->getValue('require_acting_account'))
       ->set('secret_scopes', $this->parseSecretScopes((string) $form_state->getValue('secret_scopes_text')))
       ->save();
     parent::submitForm($form, $form_state);

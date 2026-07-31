@@ -21,18 +21,21 @@ must present the shared secret; never call this from a browser.
 |---|---|---|
 | `media` | string | A media entity UUID (requires the Media module). Its source file is used; the media must be published. |
 | `file` | string | A managed file UUID (media-agnostic). |
-| `subject` | string | Optional. A caller-asserted subject the grant is bound to (used by the `assurance` method for per-user binding); only its hash is stored/signed. |
-| `account` | string | Optional. Acting user UUID. When set, mint fails closed unless that user may download the file (and view host entities). Prefer over `uid`. |
+| `subject` | string | Optional. Caller-asserted subject (assurance binds `sh=`). With A2, may be filled from the verified token `sub`. |
+| `account` | string | Optional (required when global `require_acting_account` or field `require_identity_mint`). Acting user UUID. Mint fails closed unless that user may download the file (and view host entities). Prefer over `uid`. |
 | `uid` | int | Optional. Acting user id (same check as `account`). |
+| `field` | string | Field storage id (`entity_type.field_name`). **Required** when the file is gated by more than one field; selects which gate method/settings apply. |
+
+For **assurance A2** (`verify_oidc_at_mint`): also send `Authorization: Bearer|DPoP` with a token whose `aud` is the field audience (token exchange / IdP mapper).
 
 **Responses:**
 
 | Status | Meaning |
 |---|---|
-| `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int> }`. `path` is root-relative — prepend your public origin. Named secrets add `k=<id>` to the query. |
-| `400` | Invalid JSON, or neither `file` nor `media` supplied, or the gate method does not support minted URLs. |
-| `401` | Missing or wrong secret. |
-| `403` | Authenticated but this credential's field scope does not include the file. |
+| `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int>, "field", "method" }`. `path` is root-relative — prepend your public origin. Named secrets add `k=<id>` to the query. |
+| `400` | Invalid JSON, multi-field without `field`, neither `file` nor `media`, or method does not support minted URLs. |
+| `401` | Missing or wrong secret (or missing A2 token when required). |
+| `403` | Credential scope, identity, or A2 acr/token check failed. |
 | `404` | Unknown file/media. |
 | `409` | The host media is unpublished. |
 | `422` | The file is not gated, or the media has no file. |
@@ -62,16 +65,26 @@ The `referrer_lock` method carries the same `exp`/`sig` as `signed_url` and adds
 no query parameter — it reads the request's `Origin` header (falling back to the
 origin of `Referer`) and denies (`403`) when it is not in the field allowlist.
 
-The `assurance` method (File Gate Assurance submodule) additionally reads an OIDC
-token from the `Authorization` header (`Bearer <token>` or, DPoP-bound, `DPoP
-<token>`) and — when DPoP is enabled — a `DPoP: <proof>` header, verifying them
-against the field's configured issuer/audience/`acr` before delivery. It binds an
-`aal` claim into the signed URL (so the level cannot be downgraded). Redeem via a
-JavaScript `fetch`, not a plain navigation, so the headers can be set.
+The `assurance` method (File Gate Assurance submodule): **primary path is plain
+link** — open the signed URL, complete step-up (OIDC or WebAuthn), receive
+HttpOnly bridge cookie `FG_AB`, re-GET the same URL. See
+`docs/assurance-redeem.md`. API clients may still use `Authorization: Bearer|DPoP`
+on the bridge POST. Do not put `login_url` in the step-up query; configure
+**Step-up login URL** on the field only.
 
 The `otp` method reads `email` and `otp` query parameters (no `exp`/`sig`) and
 verifies the passcode against the one issued for that (file, email) — single use,
-within its TTL, under the attempt cap.
+within its TTL, under the attempt cap. OTP HMAC uses the **authenticated mint
+secret** (named or legacy), not only legacy `download_secret`.
+
+### `POST /api/file-gate/revoke`
+
+Server-to-server. Body:
+
+| Body | Effect |
+|------|--------|
+| `{"token":"<plaintext>"}` | Deletes a minted `token`-method row (field-scoped when field known). |
+| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent (optional ttl seconds). |
 
 ### `POST /api/file-gate/otp`
 

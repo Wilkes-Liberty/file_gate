@@ -190,15 +190,23 @@ final class SessionBridge {
     if ($body === '' || $mac === '') {
       return NULL;
     }
-    $secret = $this->secrets->secretMaterial($secret_id);
-    if ($secret === '') {
-      $secret = $this->secrets->secretMaterial(NULL);
+    // Accept current + previous materials (secret rotation grace).
+    $materials = $this->secrets->validationMaterials($secret_id);
+    if ($materials === [] && $secret_id !== NULL) {
+      $materials = $this->secrets->validationMaterials(NULL);
     }
-    if ($secret === '') {
+    if ($materials === []) {
       return NULL;
     }
-    $expected = $this->b64(hash_hmac('sha256', $body, $secret, TRUE));
-    if (!hash_equals($expected, $mac)) {
+    $mac_ok = FALSE;
+    foreach ($materials as $secret) {
+      $expected = $this->b64(hash_hmac('sha256', $body, $secret, TRUE));
+      if (hash_equals($expected, $mac)) {
+        $mac_ok = TRUE;
+        break;
+      }
+    }
+    if (!$mac_ok) {
       return NULL;
     }
     try {

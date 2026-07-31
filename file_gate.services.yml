@@ -19,6 +19,13 @@ services:
       - '@module_handler'
       - '@datetime.time'
 
+  # Optional durable audit (audit_chain when installed). Soft dependency.
+  file_gate.audit:
+    class: Drupal\file_gate\Service\FileGateAudit
+    arguments:
+      - '@?audit_chain.logger'
+      - '@logger.channel.file_gate'
+
   # Target-agnostic HMAC grant signer. Deliberately knows nothing about files:
   # it signs/validates an opaque "resource id" string plus an expiry, so the same
   # signing core can back a future content_gate / entity_gate without change.

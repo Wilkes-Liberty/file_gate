@@ -30,6 +30,15 @@ file_gate.settings:
     flood_window:
       type: integer
       label: 'Mint flood window (seconds)'
+    download_flood_limit:
+      type: integer
+      label: 'Download denial flood limit (per IP; 0 disables)'
+    download_flood_window:
+      type: integer
+      label: 'Download denial flood window (seconds)'
+    require_acting_account:
+      type: boolean
+      label: 'Require acting account (account/uid) on every mint'
     introspection_client_secret:
       type: string
       label: 'OIDC introspection client secret'

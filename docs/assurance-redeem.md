@@ -59,8 +59,26 @@ and a JSON body listing `step_up` and `bridge` URLs (RFC 9470-style).
    - `window.fileGateAccessToken = accessToken`
    and optionally `window.fileGateDpopProof` when DPoP is required.
 4. Optional field setting **Step-up login URL**: the step-up page redirects
-   there with `return_to=` when no token is present.
+   there with `return_to=` when no token is present. Absolute **http(s)** only.
+   The query parameter `login_url` is **ignored** (open-redirect defense).
 5. Open the minted path as a normal link.
+
+## Mint-time OIDC (A2)
+
+Optional field setting **Verify OIDC token at mint**. When enabled, mint must
+present a Bearer/DPoP token with this field's `audience` and an accepted `acr`
+(empty acr list denies). Use RFC 8693 token exchange or an IdP audience mapper
+so the token is File-Gate-audienced. The verified `sub` can bind grant `sh=` when
+body `subject` is omitted. A1 (trust secret-holder only) remains the default.
+
+## Native WebAuthn enrollment
+
+Register keys at **Account → File Gate keys** (`/user/{uid}/file-gate-webauthn`)
+with permission *Register File Gate WebAuthn credentials*. User handle defaults
+to the Drupal **uid** string. Mint with `"subject": "<uid>"` (or match field
+`webauthn_user_handle`). JSON APIs remain available for headless enrollment.
+
+Manual hardware checklist: `docs/E2E-ASSURANCE.md`.
 
 ## Minimal SPA redeem (JSON clients)
 
@@ -90,8 +108,18 @@ async function redeem(downloadUrl, getAccessToken) {
 | Stack | Notes |
 |-------|--------|
 | **login.gov / agency ICAM** | Map `required_acr` to the ICAM AAL3 URI your IdP emits; PIV often via IdP or edge `client_cert`. |
-| **Keycloak / Okta / Entra** | Configure step-up ACR for WebAuthn or smart card; copy exact `acr` strings into the field. |
+| **Keycloak / Okta / Entra** | **Preferred enterprise path:** enroll YubiKey/PIV at the IdP; File Gate only verifies OIDC. Configure step-up ACR; copy exact `acr` strings into the field. See `KEYCLOAK-UNIFIED-AUTH.md`. |
 | **Edge CAC only** | Use `verify_at: client_cert` instead of redeem; plain link works without bridge. |
+
+## IdP-first vs native WebAuthn
+
+| Path | When to use |
+|------|-------------|
+| **IdP WebAuthn/PIV + `verify_at: redeem`** | Site already has SSO (Keycloak, etc.). One key for login and downloads. **Recommended.** |
+| **Native `verify_at: webauthn`** | No IdP WebAuthn, or a resource-only RP. Separate enrollment at `/user/{uid}/file-gate-webauthn`. |
+
+Do not enroll the same operator key in both places unless you intentionally want
+two independent RPs.
 
 ## Native WebAuthn mode (`verify_at: webauthn`)
 
@@ -115,6 +143,8 @@ Requires `composer require web-auth/webauthn-lib`.
 
 ## Related
 
+- **Program plan & ticket index:** `docs/PLAN.md`
+- **IdP-first architecture:** `docs/KEYCLOAK-UNIFIED-AUTH.md`
 - Design: `docs/design/piv-cac-webauthn.md`
 - Module: `modules/file_gate_assurance/README.md`
 - Issues: GitHub #33, d.o #3612909

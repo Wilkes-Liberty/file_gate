@@ -1,0 +1,5 @@
+file_gate_assurance.webauthn_enrollment:
+  route_name: file_gate_assurance.webauthn_enrollment
+  base_route: entity.user.canonical
+  title: 'File Gate keys'
+  weight: 20

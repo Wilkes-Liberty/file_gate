@@ -83,3 +83,20 @@ function file_gate_requirements(string $phase): array {
 
   return $requirements;
 }
+
+/**
+ * Add download flood + require_acting_account defaults.
+ */
+function file_gate_update_10001(): void {
+  $config = \Drupal::configFactory()->getEditable('file_gate.settings');
+  if ($config->get('download_flood_limit') === NULL) {
+    $config->set('download_flood_limit', 120);
+  }
+  if ($config->get('download_flood_window') === NULL) {
+    $config->set('download_flood_window', 60);
+  }
+  if ($config->get('require_acting_account') === NULL) {
+    $config->set('require_acting_account', FALSE);
+  }
+  $config->save();
+}

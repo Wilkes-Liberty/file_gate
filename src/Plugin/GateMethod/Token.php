@@ -206,9 +206,18 @@ final class Token extends GateMethodBase {
     // unconditionally — including unlimited-use tokens — so every token is
     // revocable.
     $max_uses = (int) ($this->configuration['max_uses'] ?? 0);
+    $secret_id = $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
+    // Store field + secret id so revoke can enforce field scope (cross-tenant
+    // revoke defense in multi-secret installs).
+    $gate = $this->resolver->getGateForFile($file);
     $this->tokenStore()->setWithExpire(
       $token_hash,
-      ['uses' => 0, 'max' => $max_uses],
+      [
+        'uses' => 0,
+        'max' => $max_uses,
+        'field' => $gate['field'] ?? NULL,
+        'k' => $secret_id,
+      ],
       max(1, $exp - $this->time->getRequestTime()),
     );
 
@@ -219,7 +228,6 @@ final class Token extends GateMethodBase {
       GrantSignerInterface::CLAIM_EXPIRES => $exp,
       self::CLAIM_TOKEN_HASH => $token_hash,
     ];
-    $secret_id = $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
     $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
 
     // Only the plaintext token travels in the URL; grants() recomputes its

@@ -14,9 +14,11 @@ use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
 use Drupal\Core\Mail\MailManagerInterface;
 use Drupal\file\FileInterface;
+use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\file_gate\Service\FileGateAudit;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -72,7 +74,11 @@ final class OtpController implements ContainerInjectionInterface {
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
    * @param \Drupal\file_gate\SecretRegistryInterface $secrets
-   *   Secret registry (auth).
+   *   Secret registry (auth + HMAC material).
+   * @param \Drupal\file_gate\ActiveSecret $activeSecret
+   *   Request-cycle secret id set by shared-secret auth.
+   * @param \Drupal\file_gate\Service\FileGateAudit $audit
+   *   Durable audit logger (audit_chain when enabled).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -86,6 +92,8 @@ final class OtpController implements ContainerInjectionInterface {
     private readonly TimeInterface $time,
     private readonly LoggerInterface $logger,
     private readonly SecretRegistryInterface $secrets,
+    private readonly ActiveSecret $activeSecret,
+    private readonly FileGateAudit $audit,
   ) {}
 
   /**
@@ -104,6 +112,8 @@ final class OtpController implements ContainerInjectionInterface {
       $container->get('datetime.time'),
       $container->get('logger.channel.file_gate'),
       $container->get('file_gate.secret_registry'),
+      $container->get('file_gate.active_secret'),
+      $container->get('file_gate.audit'),
     );
   }
 
@@ -120,6 +130,7 @@ final class OtpController implements ContainerInjectionInterface {
    */
   public function request(Request $request): Response {
     $config = $this->configFactory->get('file_gate.settings');
+    $this->activeSecret->clear();
     $denied = $this->authenticateSharedSecret(
       $request,
       $this->secrets,
@@ -128,6 +139,7 @@ final class OtpController implements ContainerInjectionInterface {
       'file_gate.otp',
       (int) ($config->get('flood_limit') ?: 50),
       (int) ($config->get('flood_window') ?: 60),
+      $this->activeSecret,
     );
     if ($denied !== NULL) {
       return $denied;
@@ -202,12 +214,26 @@ final class OtpController implements ContainerInjectionInterface {
     for ($i = 0; $i < $length; $i++) {
       $code .= random_int(0, 9);
     }
-    $secret = (string) $this->configFactory->get('file_gate.settings')->get('download_secret');
+    // Hash with the authenticated mint secret (named or legacy), not only the
+    // legacy download_secret — named-only deploys otherwise store unkeyed
+    // digests (GH #39 / d.o #3614253).
+    $secret_id = $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
+    $secret = $this->secrets->secretMaterial($secret_id);
+    if ($secret === '') {
+      // Fail closed: auth already required a secret, but material vanished.
+      $this->logger->error('OTP issue refused: no secret material for credential @id.', [
+        '@id' => $secret_id ?? 'legacy',
+      ]);
+      return FALSE;
+    }
 
     $this->keyValueExpirableFactory->get(Otp::STORE_COLLECTION)->setWithExpire(
       Otp::storeKey($file->uuid(), $email),
       [
         'hash' => Otp::codeHash($code, $secret),
+        // Bind the secret id so redeem uses the same material (incl. previous
+        // keys after rotation when validate tries dual materials).
+        'k' => $secret_id,
         'attempts' => 0,
         'max' => $max,
         'exp' => $this->time->getRequestTime() + $ttl,
@@ -230,6 +256,13 @@ final class OtpController implements ContainerInjectionInterface {
 
     // Usage event: a code was issued (never log the code itself).
     $this->logger->info('Issued an OTP for file @uuid.', ['@uuid' => $file->uuid()]);
+    $this->audit->log('otp_issue', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => $file->getFilename() ?? '',
+      'uuid' => $file->uuid(),
+      'secret_id' => $secret_id ?? 'legacy',
+    ]);
     return TRUE;
   }
 

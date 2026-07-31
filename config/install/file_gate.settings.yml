@@ -25,3 +25,9 @@ disposition: 'attachment'
 # Flood protection for the mint endpoint (failed + successful attempts per IP).
 flood_limit: 50
 flood_window: 60
+# Flood protection for failed download grants (per IP). 0 disables.
+download_flood_limit: 120
+download_flood_window: 60
+# When TRUE, every mint must include acting account (uuid or uid). Can also be
+# set per-field via method setting require_identity_mint.
+require_acting_account: false

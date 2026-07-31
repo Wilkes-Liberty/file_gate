@@ -11,7 +11,17 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Default secret registry: legacy env secret plus optional named secrets.
  *
+ * Values live only in settings / env-injected config — never export them.
+ *
+ * Dual-key rotation (grace period for outstanding grants):
+ * - Named: $settings['file_gate.previous_secrets'] = ['id' => 'old_value', …]
+ *   or ['id' => ['old1', 'old2']] for multiple retired values.
+ * - Legacy: $settings['file_gate.previous_download_secrets'] = ['old', …]
+ * Mint/sign always uses the current material; validate tries current then
+ * previous so rotation does not mass-invalidate live links.
+ *
  * @see \Drupal\file_gate\SecretRegistryInterface
+ * @see docs/SECRET_ROTATION.md
  */
 final class SecretRegistry implements SecretRegistryInterface {
 
@@ -84,6 +94,23 @@ final class SecretRegistry implements SecretRegistryInterface {
       return $this->legacySecret();
     }
     return $this->namedSecretValues()[$secret_id] ?? '';
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function validationMaterials(?string $secret_id): array {
+    $out = [];
+    $current = $this->secretMaterial($secret_id);
+    if ($current !== '') {
+      $out[] = $current;
+    }
+    foreach ($this->previousMaterials($secret_id) as $previous) {
+      if ($previous !== '' && !in_array($previous, $out, TRUE)) {
+        $out[] = $previous;
+      }
+    }
+    return $out;
   }
 
   /**
@@ -183,6 +210,49 @@ final class SecretRegistry implements SecretRegistryInterface {
         continue;
       }
       $out[$id] = is_array($fields) ? $fields : [];
+    }
+    return $out;
+  }
+
+  /**
+   * Previous (retired) materials for a secret id.
+   *
+   * @param string|null $secret_id
+   *   NULL for legacy download_secret.
+   *
+   * @return list<string>
+   *   Retired values (may be empty).
+   */
+  private function previousMaterials(?string $secret_id): array {
+    if ($secret_id === NULL || $secret_id === '') {
+      $raw = $this->settings->get('file_gate.previous_download_secrets', []);
+      if (!is_array($raw)) {
+        return [];
+      }
+      $out = [];
+      foreach ($raw as $value) {
+        if (is_scalar($value) && (string) $value !== '') {
+          $out[] = (string) $value;
+        }
+      }
+      return $out;
+    }
+    $raw = $this->settings->get('file_gate.previous_secrets', []);
+    if (!is_array($raw) || !array_key_exists($secret_id, $raw)) {
+      return [];
+    }
+    $entry = $raw[$secret_id];
+    if (is_scalar($entry) && (string) $entry !== '') {
+      return [(string) $entry];
+    }
+    if (!is_array($entry)) {
+      return [];
+    }
+    $out = [];
+    foreach ($entry as $value) {
+      if (is_scalar($value) && (string) $value !== '') {
+        $out[] = (string) $value;
+      }
     }
     return $out;
   }
