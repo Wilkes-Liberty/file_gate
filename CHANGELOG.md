@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-31
+
 ### Security
 - **OTP redeem without query secrets (#43 / d.o #3614266).** Prefer
   `POST /api/file-gate/otp/session` then download with HttpOnly `FG_OTP` cookie.
