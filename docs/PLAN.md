@@ -1,7 +1,7 @@
 # File Gate — program plan & tracking
 
 **Status:** living document (updated 2026-07-31)  
-**Branch with gap-closure code:** `feature/file-gate-gap-closure` (not yet merged)
+**Gap-closure release:** merged to `1.x` as **1.4.0** (2026-07-31)
 
 ---
 
@@ -54,19 +54,19 @@ Implements recommended order from the 2026-07-31 full-module review.
 
 | Item | Status | Trackers |
 |------|--------|----------|
-| #40 Step-up open redirect | **Code done** | GH #40 / d.o #3614254 |
-| #39 OTP named secrets | **Code done** | GH #39 / d.o #3614253 |
-| #38 WebAuthn enrollment UI | **Code done** | GH #38 / d.o #3614251 |
-| #37 Manual E2E checklist | **Docs done** | GH #37 / d.o #3614250 |
-| #36 Mint-time OIDC A2 | **Code done** | GH #36 / d.o #3614249 |
-| Dual-key secret rotation | **Code done** | (this plan; document SECRET_ROTATION) |
-| Forced identity mint | **Code done** | config + field setting |
-| Multi-field determinism | **Code done** | mint `field` + strictest-wins |
-| Soft audit_chain | **Code done** | `docs/AUDIT.md` |
-| Download flood, revoke scope/jti | **Code done** | — |
-| Authenticated role allowlist | **Code done** | — |
-| Kernel tests (subset) | **Code done** | open-redirect, named OTP, dual-key |
-| Merge + tag release | **In progress** | PR → 1.x → tag 1.4.0 |
+| #40 Step-up open redirect | **Shipped 1.4.0** | GH #40 / d.o #3614254 |
+| #39 OTP named secrets | **Shipped 1.4.0** | GH #39 / d.o #3614253 |
+| #38 WebAuthn enrollment UI | **Shipped 1.4.0** | GH #38 / d.o #3614251 |
+| #37 Manual E2E checklist | **Shipped 1.4.0** | GH #37 / d.o #3614250 |
+| #36 Mint-time OIDC A2 | **Shipped 1.4.0** | GH #36 / d.o #3614249 |
+| Dual-key secret rotation | **Shipped 1.4.0** | `docs/SECRET_ROTATION.md` |
+| Forced identity mint | **Shipped 1.4.0** | config + field setting |
+| Multi-field determinism | **Shipped 1.4.0** | mint `field` + strictest-wins |
+| Soft audit_chain | **Shipped 1.4.0** | `docs/AUDIT.md` |
+| Download flood, revoke scope/jti | **Shipped 1.4.0** | — |
+| Authenticated role allowlist | **Shipped 1.4.0** | — |
+| Kernel tests (subset) | **Shipped 1.4.0** | open-redirect, named OTP, dual-key |
+| Merge + tag release | **Shipped** | PR #47 → 1.x → tag **1.4.0** |
 
 **Exit criteria for A:** PR merged to `1.x`, release notes in CHANGELOG, tags cut,
 dual-venue issues Fixed/closed when shipped, d.o project page notes if needed.

@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-31
+
 ### Security
 - **Step-up open redirect closed (#40 / d.o #3614254).** Step-up HTML no longer
   honors query `login_url`. Only field `step_up_login_url` (absolute http(s)) is
@@ -25,7 +27,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 ### Added
 - **Optional audit_chain integration** (`file_gate.audit`, soft). Durable
   hash-chained events for mint/download/deny/revoke/otp. See `docs/AUDIT.md`.
-- **Mint-time OIDC (A2)** — field `verify_oidc_at_mint` + `MintTimeOidcInterface`.
+- **Mint-time OIDC (A2)** — field `verify_oidc_at_mint` + `MintTimeOidcInterface`
+  (#36 / d.o #3614249).
 - **Forced identity mint** — global `require_acting_account` and per-field
   `require_identity_mint`.
 - **Multi-field mint** — body `field` required when a file has multiple gated
