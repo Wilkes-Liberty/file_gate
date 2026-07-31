@@ -73,10 +73,17 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   download gated files normally through the admin UI.
 - **Auditing & analytics.** A dedicated logger channel records security events
   (denied downloads, failed mint auth, fail-closed refusals) and usage events
-  (mints and deliveries).
+  (mints and deliveries). Optional soft integration with **audit_chain** for a
+  hash-chained durable trail (`docs/AUDIT.md`).
 - **Admin dashboard.** Secret status, defaults, gate methods, gated fields, plus
   mint/delivery/denial tables from the `file_gate` dblog channel when Database
   Logging is enabled.
+- **Secret rotation with dual keys**, multi-field mint pin, forced identity mint,
+  mint-time OIDC (A2), WebAuthn enrollment UI — see `CHANGELOG.md` and
+  `docs/SECRET_ROTATION.md`, `docs/E2E-ASSURANCE.md`.
+- **Program plan:** stated goal, workstreams, and ticket index in
+  [`docs/PLAN.md`](docs/PLAN.md). IdP-first (Keycloak) architecture:
+  [`docs/KEYCLOAK-UNIFIED-AUTH.md`](docs/KEYCLOAK-UNIFIED-AUTH.md).
 - **Optional identity-aware mint.** Pass `account` (user UUID) or `uid` on mint
   so a grant cannot exceed that user's download and host-entity view rights.
 

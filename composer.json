@@ -40,6 +40,7 @@
     },
     "suggest": {
         "firebase/php-jwt": "Required only by the File Gate Assurance submodule (file_gate_assurance) for OIDC token verification: ^6.10 || ^7.0.",
-        "web-auth/webauthn-lib": "Required for native WebAuthn mode in file_gate_assurance: ^5.0."
+        "web-auth/webauthn-lib": "Required for native WebAuthn mode in file_gate_assurance: ^5.0.",
+        "drupal/audit_chain": "Optional durable, hash-chained audit log for mint/download/deny/revoke events (soft dependency)."
     }
 }

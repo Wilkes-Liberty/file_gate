@@ -13,18 +13,20 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * Grants access to any authenticated user.
+ * Grants access to authenticated users (optionally restricted by role).
  *
  * A live-decision method (no minted URL): the file is delivered if the current
- * session belongs to a logged-in user. Useful for member-only downloads where
- * the front end authenticates the visitor against Drupal (e.g. via OAuth) and
- * calls the download route with that session/token. Returns NULL from mint()
- * because there is nothing to pre-issue.
+ * session belongs to a logged-in user. Optional role allowlist prevents the
+ * common misconfiguration of treating "any account on the site" as
+ * "member-only NDA" access.
+ *
+ * Per-field method settings:
+ * - roles: list of role ids; when non-empty the user must have at least one.
  */
 #[GateMethod(
   id: 'authenticated',
   label: new TranslatableMarkup('Authenticated access'),
-  description: new TranslatableMarkup('Deliver the file to any authenticated user. No minted URL — access is decided live from the session. Use when the front end authenticates the visitor against Drupal.'),
+  description: new TranslatableMarkup('Deliver the file to authenticated users. Optional role allowlist. No minted URL — access is decided live from the session.'),
 )]
 final class AuthenticatedAccess extends GateMethodBase {
 
@@ -46,7 +48,21 @@ final class AuthenticatedAccess extends GateMethodBase {
    * {@inheritdoc}
    */
   public function grants(FileInterface $file, Request $request): bool {
-    return $this->currentUser->isAuthenticated();
+    if (!$this->currentUser->isAuthenticated()) {
+      return FALSE;
+    }
+    $roles = array_values(array_filter(array_map('strval', (array) ($this->configuration['roles'] ?? []))));
+    if ($roles === []) {
+      // No allowlist: any logged-in account (documented enterprise footgun).
+      return TRUE;
+    }
+    $user_roles = $this->currentUser->getRoles();
+    foreach ($roles as $role) {
+      if (in_array($role, $user_roles, TRUE)) {
+        return TRUE;
+      }
+    }
+    return FALSE;
   }
 
   /**
@@ -55,6 +71,28 @@ final class AuthenticatedAccess extends GateMethodBase {
   public function mint(FileInterface $file): ?array {
     // Nothing to pre-issue; access is decided live in grants().
     return NULL;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $settings): array {
+    return [
+      'roles' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('Required roles (optional)'),
+        '#default_value' => implode("\n", array_map('strval', (array) ($settings['roles'] ?? []))),
+        '#description' => $this->t('One role machine name per line (e.g. <code>member</code>). When set, the user must have at least one listed role. Empty = any authenticated account — prefer an allowlist for sensitive files.'),
+      ],
+    ];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsSubmit(array $values): array {
+    $list = array_filter(array_map('trim', preg_split('/\R/', (string) ($values['roles'] ?? ''))));
+    return ['roles' => array_values($list)];
   }
 
 }

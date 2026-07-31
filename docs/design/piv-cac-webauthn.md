@@ -50,11 +50,12 @@ mint endpoint.
   consistent with the existing mint trust model (the mint endpoint already trusts
   the secret-holder). File Gate records the level for audit; it does not
   independently verify a token. Honestly labeled "RP-asserted."
-- **A2 (stronger, deferred):** File Gate verifies the user's OIDC token at mint,
-  inside the mint controller, before issuing the grant. Open blocker: the user's
-  token's `aud` is the front-end client, not File Gate — correct audience pinning
-  would reject it, so A2 needs a File-Gate-audienced token (token exchange, RFC
-  8693, or an IdP audience/claims mapper). Deferred until that is chosen.
+- **A2 (stronger, shipped as opt-in):** File Gate verifies the user's OIDC token
+  at mint when field setting `verify_oidc_at_mint` is enabled. The token's `aud`
+  must be File Gate's audience — use **RFC 8693 token exchange** or an IdP
+  audience mapper; SPA-only tokens fail audience pin by design. Fail closed on
+  missing/invalid token, wrong acr (empty allowlist denies), or failed
+  introspection when enabled.
 - Redemption is a normal direct-navigation signed-URL GET; the signature vouches
   the level was checked at mint. Mitigate the bearer window with a very short TTL,
   `max_uses=1`, `referrer_lock`, and TLS.

@@ -42,7 +42,7 @@ interface SecretRegistryInterface {
   public function resolveCredentials(Request $request): ?array;
 
   /**
-   * HMAC material for a secret id.
+   * HMAC material for a secret id (current value only — for mint signing).
    *
    * @param string|null $secret_id
    *   NULL for the legacy download_secret; a named id otherwise.
@@ -51,6 +51,22 @@ interface SecretRegistryInterface {
    *   The secret value, or '' when missing/deleted.
    */
   public function secretMaterial(?string $secret_id): string;
+
+  /**
+   * Materials to try when validating an outstanding grant or OTP (rotation).
+   *
+   * Order: current material first, then previous keys from
+   * $settings['file_gate.previous_secrets'] (named) or
+   * $settings['file_gate.previous_download_secrets'] (legacy list).
+   * Minting always uses secretMaterial() (current only).
+   *
+   * @param string|null $secret_id
+   *   NULL for legacy; named id otherwise.
+   *
+   * @return list<string>
+   *   Non-empty secret strings (may be empty list when none configured).
+   */
+  public function validationMaterials(?string $secret_id): array;
 
   /**
    * Whether the secret may mint/redeem for a gated field storage key.

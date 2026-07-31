@@ -7,10 +7,12 @@ namespace Drupal\file_gate\Controller;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
+use Drupal\Core\Flood\FloodInterface;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\Service\FileGateAudit;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -67,6 +69,10 @@ final class DownloadController implements ContainerInjectionInterface {
    *   The config factory.
    * @param \Psr\Log\LoggerInterface $logger
    *   The File Gate logger channel.
+   * @param \Drupal\Core\Flood\FloodInterface $flood
+   *   Flood control for denied download attempts.
+   * @param \Drupal\file_gate\Service\FileGateAudit $audit
+   *   Durable audit logger.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -74,6 +80,8 @@ final class DownloadController implements ContainerInjectionInterface {
     private readonly GateMethodManager $gateMethodManager,
     private readonly ConfigFactoryInterface $configFactory,
     private readonly LoggerInterface $logger,
+    private readonly FloodInterface $flood,
+    private readonly FileGateAudit $audit,
   ) {}
 
   /**
@@ -86,6 +94,8 @@ final class DownloadController implements ContainerInjectionInterface {
       $container->get('plugin.manager.file_gate.gate_method'),
       $container->get('config.factory'),
       $container->get('logger.channel.file_gate'),
+      $container->get('flood'),
+      $container->get('file_gate.audit'),
     );
   }
 
@@ -130,6 +140,16 @@ final class DownloadController implements ContainerInjectionInterface {
       throw new NotFoundHttpException();
     }
 
+    // Per-IP flood on failed grants (abuse / token guessing / log noise).
+    $ip = $request->getClientIp() ?? '0.0.0.0';
+    $config = $this->configFactory->get('file_gate.settings');
+    $deny_limit = (int) ($config->get('download_flood_limit') ?: 120);
+    $deny_window = (int) ($config->get('download_flood_window') ?: 60);
+    if ($deny_limit > 0 && !$this->flood->isAllowed('file_gate.download_deny', $deny_limit, $deny_window, $ip)) {
+      $this->logger->warning('Download flood limit for @ip.', ['@ip' => $ip]);
+      throw new AccessDeniedHttpException();
+    }
+
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
     if (!$method->grants($file, $request)) {
       // Optional step-up / challenge (e.g. assurance plain-link primary path).
@@ -139,12 +159,24 @@ final class DownloadController implements ContainerInjectionInterface {
           return $challenge;
         }
       }
+      if ($deny_limit > 0) {
+        $this->flood->register('file_gate.download_deny', $deny_window, $ip);
+      }
       // Security event: a request reached a gated file without a valid grant
       // (missing/expired/tampered signature, or a spent one-time link).
       $this->logger->warning('Denied gated download of file @uuid (@method) from @ip: grant rejected.', [
         '@uuid' => $file->uuid(),
         '@method' => $gate['method'],
-        '@ip' => $request->getClientIp() ?? 'unknown',
+        '@ip' => $ip,
+      ]);
+      $this->audit->log('download_denied', [
+        'entity_type' => 'file',
+        'id' => (string) $file->id(),
+        'label' => $file->getFilename() ?? '',
+        'uuid' => $file->uuid(),
+        'gate_method' => $gate['method'],
+        'field' => $gate['field'],
+        'reason' => 'grant_rejected',
       ]);
       throw new AccessDeniedHttpException();
     }
@@ -182,6 +214,14 @@ final class DownloadController implements ContainerInjectionInterface {
       '@uuid' => $file->uuid(),
       '@method' => $gate['method'],
       '@ip' => $request->getClientIp() ?? 'unknown',
+    ]);
+    $this->audit->log('download', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => $file->getFilename() ?? '',
+      'uuid' => $file->uuid(),
+      'gate_method' => $gate['method'],
+      'field' => $gate['field'],
     ]);
 
     return $response;

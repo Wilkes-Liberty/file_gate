@@ -68,9 +68,10 @@ final class GrantSigner implements GrantSignerInterface {
    * {@inheritdoc}
    */
   public function validate(string $resource_id, array $claims, string $sig, ?string $secret_id = NULL): bool {
-    $secret = $this->secrets->secretMaterial($secret_id);
+    // Try current material then retired keys (dual-key rotation grace).
+    $materials = $this->secrets->validationMaterials($secret_id);
     // Fail closed: missing/deleted secret ⇒ unverifiable.
-    if ($secret === '') {
+    if ($materials === []) {
       return FALSE;
     }
     $now = $this->time->getRequestTime();
@@ -81,8 +82,13 @@ final class GrantSigner implements GrantSignerInterface {
     if (isset($claims[self::CLAIM_NOT_BEFORE]) && (int) $claims[self::CLAIM_NOT_BEFORE] > $now) {
       return FALSE;
     }
-    $expected = $this->compute($resource_id, $claims, $secret);
-    return hash_equals($expected, $sig);
+    foreach ($materials as $secret) {
+      $expected = $this->compute($resource_id, $claims, $secret);
+      if (hash_equals($expected, $sig)) {
+        return TRUE;
+      }
+    }
+    return FALSE;
   }
 
   /**

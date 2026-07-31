@@ -139,26 +139,31 @@ final class BridgeController implements ContainerInjectionInterface {
    */
   public function stepUpPage(Request $request): Response {
     $uuid = (string) $request->query->get('f', '');
+    // Drop login_url from any query forwarded into bridge/download URLs so a
+    // crafted step-up link cannot launder an open redirect into later hops.
+    $safe_query = $request->query->all();
+    unset($safe_query['login_url']);
     $bridge_path = Url::fromRoute('file_gate_assurance.bridge', [], [
-      'query' => $request->query->all(),
+      'query' => $safe_query,
       'absolute' => FALSE,
     ])->toString();
     $download_path = Url::fromRoute('file_gate.download', [], [
-      'query' => $request->query->all(),
+      'query' => $safe_query,
       'absolute' => FALSE,
     ])->toString();
 
     // Integrator injects the access token after IdP login (sessionStorage or
-    // window.fileGateAccessToken). Optional login_url in query from challenge.
-    // mode=webauthn uses navigator.credentials.get() instead of OIDC.
-    $login = htmlspecialchars((string) $request->query->get('login_url', ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    // window.fileGateAccessToken). login_url is loaded ONLY from the field's
+    // step_up_login_url setting — never from the query string (open-redirect
+    // defense; GH #40 / d.o #3614254). mode=webauthn uses the WebAuthn API.
+    $login = $this->trustedStepUpLoginUrl($uuid);
     $mode = (string) $request->query->get('mode', 'oidc');
     $assert_options = Url::fromRoute('file_gate_assurance.webauthn_assert_options', [], [
-      'query' => $request->query->all(),
+      'query' => $safe_query,
       'absolute' => FALSE,
     ])->toString();
     $assert_path = Url::fromRoute('file_gate_assurance.webauthn_assert', [], [
-      'query' => $request->query->all(),
+      'query' => $safe_query,
       'absolute' => FALSE,
     ])->toString();
     $bridge_js = json_encode($bridge_path, JSON_THROW_ON_ERROR);
@@ -356,6 +361,44 @@ HTML;
       $response->setStatusCode(Response::HTTP_BAD_REQUEST);
     }
     return $response;
+  }
+
+  /**
+   * Field-configured IdP login URL for the gated file, or empty.
+   *
+   * Only http(s) absolute URLs from gate method settings are accepted. Query
+   * parameters named login_url are intentionally ignored.
+   *
+   * @param string $uuid
+   *   File UUID from the step-up query.
+   *
+   * @return string
+   *   Trusted login URL or ''.
+   */
+  private function trustedStepUpLoginUrl(string $uuid): string {
+    if ($uuid === '') {
+      return '';
+    }
+    $file = $this->entityRepository->loadEntityByUuid('file', $uuid);
+    if (!$file instanceof FileInterface) {
+      return '';
+    }
+    $gate = $this->resolver->getGateForFile($file);
+    if ($gate === NULL || $gate['method'] !== 'assurance') {
+      return '';
+    }
+    $login = trim((string) ($gate['settings']['step_up_login_url'] ?? ''));
+    if ($login === '') {
+      return '';
+    }
+    // Absolute http(s) only — blocks javascript: and relative open redirects.
+    if (!preg_match('#^https?://#i', $login)) {
+      $this->logger->warning('Ignored non-http(s) step_up_login_url for file @uuid.', [
+        '@uuid' => $uuid,
+      ]);
+      return '';
+    }
+    return $login;
   }
 
   /**

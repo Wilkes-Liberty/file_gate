@@ -10,6 +10,7 @@ use Drupal\Core\Url;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\ContextualMintInterface;
+use Drupal\file_gate\MintTimeOidcInterface;
 use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
 use Drupal\file_gate_assurance\AssuranceVerifierInterface;
 use Drupal\file_gate_assurance\SessionBridge;
@@ -78,7 +79,7 @@ use Symfony\Component\HttpFoundation\Response;
   label: new TranslatableMarkup('Assurance (PIV/CAC + FIDO2/WebAuthn via OIDC)'),
   description: new TranslatableMarkup('A signed URL whose delivery also requires a hardware-backed, phishing-resistant assurance level (PIV/CAC or FIDO2/WebAuthn) proven at any OIDC IdP. Verifies the IdP assertion live at redemption (or trusts a stepped-up mint caller), optionally sender-constrained with DPoP. Federation (asserted level), not an AAL3 verifier.'),
 )]
-final class Assurance extends SignedUrl implements ContextualMintInterface, ChallengeAwareGateMethodInterface {
+final class Assurance extends SignedUrl implements ContextualMintInterface, ChallengeAwareGateMethodInterface, MintTimeOidcInterface {
 
   /**
    * The assurance verifier.
@@ -128,12 +129,64 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     // Gate binds only its hash, and Model B enforces at redemption that the
     // presented token belongs to that subject (per-user binding). A wrong
     // subject gains nothing — redemption still needs a valid token for it.
+    // When verify_oidc_at_mint (A2) succeeded, prefer the verified token sub.
     $data = json_decode($request->getContent(), TRUE);
     $subject = is_array($data) && isset($data['subject']) && is_string($data['subject'])
       ? $data['subject']
       : '';
+    if ($subject === '' && is_string($request->attributes->get('file_gate.mint_oidc_sub'))) {
+      $subject = (string) $request->attributes->get('file_gate.mint_oidc_sub');
+    }
     $this->mintSubject = $subject !== '' ? $subject : NULL;
     return $this->mint($file);
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * A2 (mint-time OIDC): when verify_oidc_at_mint is enabled, the mint caller
+   * must present a Bearer (or DPoP) token whose aud is this field's audience
+   * (File Gate API client after RFC 8693 token exchange or IdP mapper). Fail
+   * closed on missing/invalid token, wrong aud, or low acr. Disabled by default
+   * (A1 trusts the secret-holder only).
+   */
+  public function assertMintTimeOidc(Request $request): ?JsonResponse {
+    if (empty($this->configuration['verify_oidc_at_mint'])) {
+      return NULL;
+    }
+    $token = $this->bearerToken($request);
+    if ($token === NULL || $token === '') {
+      return new JsonResponse([
+        'error' => 'Mint-time OIDC token required (Authorization: Bearer or DPoP).',
+      ], Response::HTTP_UNAUTHORIZED, [
+        'WWW-Authenticate' => 'Bearer realm="file-gate-mint"',
+      ]);
+    }
+    $claims = $this->verifier->verify($token, $this->configuration, $request);
+    if ($claims === NULL) {
+      return new JsonResponse([
+        'error' => 'Mint-time OIDC token failed verification.',
+      ], Response::HTTP_FORBIDDEN);
+    }
+    // Same rule as redeem: empty acr allowlist denies (fail closed).
+    $required_acr = $this->requiredAcrList();
+    $acr = isset($claims['acr']) ? (string) $claims['acr'] : '';
+    if ($required_acr === [] || $acr === '' || !in_array($acr, $required_acr, TRUE)) {
+      return new JsonResponse([
+        'error' => 'Mint-time OIDC token acr is insufficient.',
+        'acr_values' => $required_acr,
+      ], Response::HTTP_FORBIDDEN);
+    }
+    if (!empty($this->configuration['introspect']) && !$this->verifier->introspect($token, $this->configuration)) {
+      return new JsonResponse([
+        'error' => 'Mint-time OIDC token is not active (introspection).',
+      ], Response::HTTP_FORBIDDEN);
+    }
+    $sub = isset($claims['sub']) ? (string) $claims['sub'] : '';
+    if ($sub !== '') {
+      $request->attributes->set('file_gate.mint_oidc_sub', $sub);
+    }
+    return NULL;
   }
 
   /**
@@ -178,11 +231,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       return NULL;
     }
 
+    // Never put login_url in the step-up query: the step-up page reads
+    // step_up_login_url from field settings only (open-redirect defense).
     $query = $request->query->all();
-    $login = (string) ($this->configuration['step_up_login_url'] ?? '');
-    if ($login !== '') {
-      $query['login_url'] = $login;
-    }
+    unset($query['login_url']);
     if ($mode === 'webauthn') {
       $query['mode'] = 'webauthn';
     }
@@ -501,7 +553,19 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#type' => 'textfield',
         '#title' => $this->t('Step-up login URL (optional)'),
         '#default_value' => $settings['step_up_login_url'] ?? '',
-        '#description' => $this->t('Front-end or IdP URL for plain-link users with no token yet. The step-up page appends <code>return_to</code>. After login, set <code>sessionStorage.file_gate_access_token</code> and return.'),
+        '#description' => $this->t('Front-end or IdP URL for plain-link users with no token yet. Loaded from this field setting only (never from the step-up query). The step-up page appends <code>return_to</code>. After login, set <code>sessionStorage.file_gate_access_token</code> and return. Absolute http(s) only.'),
+      ],
+      'verify_oidc_at_mint' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Verify OIDC token at mint (A2)'),
+        '#default_value' => !empty($settings['verify_oidc_at_mint']),
+        '#description' => $this->t('Stronger than A1: mint must present a Bearer/DPoP token whose <code>aud</code> is this field’s audience (use RFC 8693 token exchange or an IdP audience mapper). Fail closed when missing or insufficient <code>acr</code>. Requires issuer, audience, and accepted acr values.'),
+      ],
+      'require_identity_mint' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Require acting account on mint'),
+        '#default_value' => !empty($settings['require_identity_mint']),
+        '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>, and that user must be allowed to download the file. Use for authenticated products so a secret-holding BFF cannot mint without naming a subject.'),
       ],
       'rp_id' => [
         '#type' => 'textfield',
@@ -592,6 +656,8 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     $settings['dpop'] = !empty($values['dpop']);
     $settings['introspect'] = !empty($values['introspect']);
     $settings['leeway'] = (int) ($values['leeway'] ?? 60);
+    $settings['verify_oidc_at_mint'] = !empty($values['verify_oidc_at_mint']);
+    $settings['require_identity_mint'] = !empty($values['require_identity_mint']);
 
     $string_keys = [
       'issuer',

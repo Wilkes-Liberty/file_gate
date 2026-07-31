@@ -1,0 +1,8 @@
+webauthn_enrollment:
+  version: 1.x
+  js:
+    js/webauthn-enrollment.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
+    - core/once

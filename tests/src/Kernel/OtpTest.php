@@ -228,6 +228,36 @@ final class OtpTest extends KernelTestBase {
   }
 
   /**
+   * Named-secrets-only deploy: OTP issue + redeem work without legacy secret.
+   */
+  public function testNamedSecretOnlyOtp(): void {
+    $this->config('file_gate.settings')
+      ->set('download_secret', '')
+      ->set('secret_scopes', ['otp_s' => ['entity_test.field_gated']])
+      ->save();
+    $this->setSetting('file_gate.secrets', ['otp_s' => 'named-otp-material-xyz']);
+
+    $file = $this->createFile('named.pdf');
+    $request = Request::create(
+      '/api/file-gate/otp',
+      'POST',
+      [],
+      [],
+      [],
+      [],
+      (string) json_encode(['file' => $file->uuid(), 'email' => self::EMAIL]),
+    );
+    $request->headers->set('Authorization', 'Basic ' . base64_encode('otp_s:named-otp-material-xyz'));
+    $this->assertSame(204, OtpController::create($this->container)->request($request)->getStatusCode());
+
+    $code = $this->lastMailCode();
+    $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
+    $response = $this->download($file, self::EMAIL, $code);
+    $this->assertInstanceOf(BinaryFileResponse::class, $response);
+    $this->assertSame(200, $response->getStatusCode());
+  }
+
+  /**
    * Requests an OTP through the controller.
    *
    * @param \Drupal\file\FileInterface $file

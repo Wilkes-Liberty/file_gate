@@ -20,6 +20,8 @@ use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\file_gate\MintTimeOidcInterface;
+use Drupal\file_gate\Service\FileGateAudit;
 use Drupal\user\UserInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -79,6 +81,8 @@ final class MintController implements ContainerInjectionInterface {
    *   Request-cycle authenticated secret id for mint signing.
    * @param \Drupal\file\FileReferenceResolver $fileReferenceResolver
    *   Core file→host resolver (identity-aware mint host checks).
+   * @param \Drupal\file_gate\Service\FileGateAudit $audit
+   *   Durable audit logger (optional audit_chain).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -92,6 +96,7 @@ final class MintController implements ContainerInjectionInterface {
     private readonly SecretRegistryInterface $secrets,
     private readonly ActiveSecret $activeSecret,
     private readonly FileReferenceResolver $fileReferenceResolver,
+    private readonly FileGateAudit $audit,
   ) {}
 
   /**
@@ -110,6 +115,7 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.active_secret'),
       $container->get(FileReferenceResolver::class),
+      $container->get('file_gate.audit'),
     );
   }
 
@@ -155,9 +161,31 @@ final class MintController implements ContainerInjectionInterface {
       return $file;
     }
 
-    $gate = $this->resolver->getGateForFile($file);
-    if ($gate === NULL) {
+    // Optional explicit field storage key when the same file is on multiple
+    // gated fields (deterministic multi-field resolution).
+    $field_key = !empty($data['field']) && is_string($data['field'])
+      ? trim($data['field'])
+      : NULL;
+    if ($field_key === '') {
+      $field_key = NULL;
+    }
+    $gated_fields = $this->resolver->gatedFieldKeys($file);
+    if ($gated_fields === []) {
       return new JsonResponse(['error' => 'The requested file is not gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+    if ($field_key === NULL && count($gated_fields) > 1) {
+      return new JsonResponse([
+        'error' => 'This file is gated by multiple fields; provide "field" (entity_type.field_name).',
+        'fields' => $gated_fields,
+      ], Response::HTTP_BAD_REQUEST);
+    }
+    $gate = $this->resolver->getGateForFile($file, $field_key);
+    if ($gate === NULL) {
+      return new JsonResponse([
+        'error' => $field_key !== NULL
+          ? 'The requested field does not gate this file.'
+          : 'The requested file is not gated.',
+      ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     // Field scope: named secrets may only mint fields in their allowlist.
@@ -170,8 +198,38 @@ final class MintController implements ContainerInjectionInterface {
         '@uuid' => $file->uuid(),
         '@ip' => $request->getClientIp() ?? 'unknown',
       ]);
+      $this->audit->log('mint_denied', [
+        'entity_type' => 'file',
+        'id' => (string) $file->id(),
+        'label' => $file->getFilename() ?? '',
+        'uuid' => $file->uuid(),
+        'reason' => 'secret_scope',
+        'field' => $gate['field'],
+      ]);
       return new JsonResponse([
         'error' => 'This credential is not allowed to mint that file.',
+      ], Response::HTTP_FORBIDDEN);
+    }
+
+    // Forced identity-aware mint (global and/or field method setting).
+    $require_identity = !empty($config->get('require_acting_account'))
+      || !empty($gate['settings']['require_identity_mint']);
+    $has_identity = (!empty($data['account']) && is_string($data['account']))
+      || (array_key_exists('uid', $data) && $data['uid'] !== NULL && $data['uid'] !== '');
+    if ($require_identity && !$has_identity) {
+      $this->logger->warning('Mint refused: acting account required for file @uuid field @field.', [
+        '@uuid' => $file->uuid(),
+        '@field' => $gate['field'],
+      ]);
+      $this->audit->log('mint_denied', [
+        'entity_type' => 'file',
+        'id' => (string) $file->id(),
+        'uuid' => $file->uuid(),
+        'reason' => 'identity_required',
+        'field' => $gate['field'],
+      ]);
+      return new JsonResponse([
+        'error' => 'This field requires an acting account (body "account" or "uid").',
       ], Response::HTTP_FORBIDDEN);
     }
 
@@ -179,10 +237,33 @@ final class MintController implements ContainerInjectionInterface {
     // account, the mint must not exceed what that account could download.
     $identity_denied = $this->assertActingAccountAccess($file, $data);
     if ($identity_denied !== NULL) {
+      $this->audit->log('mint_denied', [
+        'entity_type' => 'file',
+        'id' => (string) $file->id(),
+        'uuid' => $file->uuid(),
+        'reason' => 'identity_access',
+        'field' => $gate['field'],
+      ]);
       return $identity_denied;
     }
 
     $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
+
+    // A2: mint-time OIDC verification when the field enables it (assurance).
+    if ($method instanceof MintTimeOidcInterface) {
+      $a2 = $method->assertMintTimeOidc($request);
+      if ($a2 !== NULL) {
+        $this->audit->log('mint_denied', [
+          'entity_type' => 'file',
+          'id' => (string) $file->id(),
+          'uuid' => $file->uuid(),
+          'reason' => 'mint_oidc',
+          'field' => $gate['field'],
+        ]);
+        return $a2;
+      }
+    }
+
     // A method that binds request-scoped claims (e.g. a caller-asserted
     // subject) receives the request; all others use the plain mint() contract.
     try {
@@ -213,6 +294,15 @@ final class MintController implements ContainerInjectionInterface {
       '@uuid' => $file->uuid(),
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);
+    $this->audit->log('mint', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => $file->getFilename() ?? '',
+      'uuid' => $file->uuid(),
+      'gate_method' => $gate['method'],
+      'field' => $gate['field'],
+      'secret_id' => $secret_id ?? 'legacy',
+    ]);
 
     // Report the grant's real expiry and remaining lifetime. Both derive from
     // the minted claim, so a field-specific TTL (or an availability-window cap)
@@ -222,6 +312,8 @@ final class MintController implements ContainerInjectionInterface {
       'path' => $path,
       'expires' => $expires,
       'ttl' => $expires !== NULL ? max(0, $expires - $this->time->getRequestTime()) : NULL,
+      'field' => $gate['field'],
+      'method' => $gate['method'],
     ]);
   }
 

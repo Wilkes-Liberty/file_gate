@@ -6,6 +6,39 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **Step-up open redirect closed (#40 / d.o #3614254).** Step-up HTML no longer
+  honors query `login_url`. Only field `step_up_login_url` (absolute http(s)) is
+  used; crafted query values are stripped from bridge/download hops.
+- **OTP HMAC uses authenticated secrets (#39 / d.o #3614253).** Issue/redeem use
+  the mint credential material (named or legacy) and store secret id `k`; dual-key
+  previous materials accepted at redeem. Named-only deploys no longer hash with an
+  empty legacy secret.
+- **Download denial flood** (`download_flood_limit` / `window`) bounds abuse on
+  `GET /api/file-gate/download`.
+- **Token revoke field scope:** minted token rows store field + secret id; revoke
+  fails closed when the revoking credential is not allowed for that field.
+- **Dual-key secret rotation:** `$settings['file_gate.previous_secrets']` and
+  `previous_download_secrets` keep outstanding grants valid during cutover. See
+  `docs/SECRET_ROTATION.md`.
+
+### Added
+- **Optional audit_chain integration** (`file_gate.audit`, soft). Durable
+  hash-chained events for mint/download/deny/revoke/otp. See `docs/AUDIT.md`.
+- **Mint-time OIDC (A2)** — field `verify_oidc_at_mint` + `MintTimeOidcInterface`.
+- **Forced identity mint** — global `require_acting_account` and per-field
+  `require_identity_mint`.
+- **Multi-field mint** — body `field` required when a file has multiple gated
+  fields; redeem prefers strictest method when no pin.
+- **Signed_url jti revoke** — `POST /api/file-gate/revoke` with `{"jti":"…"}`.
+- **WebAuthn enrollment UI** — `/user/{user}/file-gate-webauthn` (#38 / d.o
+  #3614251).
+- **Authenticated method role allowlist** — optional `roles` on the method.
+- **Manual E2E checklist** — `docs/E2E-ASSURANCE.md` (#37 / d.o #3614250).
+- **Program plan** — `docs/PLAN.md` (goal, workstreams, ticket index).
+- **IdP-first auth architecture** — `docs/KEYCLOAK-UNIFIED-AUTH.md` (Keycloak /
+  enterprise: one hardware credential for SSO and assurance downloads).
+
 ## [1.3.0] - 2026-07-31
 
 ### Security
