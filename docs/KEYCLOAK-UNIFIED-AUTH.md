@@ -47,8 +47,10 @@ without a second hardware enrollment in Drupal or File Gate.
 - **IdP** proves hardware auth and emits `acr` (and `sub`).
 - **File Gate** checks the grant (HMAC) **and** live (or recently bridged)
   assurance. The bridge cookie is not a substitute for a valid grant.
-- **Drupal session alone** is not enough for high-assurance files unless a
-  deliberate “session bridge” integration re-checks ACR / freshness (planned).
+- **Drupal session alone** is not enough for high-assurance files unless the
+  **session bridge SSO path** (GH #41) re-checks a live access token from
+  `openid_connect` (issuer/aud/acr) and sets `FG_AB`. Stale tokens still fail
+  closed — refresh remains a site OIDC concern.
 
 ---
 
@@ -62,7 +64,9 @@ without a second hardware enrollment in Drupal or File Gate.
 | `audience` | Resource audience for File Gate (may need mapper or token exchange) |
 | `required_acr` | Exact string(s) IdP emits for WebAuthn/PIV |
 | Bridge | Enabled |
-| `step_up_login_url` | IdP authorize URL that requests required ACR (absolute https) |
+| `step_up_login_url` | IdP **authorize** URL (absolute https); module may append `acr_values` (GH #42) |
+| `step_up_append_acr` | On (default) — append field `required_acr` as `acr_values` |
+| `session_bridge_sso` | On (default) — use openid_connect session token same-origin (GH #41) |
 | `verify_oidc_at_mint` | On only if mint BFF can present File-Gate-audienced tokens (A2) |
 | Native `verify_at: webauthn` | Off for IdP-first deployments |
 

@@ -12,6 +12,7 @@ use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\file_gate\Service\OtpSession;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -26,11 +27,12 @@ use Symfony\Component\HttpFoundation\Request;
  * control — without standing up an account.
  *
  * A live-decision method: mint() returns NULL (there is no pre-issued signed
- * grant); the redemption carries "email" and "otp" query parameters instead.
- * Codes are stored as an HMAC-SHA256 keyed by the mint credential's secret
- * material (named secret or legacy download_secret; dual-key rotation
- * materials are accepted at redeem). Brute force is bounded by the TTL, the
- * per-code attempt cap (lockout), and the send endpoint's rate limiting.
+ * grant). Prefer POST /api/file-gate/otp/session then download with the FG_OTP
+ * cookie (GH #43). Query email/otp remains supported for backward compatibility
+ * but leaks secrets into logs and Referer. Codes are HMAC-SHA256 keyed by the
+ * mint credential's secret material (named or legacy; dual-key rotation
+ * accepted at redeem). Brute force is bounded by TTL, attempt cap, and send
+ * rate limits.
  *
  * SECURITY: the passcode is delivered by e-mail, which is not a confidential
  * channel — it proves *control* of the address, not that the message is secret.
@@ -90,6 +92,11 @@ final class Otp extends GateMethodBase {
   protected SecretRegistryInterface $secrets;
 
   /**
+   * OTP session cookie (redeem without query secrets).
+   */
+  protected OtpSession $otpSession;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -97,6 +104,7 @@ final class Otp extends GateMethodBase {
     $instance->keyValueExpirableFactory = $container->get('keyvalue.expirable');
     $instance->time = $container->get('datetime.time');
     $instance->secrets = $container->get('file_gate.secret_registry');
+    $instance->otpSession = $container->get('file_gate.otp_session');
     return $instance;
   }
 
@@ -104,18 +112,51 @@ final class Otp extends GateMethodBase {
    * {@inheritdoc}
    */
   public function grants(FileInterface $file, Request $request): bool {
+    // Prefer short-lived FG_OTP cookie after /otp/session (GH #43).
+    $uuid = $file->uuid();
+    if ($this->otpSession->isSatisfied($request, $uuid)) {
+      return TRUE;
+    }
+
     $email = self::normalizeEmail((string) $request->query->get('email', ''));
     $code = trim((string) $request->query->get('otp', ''));
+    // Also accept POST body for download clients that POST credentials.
+    if (($email === '' || $code === '') && $request->getMethod() === 'POST') {
+      $data = json_decode($request->getContent(), TRUE);
+      if (is_array($data)) {
+        if ($email === '') {
+          $email = self::normalizeEmail((string) ($data['email'] ?? ''));
+        }
+        if ($code === '') {
+          $code = trim((string) ($data['otp'] ?? ''));
+        }
+      }
+    }
     if ($email === '' || $code === '') {
       return FALSE;
     }
 
+    return $this->consumeCode($uuid, $email, $code);
+  }
+
+  /**
+   * Validates and consumes an outstanding OTP (shared by grants and session).
+   *
+   * @param string $file_uuid
+   *   File UUID.
+   * @param string $email
+   *   Normalized email.
+   * @param string $code
+   *   Presented passcode.
+   *
+   * @return bool
+   *   TRUE when the code was valid and consumed.
+   */
+  public function consumeCode(string $file_uuid, string $email, string $code): bool {
     $store = $this->store();
-    $key = self::storeKey($file->uuid(), $email);
+    $key = self::storeKey($file_uuid, $email);
     $record = $store->get($key);
     if (!is_array($record)) {
-      // No outstanding code for this file + email (never sent, expired, or
-      // already spent). Fail closed.
       return FALSE;
     }
 
@@ -124,33 +165,27 @@ final class Otp extends GateMethodBase {
     $max = (int) ($record['max'] ?? self::DEFAULT_MAX_ATTEMPTS);
     $attempts = (int) ($record['attempts'] ?? 0);
     if ($exp <= $now || $attempts >= $max) {
-      // Expired or locked out — discard and deny.
       $store->delete($key);
       return FALSE;
     }
 
-    // Prefer the secret id stored at issue; fall back to legacy for rows minted
-    // before GH #39. Try current + previous materials (rotation grace).
     $secret_id = NULL;
     if (array_key_exists('k', $record)) {
       $raw_k = $record['k'];
       $secret_id = (is_string($raw_k) && $raw_k !== '') ? $raw_k : NULL;
     }
     $materials = $this->secrets->validationMaterials($secret_id);
-    // Pre-#39 rows had no k= and used only download_secret.
     if ($materials === [] && !array_key_exists('k', $record)) {
       $materials = $this->secrets->validationMaterials(NULL);
     }
     $stored = (string) ($record['hash'] ?? '');
     foreach ($materials as $secret) {
       if ($secret !== '' && hash_equals($stored, self::codeHash($code, $secret))) {
-        // Correct: consume the code (single use).
         $store->delete($key);
         return TRUE;
       }
     }
 
-    // Wrong code: count the attempt against the cap, preserving the window.
     $record['attempts'] = $attempts + 1;
     $store->setWithExpire($key, $record, max(1, $exp - $now));
     return FALSE;

@@ -6,6 +6,22 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **OTP redeem without query secrets (#43 / d.o #3614266).** Prefer
+  `POST /api/file-gate/otp/session` then download with HttpOnly `FG_OTP` cookie.
+  Query `email`/`otp` remains for backward compatibility.
+- **Drupal SSO session bridge (#41 / d.o #3614264).** Same-origin step-up uses
+  `openid_connect` session access token when present (still verifies acr/aud).
+- **IdP step-up ACR helper (#42 / d.o #3614265).** Field-configured authorize URL
+  can append `acr_values` (Keycloak) without open redirects.
+
+### Added
+- **Signed-URL grant inventory API (#44 / d.o #3614267).**
+  `GET /api/file-gate/grants`, `POST /api/file-gate/grants/revoke-bulk`.
+- **Commerce SKU-scoped entitlement (#45 / d.o #3614268).** Avoids loading every
+  completed order for large accounts.
+- **Pre-shared campaign token optional TTL / max uses (#46 / d.o #3614269).**
+
 ## [1.4.0] - 2026-07-31
 
 ### Security

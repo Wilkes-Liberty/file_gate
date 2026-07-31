@@ -553,7 +553,25 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#type' => 'textfield',
         '#title' => $this->t('Step-up login URL (optional)'),
         '#default_value' => $settings['step_up_login_url'] ?? '',
-        '#description' => $this->t('Front-end or IdP URL for plain-link users with no token yet. Loaded from this field setting only (never from the step-up query). The step-up page appends <code>return_to</code>. After login, set <code>sessionStorage.file_gate_access_token</code> and return. Absolute http(s) only.'),
+        '#description' => $this->t('Absolute http(s) IdP authorize or front-end login URL (field only — never from the query). Prefer the IdP authorize endpoint so ACR can be requested (GH #42). The step-up page may append <code>return_to</code>.'),
+      ],
+      'step_up_append_acr' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Append required ACR to step-up URL'),
+        '#default_value' => !array_key_exists('step_up_append_acr', $settings) || !empty($settings['step_up_append_acr']),
+        '#description' => $this->t('When set, appends accepted <code>acr</code> values as a query parameter so Keycloak (and similar IdPs) prompt for WebAuthn/PIV when the session lacks them.'),
+      ],
+      'step_up_acr_param' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('ACR query parameter name'),
+        '#default_value' => $settings['step_up_acr_param'] ?? 'acr_values',
+        '#description' => $this->t('Keycloak uses <code>acr_values</code>. Other IdPs may use <code>acr_values</code> or a custom claim parameter.'),
+      ],
+      'session_bridge_sso' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Use Drupal SSO session token for bridge (same-origin)'),
+        '#default_value' => !array_key_exists('session_bridge_sso', $settings) || !empty($settings['session_bridge_sso']),
+        '#description' => $this->t('When openid_connect is installed, establish the plain-link bridge from the saved access token without browser sessionStorage (GH #41). Still verifies issuer/aud/acr. Disable if access tokens are never File-Gate-audienced.'),
       ],
       'verify_oidc_at_mint' => [
         '#type' => 'checkbox',
@@ -658,11 +676,14 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     $settings['leeway'] = (int) ($values['leeway'] ?? 60);
     $settings['verify_oidc_at_mint'] = !empty($values['verify_oidc_at_mint']);
     $settings['require_identity_mint'] = !empty($values['require_identity_mint']);
+    $settings['step_up_append_acr'] = !empty($values['step_up_append_acr']);
+    $settings['session_bridge_sso'] = !empty($values['session_bridge_sso']);
 
     $string_keys = [
       'issuer',
       'audience',
       'step_up_login_url',
+      'step_up_acr_param',
       'rp_id',
       'rp_name',
       'webauthn_user_handle',

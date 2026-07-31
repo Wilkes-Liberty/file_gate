@@ -12,6 +12,8 @@ use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
 use Drupal\file_gate_assurance\SessionBridge;
+use Drupal\file_gate_assurance\SessionOidcToken;
+use Drupal\file_gate_assurance\StepUpAuthorizeUrl;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,7 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Primary plain-link path:
  * 1. Browser GET download without Bearer → 401 / step-up HTML.
- * 2. Client presents OIDC (+ optional DPoP) here with the same grant query.
+ * 2. Client presents OIDC (+ optional DPoP) here with the same grant query,
+ *    or same-origin Drupal SSO supplies a session access token (GH #41).
  * 3. Cookie set; client navigates to the same download URL (plain link).
  *
  * Does not stream bytes and does not burn max_uses.
@@ -39,6 +42,8 @@ final class BridgeController implements ContainerInjectionInterface {
     private readonly GateMethodManager $gateMethodManager,
     private readonly SessionBridge $bridge,
     private readonly LoggerInterface $logger,
+    private readonly SessionOidcToken $sessionOidcToken,
+    private readonly StepUpAuthorizeUrl $stepUpAuthorizeUrl,
   ) {}
 
   /**
@@ -51,6 +56,8 @@ final class BridgeController implements ContainerInjectionInterface {
       $container->get('plugin.manager.file_gate.gate_method'),
       $container->get('file_gate_assurance.session_bridge'),
       $container->get('logger.channel.file_gate'),
+      $container->get('file_gate_assurance.session_oidc_token'),
+      $container->get('file_gate_assurance.step_up_authorize_url'),
     );
   }
 
@@ -88,8 +95,10 @@ final class BridgeController implements ContainerInjectionInterface {
       return $this->error('Invalid or expired grant.', Response::HTTP_FORBIDDEN);
     }
 
-    // Live OIDC (+ optional DPoP): same as redeem, no cookie fallback.
-    if (!$method->liveAssuranceSatisfied($request)) {
+    // Live OIDC (+ optional DPoP). Prefer Authorization; else same-origin SSO
+    // session token from openid_connect when allowed (GH #41).
+    $auth_request = $this->requestWithSessionToken($request, $gate['settings']);
+    if (!$method->liveAssuranceSatisfied($auth_request)) {
       $this->logger->warning(
         'Assurance bridge refused: OIDC check failed for file @uuid from @ip.',
         [
@@ -229,6 +238,17 @@ final class BridgeController implements ContainerInjectionInterface {
     return btoa(s).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
   }
 
+  // Prefer same-origin SSO session (credentials include cookies) so a Drupal
+  // openid_connect login can satisfy bridge without sessionStorage (GH #41).
+  async function trySessionBridge() {
+    const res = await fetch(bridgePath, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' },
+    });
+    return res;
+  }
+
   function token() {
     if (typeof window.fileGateAccessToken === 'string' && window.fileGateAccessToken) {
       return window.fileGateAccessToken;
@@ -241,15 +261,25 @@ final class BridgeController implements ContainerInjectionInterface {
   }
 
   async function runOidc() {
+    status.textContent = 'Checking signed-in session…';
+    let res = await trySessionBridge();
+    let data = await res.json().catch(function () { return {}; });
+    if (res.ok) {
+      status.textContent = 'Opening download…';
+      status.className = 'ok';
+      location.replace(data.path || downloadPath);
+      return;
+    }
     const t = token();
     if (!t) {
       if (loginUrl) {
         status.textContent = 'Redirecting to sign in…';
         const ret = location.href;
+        // loginUrl may already include acr_values (field-built authorize URL).
         location.href = loginUrl + (loginUrl.indexOf('?') >= 0 ? '&' : '?') + 'return_to=' + encodeURIComponent(ret);
         return;
       }
-      showError('No access token. After IdP login, set sessionStorage.file_gate_access_token or window.fileGateAccessToken, then retry. See docs/assurance-redeem.md.');
+      showError('No access token and no SSO session. After IdP login, set sessionStorage.file_gate_access_token or window.fileGateAccessToken, then retry. See docs/assurance-redeem.md.');
       return;
     }
     status.textContent = 'Verifying assurance…';
@@ -258,8 +288,8 @@ final class BridgeController implements ContainerInjectionInterface {
       headers['Authorization'] = 'DPoP ' + t;
       headers['DPoP'] = window.fileGateDpopProof;
     }
-    const res = await fetch(bridgePath, { method: 'POST', headers, credentials: 'same-origin' });
-    const data = await res.json().catch(function () { return {}; });
+    res = await fetch(bridgePath, { method: 'POST', headers, credentials: 'same-origin' });
+    data = await res.json().catch(function () { return {}; });
     if (!res.ok) {
       showError(data.error || ('HTTP ' + res.status));
       return;
@@ -398,7 +428,49 @@ HTML;
       ]);
       return '';
     }
-    return $login;
+    $settings = $gate['settings'];
+    $acr = array_values(array_filter(array_map('strval', (array) ($settings['required_acr'] ?? []))));
+    // Append acr_values by default for Keycloak hardware ACR prompts (GH #42).
+    $append_acr = !array_key_exists('step_up_append_acr', $settings)
+      || !empty($settings['step_up_append_acr']);
+    $acr_param = trim((string) ($settings['step_up_acr_param'] ?? 'acr_values'));
+    if ($acr_param === '') {
+      $acr_param = 'acr_values';
+    }
+    return $this->stepUpAuthorizeUrl->build($login, $acr, '', [
+      'append_acr' => $append_acr,
+      'append_return' => FALSE,
+      'acr_param' => $acr_param,
+    ]) ?: $login;
+  }
+
+  /**
+   * Uses openid_connect session token when Authorization is absent (GH #41).
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   Incoming bridge request.
+   * @param array<string, mixed> $settings
+   *   Assurance field settings.
+   *
+   * @return \Symfony\Component\HttpFoundation\Request
+   *   Same request, or a duplicate with Bearer from the SSO session.
+   */
+  private function requestWithSessionToken(Request $request, array $settings): Request {
+    $authorization = (string) $request->headers->get('Authorization', '');
+    if ($authorization !== '') {
+      return $request;
+    }
+    // Opt-out: session_bridge_sso: false disables SSO token pickup.
+    if (array_key_exists('session_bridge_sso', $settings) && empty($settings['session_bridge_sso'])) {
+      return $request;
+    }
+    $token = $this->sessionOidcToken->accessToken();
+    if ($token === NULL) {
+      return $request;
+    }
+    $dup = $request->duplicate();
+    $dup->headers->set('Authorization', 'Bearer ' . $token);
+    return $dup;
   }
 
   /**

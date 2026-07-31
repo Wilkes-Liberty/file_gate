@@ -18,6 +18,7 @@ use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
 use Drupal\file_gate\SecretRegistryInterface;
+use Drupal\file_gate\Service\GrantInventory;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -107,6 +108,11 @@ class SignedUrl extends GateMethodBase {
   protected FileGateResolver $resolver;
 
   /**
+   * Jti inventory index (GH #44).
+   */
+  protected GrantInventory $grantInventory;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -119,6 +125,7 @@ class SignedUrl extends GateMethodBase {
     $instance->activeSecret = $container->get('file_gate.active_secret');
     $instance->secrets = $container->get('file_gate.secret_registry');
     $instance->resolver = $container->get('file_gate.resolver');
+    $instance->grantInventory = $container->get('file_gate.grant_inventory');
     return $instance;
   }
 
@@ -258,6 +265,21 @@ class SignedUrl extends GateMethodBase {
 
     $secret_id = $this->activeSecretId();
     $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
+
+    // Index usage-limited grants for inventory / bulk-revoke (GH #44).
+    if ($max_uses > 0 && !empty($claims['jti'])) {
+      $gate = $this->resolver->getGateForFile($file);
+      $field = is_array($gate) ? (string) $gate['field'] : '';
+      $this->grantInventory->record(
+        (string) $claims['jti'],
+        $file->uuid(),
+        $field,
+        (int) $claims[GrantSignerInterface::CLAIM_EXPIRES],
+        $secret_id,
+        $max_uses,
+        isset($claims['sh']) ? (string) $claims['sh'] : '',
+      );
+    }
 
     // The claims travel in the URL (bound by the signature); the controller
     // appends them, plus "sig", to the download link. k= names the secret for

@@ -281,29 +281,80 @@ final class Token extends GateMethodBase {
   }
 
   /**
-   * Whether a token hash is in the field's pre-shared allowlist.
+   * Pre-shared campaign token allowlist (optional TTL / max uses, GH #46).
+   *
+   * Config shapes:
+   * - Legacy: list of SHA-256 hash strings (unlimited, no TTL).
+   * - Structured: list of {hash, exp?: unix, max?: int} — exp is absolute
+   *   expiry; max is redemptions tracked in the token store under the hash.
    *
    * @param string $token_hash
    *   The SHA-256 hash of the presented token.
    *
    * @return bool
-   *   TRUE when the hash matches a configured pre-shared token; FALSE otherwise
-   *   (including when no allowlist is configured — pre-shared mode is off).
+   *   TRUE when the hash matches a live allowlist entry.
    */
   private function presharedGrants(string $token_hash): bool {
     $allowed = (array) ($this->configuration['tokens'] ?? []);
     if ($allowed === []) {
       return FALSE;
     }
-    // Compare against every configured hash without short-circuiting, so timing
-    // does not reveal which entry (if any) matched.
-    $match = FALSE;
-    foreach ($allowed as $allowed_hash) {
-      if (hash_equals((string) $allowed_hash, $token_hash)) {
-        $match = TRUE;
+    $now = $this->time->getRequestTime();
+    $matched = NULL;
+    foreach ($allowed as $entry) {
+      if (is_string($entry)) {
+        if (hash_equals($entry, $token_hash)) {
+          $matched = ['hash' => $entry, 'exp' => 0, 'max' => 0];
+        }
+        continue;
       }
+      if (!is_array($entry)) {
+        continue;
+      }
+      $hash = (string) ($entry['hash'] ?? '');
+      if ($hash === '' || !hash_equals($hash, $token_hash)) {
+        continue;
+      }
+      $matched = [
+        'hash' => $hash,
+        'exp' => (int) ($entry['exp'] ?? 0),
+        'max' => (int) ($entry['max'] ?? 0),
+      ];
     }
-    return $match;
+    if ($matched === NULL) {
+      return FALSE;
+    }
+    if ($matched['exp'] > 0 && $matched['exp'] <= $now) {
+      return FALSE;
+    }
+    // Unlimited campaign token (legacy default).
+    if ($matched['max'] <= 0) {
+      return TRUE;
+    }
+    // Usage-limited campaign token: share the minted-token store shape.
+    return $this->consumePresharedUses($token_hash, $matched['max'], $matched['exp'] > 0 ? $matched['exp'] : $now + 86400 * 365);
+  }
+
+  /**
+   * Counts redemptions for a usage-limited pre-shared token.
+   */
+  private function consumePresharedUses(string $token_hash, int $max, int $exp): bool {
+    return (bool) $this->runLocked($this->tokenLockName($token_hash), function () use ($token_hash, $max, $exp): bool {
+      $store = $this->tokenStore();
+      $record = $store->get($token_hash);
+      if (!is_array($record)) {
+        $record = ['uses' => 0, 'max' => $max, 'preshared' => TRUE];
+      }
+      $uses = (int) ($record['uses'] ?? 0);
+      if ($uses >= $max) {
+        return FALSE;
+      }
+      $record['uses'] = $uses + 1;
+      $record['max'] = $max;
+      $record['preshared'] = TRUE;
+      $store->setWithExpire($token_hash, $record, max(1, $exp - $this->time->getRequestTime()));
+      return TRUE;
+    });
   }
 
   /**
@@ -386,9 +437,9 @@ final class Token extends GateMethodBase {
       ],
       'tokens' => [
         '#type' => 'textarea',
-        '#title' => $this->t('Pre-shared token hashes'),
-        '#default_value' => implode("\n", (array) ($settings['tokens'] ?? [])),
-        '#description' => $this->t('Optional. One <strong>SHA-256 hash</strong> per line of a pre-shared campaign token. Store hashes only, never the plaintext token. Leave empty to disable pre-shared mode.'),
+        '#title' => $this->t('Pre-shared campaign tokens'),
+        '#default_value' => $this->tokensFormDefault((array) ($settings['tokens'] ?? [])),
+        '#description' => $this->t('Optional. One entry per line: SHA-256 hash only (unlimited), or <code>hash|exp|max</code> where <code>exp</code> is a Unix expiry (0 = none) and <code>max</code> is redemptions (0 = unlimited). Store hashes only — never plaintext. Prefer minted revocable tokens for sensitive files (GH #46).'),
       ],
     ];
   }
@@ -401,12 +452,69 @@ final class Token extends GateMethodBase {
     foreach (['ttl', 'available_until', 'max_uses'] as $key) {
       $settings[$key] = (int) ($values[$key] ?? 0);
     }
-    // One hash per line; drop blanks and surrounding whitespace.
-    $tokens = array_filter(array_map('trim', preg_split('/\R/', (string) ($values['tokens'] ?? ''))));
-    if ($tokens) {
-      $settings['tokens'] = array_values($tokens);
+    $tokens = [];
+    foreach (preg_split('/\R/', (string) ($values['tokens'] ?? '')) as $line) {
+      $line = trim($line);
+      if ($line === '') {
+        continue;
+      }
+      if (str_contains($line, '|')) {
+        [$hash, $exp, $max] = array_pad(explode('|', $line, 3), 3, '0');
+        $hash = trim($hash);
+        if ($hash === '') {
+          continue;
+        }
+        $entry = ['hash' => $hash];
+        $exp_i = (int) $exp;
+        $max_i = (int) $max;
+        if ($exp_i > 0) {
+          $entry['exp'] = $exp_i;
+        }
+        if ($max_i > 0) {
+          $entry['max'] = $max_i;
+        }
+        $tokens[] = $entry;
+      }
+      else {
+        $tokens[] = $line;
+      }
+    }
+    if ($tokens !== []) {
+      $settings['tokens'] = $tokens;
     }
     return $settings;
+  }
+
+  /**
+   * Formats stored token config for the settings textarea.
+   *
+   * @param array $tokens
+   *   Hash strings and/or structured rows.
+   */
+  private function tokensFormDefault(array $tokens): string {
+    $lines = [];
+    foreach ($tokens as $entry) {
+      if (is_string($entry)) {
+        $lines[] = $entry;
+        continue;
+      }
+      if (!is_array($entry)) {
+        continue;
+      }
+      $hash = (string) ($entry['hash'] ?? '');
+      if ($hash === '') {
+        continue;
+      }
+      $exp = (int) ($entry['exp'] ?? 0);
+      $max = (int) ($entry['max'] ?? 0);
+      if ($exp > 0 || $max > 0) {
+        $lines[] = $hash . '|' . $exp . '|' . $max;
+      }
+      else {
+        $lines[] = $hash;
+      }
+    }
+    return implode("\n", $lines);
   }
 
 }
