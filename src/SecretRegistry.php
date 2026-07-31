@@ -106,12 +106,9 @@ final class SecretRegistry implements SecretRegistryInterface {
    * {@inheritdoc}
    */
   public function namedSecretIds(): array {
-    $ids = array_unique(array_merge(
-      array_keys($this->namedSecretValues()),
-      array_keys($this->secretScopes()),
-    ));
+    $ids = array_keys($this->namedSecretValues() + $this->secretScopes());
     sort($ids);
-    return array_values($ids);
+    return $ids;
   }
 
   /**
@@ -120,13 +117,10 @@ final class SecretRegistry implements SecretRegistryInterface {
   public function scopeFields(string $secret_id): array {
     $scopes = $this->secretScopes();
     $fields = $scopes[$secret_id] ?? [];
-    if (!is_array($fields)) {
-      return [];
-    }
     $out = [];
     foreach ($fields as $field) {
-      if (is_string($field) && $field !== '') {
-        $out[] = $field;
+      if (is_scalar($field) && (string) $field !== '') {
+        $out[] = (string) $field;
       }
     }
     $out = array_values(array_unique($out));
@@ -175,8 +169,8 @@ final class SecretRegistry implements SecretRegistryInterface {
   /**
    * Returns the secret_scopes map from configuration.
    *
-   * @return array<string, list<string>>
-   *   id => field keys.
+   * @return array<string, array<int|string, mixed>>
+   *   id => raw field key list from config.
    */
   private function secretScopes(): array {
     $raw = $this->configFactory->get('file_gate.settings')->get('secret_scopes');

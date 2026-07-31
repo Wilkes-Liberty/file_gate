@@ -79,14 +79,12 @@ final class ScopedSecretsTest extends KernelTestBase {
     $this->container->get('stream_wrapper_manager')
       ->registerWrapper('private', PrivateStream::class, StreamWrapperInterface::WRITE_VISIBLE);
 
-    // Named secret values (settings.php equivalent).
+    // Named secret values (settings.php equivalent). Settings is read when
+    // the registry is constructed; set before services that depend on it.
     $this->setSetting('file_gate.secrets', [
       self::PUBLIC_ID => self::PUBLIC_SECRET,
       self::NDA_ID => self::NDA_SECRET,
     ]);
-    // Rebuild registry with settings.
-    $this->container->get('kernel')->rebuildContainer();
-    $this->container = $this->container->get('kernel')->getContainer();
 
     $this->config('file_gate.settings')
       ->set('download_secret', self::LEGACY)
@@ -220,12 +218,20 @@ final class ScopedSecretsTest extends KernelTestBase {
     $this->assertSame(200, $mint->getStatusCode());
     parse_str(parse_url(json_decode((string) $mint->getContent(), TRUE)['path'], PHP_URL_QUERY) ?: '', $query);
 
+    // Remove NDA material without rebuilding $this->container (phpstan).
     $this->setSetting('file_gate.secrets', [
       self::PUBLIC_ID => self::PUBLIC_SECRET,
-      // NDA secret deleted.
     ]);
-    $this->container->get('kernel')->rebuildContainer();
-    $this->container = $this->container->get('kernel')->getContainer();
+    // Force a new registry instance that re-reads Settings.
+    $this->container->set('file_gate.secret_registry', new \Drupal\file_gate\SecretRegistry(
+      $this->container->get('config.factory'),
+      $this->container->get('settings'),
+    ));
+    $this->container->set('file_gate.grant_signer', new \Drupal\file_gate\GrantSigner(
+      $this->container->get('config.factory'),
+      $this->container->get('datetime.time'),
+      $this->container->get('file_gate.secret_registry'),
+    ));
 
     $request = Request::create('/api/file-gate/download', 'GET', $query);
     $this->expectException(AccessDeniedHttpException::class);
