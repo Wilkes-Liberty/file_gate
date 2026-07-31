@@ -129,25 +129,23 @@ final class IdentityAwareMintTest extends KernelTestBase {
   }
 
   /**
-   * User without download access is refused.
+   * Non-owner without host view rights is refused.
    */
   public function testUserWithoutDownloadAccessRefused(): void {
     $file = $this->createFile();
-    // Anonymous-equivalent authenticated user without special rights.
+    // Own the file as uid 1 so the acting account is not the owner.
+    $file->setOwnerId(1);
+    $file->save();
+    // Authenticated user with no rights: cannot download the private file and
+    // cannot view the entity_test host that references it.
     $user = $this->createUser([]);
     $this->assertInstanceOf(User::class, $user);
-
-    // entity_test is typically viewable; file download may still be allowed for
-    // owners — force deny via file access by using a blocked user.
-    $user->block();
-    $user->save();
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
       'file' => $file->uuid(),
       'uid' => (int) $user->id(),
     ]));
-    // Blocked users cannot download in core.
-    $this->assertSame(403, $response->getStatusCode());
+    $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
   }
 
   /**
