@@ -6,6 +6,39 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **A gated field can no longer claim protection it does not provide.** Gating only
+  applies to the private file system — public files are served straight off disk and
+  never reach Drupal, so `FileGateResolver::getGateForFile()` returns NULL and no gate
+  runs.
+
+  The field edit form already forced the private scheme when gating was enabled, but that
+  is a *form* alter and a config-import-authoritative deploy never runs it. So
+  `drush config:import` could install a field storage carrying `file_gate.gated: true`
+  alongside `uri_scheme: public` — the configuration asserting the files are gated, the
+  admin UI showing them as gated, and the files readable by anyone with the URL. Nothing
+  errored, because nothing was broken: the gate simply never engaged.
+
+  Two guards, because they cover different sites:
+
+  - a config-import validator rejects the combination and names the field to fix. It
+    rejects rather than silently rewriting `uri_scheme`, which would make the site
+    disagree with its own exported configuration and oscillate on the next export;
+  - `hook_requirements()` reports any site already in that state at ERROR, which the
+    validator cannot reach.
+
+  Note that changing an existing field to the private scheme does not move files already
+  stored publicly — they stay readable until re-uploaded or migrated.
+
+### Changed
+- **The README states the mint trust boundary plainly.** It described the cryptography
+  accurately but left an integrator to infer the most important property: **mint
+  authorizes nothing.** It authenticates the caller with the shared secret and then mints
+  whatever was asked for, with no entity or field access check, so the secret's blast
+  radius is the entire gated corpus. That is a deliberate design — the gate decision is
+  delegated to a trusted back end — but it means the secret must never be provisioned into
+  a public web tier, which is now said in those words.
+
 ## [1.0.2] - 2026-07-30
 
 ### Changed

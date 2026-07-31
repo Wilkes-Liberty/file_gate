@@ -1,0 +1,68 @@
+<?php
+
+/**
+ * @file
+ * Install and requirements functions for File Gate.
+ */
+
+/**
+ * Implements hook_requirements().
+ *
+ * Reports fields marked as gated whose files are not on the private file
+ * system. Gating only applies to private files: public ones are served straight
+ * off disk by the web server or a CDN and never reach Drupal, so
+ * FileGateResolver::getGateForFile() returns NULL and no gate runs.
+ *
+ * That combination is the module's worst failure mode, because nothing about it
+ * looks wrong. The configuration says the files are gated, the field edit form
+ * shows them as gated, and they are readable by anyone with the URL. No error
+ * is raised, because nothing is broken — the gate simply never engages.
+ *
+ * The field edit form prevents it by forcing the private scheme, but that is a
+ * form alter and a config-import-authoritative deploy never runs it. The import
+ * validator now rejects the combination going forward; this reports sites that
+ * already reached that state, which the validator cannot help with.
+ *
+ * Reported at ERROR: the module's single promise is that these files are not
+ * publicly readable, and while this holds they are.
+ */
+function file_gate_requirements(string $phase): array {
+  $requirements = [];
+  if ($phase !== 'runtime') {
+    return $requirements;
+  }
+
+  $offenders = [];
+  $storages = \Drupal::entityTypeManager()
+    ->getStorage('field_storage_config')
+    ->loadMultiple();
+
+  foreach ($storages as $storage) {
+    if (!$storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
+      continue;
+    }
+    $settings = $storage->getSettings();
+    // No uri_scheme means the field type has no file system, so gating it is
+    // meaningless rather than unsafe.
+    if (!array_key_exists('uri_scheme', $settings)) {
+      continue;
+    }
+    if (($settings['uri_scheme'] ?? NULL) === 'private') {
+      continue;
+    }
+    $offenders[] = $storage->id() . ' (' . (string) $settings['uri_scheme'] . ')';
+  }
+
+  if ($offenders === []) {
+    return $requirements;
+  }
+
+  $requirements['file_gate_public_gated_fields'] = [
+    'title' => t('File Gate: gated fields are not on the private file system'),
+    'value' => t('@list', ['@list' => implode(', ', $offenders)]),
+    'severity' => REQUIREMENT_ERROR,
+    'description' => t('These fields are marked as gated but store files publicly, so the gate never runs and the files are readable by anyone with the URL. The configuration says they are protected and they are not. Change the field to the private file system — note that existing files are not moved by that change, so they must be re-uploaded or migrated before the gate covers them.'),
+  ];
+
+  return $requirements;
+}

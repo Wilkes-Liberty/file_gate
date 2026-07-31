@@ -31,3 +31,11 @@ services:
     parent: logger.channel_base
     arguments:
       - 'file_gate'
+
+  # Rejects a config import that would mark a public-scheme field as gated.
+  # The field edit form forces the private scheme, but a config-import
+  # deploy never runs the form — and a gated public field is not a gate.
+  file_gate.gated_field_scheme_validator:
+    class: Drupal\file_gate\EventSubscriber\GatedFieldSchemeValidator
+    tags:
+      - { name: event_subscriber }
