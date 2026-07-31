@@ -13,7 +13,7 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Url;
 use Drupal\file\FileInterface;
-use Drupal\file\FileUsage\FileUsageInterface;
+use Drupal\file\FileReferenceResolver;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
@@ -77,8 +77,8 @@ final class MintController implements ContainerInjectionInterface {
    *   Secret registry (auth + field scope).
    * @param \Drupal\file_gate\ActiveSecret $activeSecret
    *   Request-cycle authenticated secret id for mint signing.
-   * @param \Drupal\file\FileUsage\FileUsageInterface $fileUsage
-   *   File usage (host entities for identity-aware mint).
+   * @param \Drupal\file\FileReferenceResolver $fileReferenceResolver
+   *   Core file→host resolver (identity-aware mint host checks).
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -91,7 +91,7 @@ final class MintController implements ContainerInjectionInterface {
     private readonly TimeInterface $time,
     private readonly SecretRegistryInterface $secrets,
     private readonly ActiveSecret $activeSecret,
-    private readonly FileUsageInterface $fileUsage,
+    private readonly FileReferenceResolver $fileReferenceResolver,
   ) {}
 
   /**
@@ -109,7 +109,7 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('datetime.time'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.active_secret'),
-      $container->get('file.usage'),
+      $container->get(FileReferenceResolver::class),
     );
   }
 
@@ -308,35 +308,30 @@ final class MintController implements ContainerInjectionInterface {
       ], Response::HTTP_FORBIDDEN);
     }
 
-    // When a host entity references the file, require view access on it too.
-    $usage = $this->fileUsage->listUsage($file);
-    foreach ($usage as $module_usage) {
-      if (!is_array($module_usage)) {
+    // Require view access on every host entity core knows about (same graph as
+    // FileAccessControlHandler). Any forbidden host fails the mint closed.
+    $saw_host = FALSE;
+    foreach ($this->fileReferenceResolver->getReferences($file) as $usage) {
+      $entity = $this->fileReferenceResolver->loadEntityFromUsage($usage);
+      if ($entity === NULL) {
         continue;
       }
-      foreach ($module_usage as $entity_type => $ids) {
-        if (!$this->entityTypeManager->hasDefinition($entity_type) || !is_array($ids)) {
-          continue;
-        }
-        $storage = $this->entityTypeManager->getStorage($entity_type);
-        foreach (array_keys($ids) as $entity_id) {
-          $entity = $storage->load($entity_id);
-          if ($entity === NULL) {
-            continue;
-          }
-          if (!$entity->access('view', $account)) {
-            $this->logger->warning('Mint refused: acting account @uid cannot view @type @id hosting file @uuid.', [
-              '@uid' => (string) $account->id(),
-              '@type' => $entity_type,
-              '@id' => (string) $entity_id,
-              '@uuid' => $file->uuid(),
-            ]);
-            return new JsonResponse([
-              'error' => 'Acting account is not allowed to access the host content for that file.',
-            ], Response::HTTP_FORBIDDEN);
-          }
-        }
+      $saw_host = TRUE;
+      if (!$entity->access('view', $account)) {
+        $this->logger->warning('Mint refused: acting account @uid cannot view @type @id hosting file @uuid.', [
+          '@uid' => (string) $account->id(),
+          '@type' => $entity->getEntityTypeId(),
+          '@id' => (string) $entity->id(),
+          '@uuid' => $file->uuid(),
+        ]);
+        return new JsonResponse([
+          'error' => 'Acting account is not allowed to access the host content for that file.',
+        ], Response::HTTP_FORBIDDEN);
       }
+    }
+    // Detached files: download already passed (owner path). No host to recheck.
+    if (!$saw_host) {
+      return NULL;
     }
 
     return NULL;

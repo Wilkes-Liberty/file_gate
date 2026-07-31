@@ -81,16 +81,22 @@ final class IdentityAwareMintTest extends KernelTestBase {
 
   /**
    * Creates a gated private file on entity_test.
+   *
+   * @param string $host_name
+   *   Entity label. Use "forbid_access" to force host view denial in entity_test.
    */
-  private function createFile(): FileInterface {
+  private function createFile(string $host_name = 'host'): FileInterface {
     $directory = 'private://docs';
     \Drupal::service('file_system')->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY);
-    $uri = 'private://docs/id-aware.pdf';
+    $uri = 'private://docs/id-aware-' . preg_replace('/[^a-z0-9]+/', '-', strtolower($host_name)) . '.pdf';
     file_put_contents($uri, 'BYTES');
     $file = File::create(['uri' => $uri]);
     $file->setPermanent();
     $file->save();
-    $entity = EntityTest::create(['name' => 'host', 'field_gated' => ['target_id' => $file->id()]]);
+    $entity = EntityTest::create([
+      'name' => $host_name,
+      'field_gated' => ['target_id' => $file->id()],
+    ]);
     $entity->save();
     \Drupal::service('file.usage')->add($file, 'file', 'entity_test', (string) $entity->id());
     return $file;
@@ -129,48 +135,41 @@ final class IdentityAwareMintTest extends KernelTestBase {
   }
 
   /**
-   * Non-owner of a temporary file is refused (core download deny).
+   * Host entity that forbids view fails the identity check closed.
    *
-   * Permanent private files are often downloadable via host usage even without
-   * special roles — which is why File Gate exists. Temporary files are
-   * owner-only in core, so they give a deterministic deny for this check.
+   * entity_test always forbids view when the label is "forbid_access".
    */
-  public function testUserWithoutDownloadAccessRefused(): void {
-    $file = $this->createFile();
-    $owner = $this->createUser(['access content', 'view test entity']);
-    $this->assertInstanceOf(User::class, $owner);
-    $file->setOwnerId((int) $owner->id());
-    $file->setTemporary();
+  public function testForbiddenHostRefusesMint(): void {
+    $file = $this->createFile('forbid_access');
+    $user = $this->createUser(['access content', 'view test entity']);
+    $this->assertInstanceOf(User::class, $user);
+    $file->setOwnerId((int) $user->id());
     $file->save();
 
-    $outsider = $this->createUser(['access content', 'view test entity']);
-    $this->assertInstanceOf(User::class, $outsider);
-    $this->assertFalse($file->access('download', $outsider));
+    // Core download is also denied for this host; identity check must refuse.
+    $this->assertFalse($file->access('download', $user));
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
       'file' => $file->uuid(),
-      'uid' => (int) $outsider->id(),
+      'uid' => (int) $user->id(),
     ]));
     $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
   }
 
   /**
-   * Owner who cannot view the host entity is refused at the host check.
+   * User without host view rights is refused even if they own the file.
    */
   public function testUserWithoutHostViewAccessRefused(): void {
-    $file = $this->createFile();
-    // Owner of a permanent file: core download is allowed; host view is not.
+    $file = $this->createFile('restricted-host');
     $user = $this->createUser([]);
     $this->assertInstanceOf(User::class, $user);
     $file->setOwnerId((int) $user->id());
     $file->save();
-    $this->assertTrue($file->access('download', $user));
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
       'file' => $file->uuid(),
       'account' => $user->uuid(),
     ]));
-    // Host entity_test requires "view test entity"; without it, refuse.
     $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
   }
 
@@ -178,11 +177,13 @@ final class IdentityAwareMintTest extends KernelTestBase {
    * File owner with host view access can mint when named by uuid.
    */
   public function testUserWithAccessMintsByUuid(): void {
-    $file = $this->createFile();
+    $file = $this->createFile('open-host');
     $user = $this->createUser(['access content', 'view test entity']);
     $this->assertInstanceOf(User::class, $user);
     $file->setOwnerId((int) $user->id());
     $file->save();
+
+    $this->assertTrue($file->access('download', $user));
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
       'file' => $file->uuid(),
