@@ -20,3 +20,16 @@ services:
     arguments:
       - '@file_gate.secret_registry'
       - '@datetime.time'
+
+  file_gate_assurance.webauthn_storage:
+    class: Drupal\file_gate_assurance\WebAuthn\WebAuthnCredentialStorage
+    arguments:
+      - '@database'
+      - '@datetime.time'
+
+  file_gate_assurance.webauthn_ceremony:
+    class: Drupal\file_gate_assurance\WebAuthn\WebAuthnCeremony
+    arguments:
+      - '@file_gate_assurance.webauthn_storage'
+      - '@keyvalue.expirable'
+      - '@settings'

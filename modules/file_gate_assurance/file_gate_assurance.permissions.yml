@@ -1,0 +1,5 @@
+# Permissions for native WebAuthn credential management.
+
+'register file gate webauthn':
+  title: 'Register File Gate WebAuthn credentials'
+  description: 'Register and manage hardware authenticators used for native WebAuthn gated downloads.'

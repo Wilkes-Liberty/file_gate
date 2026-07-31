@@ -45,6 +45,9 @@ use Symfony\Component\HttpFoundation\Response;
  *   in a trusted header; File Gate accepts it against a required subject
  *   allowlist. Only safe when File Gate is reachable *solely* through the
  *   proxy (the header is otherwise spoofable) — see clientCertSatisfied().
+ * - "webauthn" (native RP): File Gate runs the WebAuthn assertion ceremony for
+ *   a registered authenticator, then sets the same session bridge cookie used
+ *   by the plain-link path. Federation is not required for this mode.
  *
  * The assurance is checked BEFORE the inherited signature/usage check, so a
  * request that fails assurance never spends a usage-limited grant's use.
@@ -162,17 +165,16 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
    */
   public function challenge(FileInterface $file, Request $request): ?Response {
     $mode = $this->configuration['verify_at'] ?? 'redeem';
-    // Only Model B (redeem) offers browser/API step-up for a missing proof.
-    if ($mode !== 'redeem') {
+    // Step-up for redeem (OIDC) or webauthn (native RP).
+    if (!in_array($mode, ['redeem', 'webauthn'], TRUE)) {
       return NULL;
     }
     // Invalid/spent signature → hard deny (NULL → 403).
     if (!$this->signatureValid($file, $request)) {
       return NULL;
     }
-    // A presented Bearer/DPoP that failed live checks is a failed attempt, not
-    // "proof missing". Only the no-token case is eligible for step-up.
-    if ($this->bearerToken($request) !== NULL) {
+    // OIDC redeem: a presented Bearer/DPoP that failed is a failed attempt.
+    if ($mode === 'redeem' && $this->bearerToken($request) !== NULL) {
       return NULL;
     }
 
@@ -181,15 +183,21 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     if ($login !== '') {
       $query['login_url'] = $login;
     }
+    if ($mode === 'webauthn') {
+      $query['mode'] = 'webauthn';
+    }
     $step_up = Url::fromRoute('file_gate_assurance.step_up', [], [
       'query' => $query,
       'absolute' => FALSE,
     ])->toString();
 
-    // API clients (Accept: application/json or XHR) get RFC 9470.
+    // API clients (Accept: application/json or XHR) get a structured challenge.
     $accept = (string) $request->headers->get('Accept', '');
     $xhr = $request->headers->get('X-Requested-With') === 'XMLHttpRequest';
     if (str_contains($accept, 'application/json') || $xhr) {
+      if ($mode === 'webauthn') {
+        return $this->buildWebauthnApiChallenge($request, $step_up);
+      }
       return $this->buildApiChallenge($request, $step_up);
     }
 
@@ -247,9 +255,8 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       return $this->clientCertSatisfied($request);
     }
 
-    // Plain-link primary: a short-lived bridge cookie set after step-up.
-    // Bridge is on by default for redeem; set bridge: false to require Bearer
-    // on every download GET.
+    // Plain-link primary: a short-lived bridge cookie set after step-up
+    // (OIDC redeem or native WebAuthn). Bridge is on by default.
     $bridge_enabled = !array_key_exists('bridge', $this->configuration)
       || !empty($this->configuration['bridge']);
     if ($bridge_enabled) {
@@ -259,8 +266,37 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       }
     }
 
+    // Native WebAuthn: only the bridge (or a future inline assertion) satisfies
+    // the gate — a plain download without step-up never passes.
+    if ($mode === 'webauthn') {
+      return FALSE;
+    }
+
     // Model B: verify a live OIDC token presented at redemption.
     return $this->liveOidcSatisfied($request);
+  }
+
+  /**
+   * JSON challenge for native WebAuthn step-up.
+   */
+  private function buildWebauthnApiChallenge(Request $request, string $step_up): JsonResponse {
+    $assert_options = Url::fromRoute('file_gate_assurance.webauthn_assert_options', [], [
+      'query' => $request->query->all(),
+      'absolute' => FALSE,
+    ])->toString();
+    $assert = Url::fromRoute('file_gate_assurance.webauthn_assert', [], [
+      'query' => $request->query->all(),
+      'absolute' => FALSE,
+    ])->toString();
+    $response = new JsonResponse([
+      'error' => 'webauthn_required',
+      'error_description' => 'Complete a WebAuthn assertion for a registered authenticator, then retry the download with the session bridge cookie.',
+      'step_up' => $step_up,
+      'assert_options' => $assert_options,
+      'assert' => $assert,
+    ], Response::HTTP_UNAUTHORIZED);
+    $response->headers->set('Cache-Control', 'private, no-store');
+    return $response;
   }
 
   /**
@@ -401,7 +437,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   public function fieldSettingsForm(array $settings): array {
     $lines = static fn (array $v): string => implode("\n", $v);
     $verify_at = (string) ($settings['verify_at'] ?? 'redeem');
-    if (!in_array($verify_at, ['redeem', 'mint', 'client_cert'], TRUE)) {
+    if (!in_array($verify_at, ['redeem', 'mint', 'client_cert', 'webauthn'], TRUE)) {
       $verify_at = 'redeem';
     }
     return parent::fieldSettingsForm($settings) + [
@@ -412,6 +448,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
           'redeem' => $this->t('At redemption — live OIDC token (Model B)'),
           'mint' => $this->t('At mint — trust the stepped-up caller (Model A)'),
           'client_cert' => $this->t('Edge mTLS — trust a validated client certificate'),
+          'webauthn' => $this->t('Native WebAuthn — File Gate is the RP'),
         ],
         '#default_value' => $verify_at,
       ],
@@ -465,6 +502,29 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#title' => $this->t('Step-up login URL (optional)'),
         '#default_value' => $settings['step_up_login_url'] ?? '',
         '#description' => $this->t('Front-end or IdP URL for plain-link users with no token yet. The step-up page appends <code>return_to</code>. After login, set <code>sessionStorage.file_gate_access_token</code> and return.'),
+      ],
+      'rp_id' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('WebAuthn RP ID'),
+        '#default_value' => $settings['rp_id'] ?? '',
+        '#description' => $this->t('Native WebAuthn mode. Effective domain (e.g. <code>files.example.gov</code>). Must match the download host.'),
+      ],
+      'rp_name' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('WebAuthn RP name'),
+        '#default_value' => $settings['rp_name'] ?? 'File Gate',
+      ],
+      'origins' => [
+        '#type' => 'textarea',
+        '#title' => $this->t('WebAuthn allowed origins'),
+        '#default_value' => $lines(is_array($settings['origins'] ?? NULL) ? $settings['origins'] : []),
+        '#description' => $this->t('One absolute origin per line (e.g. <code>https://files.example.gov</code>). Required for native WebAuthn.'),
+      ],
+      'webauthn_user_handle' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('WebAuthn user handle (optional fixed)'),
+        '#default_value' => $settings['webauthn_user_handle'] ?? '',
+        '#description' => $this->t('If set, only credentials registered under this handle may assert. Otherwise pass <code>wh=</code> matching the mint <code>subject</code> (and grant <code>sh</code>).'),
       ],
       'dpop' => [
         '#type' => 'checkbox',
@@ -525,7 +585,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     $settings = parent::fieldSettingsSubmit($values);
 
     $mode = $values['verify_at'] ?? 'redeem';
-    $settings['verify_at'] = in_array($mode, ['redeem', 'mint', 'client_cert'], TRUE) ? $mode : 'redeem';
+    $settings['verify_at'] = in_array($mode, ['redeem', 'mint', 'client_cert', 'webauthn'], TRUE) ? $mode : 'redeem';
     $settings['aal'] = (int) ($values['aal'] ?? 0);
     $settings['bridge'] = !empty($values['bridge']);
     $settings['bridge_ttl'] = (int) ($values['bridge_ttl'] ?? 120);
@@ -537,6 +597,9 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       'issuer',
       'audience',
       'step_up_login_url',
+      'rp_id',
+      'rp_name',
+      'webauthn_user_handle',
       'introspection_endpoint',
       'introspection_client_id',
       'trusted_proxy_header',
@@ -548,7 +611,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         $settings[$key] = $value;
       }
     }
-    foreach (['required_acr', 'required_amr', 'allowed_subjects'] as $key) {
+    foreach (['required_acr', 'required_amr', 'allowed_subjects', 'origins'] as $key) {
       $list = array_filter(array_map('trim', preg_split('/\R/', (string) ($values[$key] ?? ''))));
       if ($list) {
         $settings[$key] = array_values($list);
