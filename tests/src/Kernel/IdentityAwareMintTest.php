@@ -83,7 +83,7 @@ final class IdentityAwareMintTest extends KernelTestBase {
    * Creates a gated private file on entity_test.
    *
    * @param string $host_name
-   *   Entity label. Use "forbid_access" to force host view denial in entity_test.
+   *   Entity label. Use "forbid_access" to force host view denial.
    */
   private function createFile(string $host_name = 'host'): FileInterface {
     $directory = 'private://docs';
@@ -137,7 +137,7 @@ final class IdentityAwareMintTest extends KernelTestBase {
   /**
    * Host entity that forbids view fails the identity check closed.
    *
-   * entity_test always forbids view when the label is "forbid_access".
+   * Entity_test always forbids view when the label is "forbid_access".
    */
   public function testForbiddenHostRefusesMint(): void {
     $file = $this->createFile('forbid_access');
