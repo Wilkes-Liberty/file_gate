@@ -33,7 +33,7 @@ final class ActiveSecret {
   }
 
   /**
-   * Returns the authenticated secret id, or NULL for legacy / not authenticated.
+   * Returns the secret id, or NULL for legacy / not authenticated.
    */
   public function get(): ?string {
     return $this->authenticated ? $this->secretId : NULL;
@@ -47,7 +47,7 @@ final class ActiveSecret {
   }
 
   /**
-   * Clears state (optional; PHP request lifecycle usually discards the service).
+   * Clears state between requests when the service is reused.
    */
   public function clear(): void {
     $this->authenticated = FALSE;
