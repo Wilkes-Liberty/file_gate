@@ -47,7 +47,7 @@ function file_gate_requirements(string $phase): array {
     if (!array_key_exists('uri_scheme', $settings)) {
       continue;
     }
-    if (($settings['uri_scheme'] ?? NULL) === 'private') {
+    if ($settings['uri_scheme'] === 'private') {
       continue;
     }
     $offenders[] = $storage->id() . ' (' . (string) $settings['uri_scheme'] . ')';

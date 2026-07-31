@@ -68,7 +68,9 @@ final class GatedFieldSchemeValidator implements EventSubscriberInterface {
           continue;
         }
 
-        $importer->logError($this->t('File Gate: @name is marked as gated but stores files in the "@scheme" file system. Gating only applies to private files — public files are served directly by the web server and never reach Drupal, so the gate would silently not apply and the files would remain publicly readable. Set settings.uri_scheme to "private" in the exported configuration, or remove the file_gate.gated third-party setting.', [
+        // logError() takes a plain string, so the translated message is cast
+        // rather than handed over as TranslatableMarkup.
+        $importer->logError((string) $this->t('File Gate: @name is marked as gated but stores files in the "@scheme" file system. Gating only applies to private files — public files are served directly by the web server and never reach Drupal, so the gate would silently not apply and the files would remain publicly readable. Set settings.uri_scheme to "private" in the exported configuration, or remove the file_gate.gated third-party setting.', [
           '@name' => $name,
           '@scheme' => $scheme,
         ]));
