@@ -385,7 +385,7 @@ final class WebAuthnCeremony {
       new NoneAttestationStatementSupport(),
     ]);
     $serializer = (new WebauthnSerializerFactory($attestation))->create();
-    // WebauthnSerializerFactory returns SerializerInterface; cast for normalize().
+    // Factory returns SerializerInterface; need Serializer for normalize().
     assert($serializer instanceof Serializer);
     return $serializer;
   }
