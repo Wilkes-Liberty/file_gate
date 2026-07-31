@@ -1,7 +1,7 @@
 # File Gate — program plan & tracking
 
 **Status:** living document (updated 2026-07-31)  
-**Gap-closure release:** merged to `1.x` as **1.4.0** (2026-07-31)
+**Module releases:** **1.4.0** (gap-closure) tagged; backlog **#41–#46** merged to `1.x` (PR #48) — next minor tag when ready.
 
 ---
 
@@ -30,7 +30,7 @@ Supporting goals for the **module** (contrib product):
 | High-assurance downloads | File Gate **`assurance`** method as **OIDC RP** (`verify_at: redeem` + bridge) |
 | Native File Gate WebAuthn | **Optional / contrib fallback** when no IdP WebAuthn; **not** the W&L primary path |
 | Mint secrets | Capability credentials; prefer scoped named secrets + identity-aware mint |
-| Durable audit | Soft optional **`audit_chain`** (`docs/AUDIT.md`) |
+| Durable audit | Soft optional **`audit_chain`** (`docs/AUDIT.md`) — module integration shipped; site enable is platform work |
 
 Full W&L-specific narrative: `docs/KEYCLOAK-UNIFIED-AUTH.md`.  
 Design history: `docs/design/piv-cac-webauthn.md`.
@@ -40,17 +40,15 @@ Design history: `docs/design/piv-cac-webauthn.md`.
 ## Workstreams
 
 ```
-A  Ship gap-closure on 1.x          (code on feature/file-gate-gap-closure)
-B  File Gate product backlog        (remaining OSS gaps, dual-venue)
-C  Unified hardware auth (W&L)      (Keycloak + Drupal + File Gate glue)
-D  Ops / dogfood                    (E2E, rotation, audit_chain on site)
+A  Gap-closure on 1.x               DONE — 1.4.0
+B  File Gate product backlog        DONE on 1.x (PR #48); tag next minor when ready
+C  Unified hardware auth (W&L)      OPEN — Keycloak + Drupal + site config
+D  Ops / dogfood                    OPEN — E2E on Keycloak, audit_chain on site
 ```
 
 ---
 
-## A — Gap-closure release (branch `feature/file-gate-gap-closure`)
-
-Implements recommended order from the 2026-07-31 full-module review.
+## A — Gap-closure (1.4.0)
 
 | Item | Status | Trackers |
 |------|--------|----------|
@@ -66,26 +64,25 @@ Implements recommended order from the 2026-07-31 full-module review.
 | Download flood, revoke scope/jti | **Shipped 1.4.0** | — |
 | Authenticated role allowlist | **Shipped 1.4.0** | — |
 | Kernel tests (subset) | **Shipped 1.4.0** | open-redirect, named OTP, dual-key |
-| Merge + tag release | **Shipped** | PR #47 → 1.x → tag **1.4.0** |
-
-**Exit criteria for A:** PR merged to `1.x`, release notes in CHANGELOG, tags cut,
-dual-venue issues Fixed/closed when shipped, d.o project page notes if needed.
+| Merge + tag release | **Shipped** | PR #47 → tag **1.4.0** |
 
 ---
 
-## B — File Gate product backlog (after A)
+## B — File Gate product backlog
 
-| Priority | Topic | Why | Ticket |
-|----------|--------|-----|--------|
-| P0 | Drupal session → assurance bridge (same-origin) | Seamless downloads when already SSO’d with high acr | **new** |
-| P0 | Step-up → IdP authorize helper (ACR in authorize URL) | Standard redeem path without hand-built JS | **new** |
-| P1 | File Gate resource audience / token-exchange notes | Correct `aud` for A2 and redeem | **new** (docs + optional helper) |
-| P1 | OTP redeem without query string | Leak reduction (POST / cookie exchange) | **new** |
-| P1 | Signed-url grant inventory API | List outstanding jtis for an account/field | **new** |
-| P2 | Commerce order-scan performance | Large B2B accounts | **new** |
-| P2 | Pre-shared token TTL / max uses | Campaign token hygiene | **new** |
-| P2 | Charts / Prometheus metrics | Ops beyond dblog | backlog |
-| — | Keep native WebAuthn docs as secondary path | Contrib sites without IdP | existing #38/#37 |
+| Priority | Topic | Status | Ticket |
+|----------|--------|--------|--------|
+| P0 | Drupal session → assurance bridge | **Merged 1.x** (PR #48) | GH #41 / d.o #3614264 |
+| P0 | IdP step-up ACR authorize helper | **Merged 1.x** | GH #42 / d.o #3614265 |
+| P1 | OTP redeem without query string | **Merged 1.x** | GH #43 / d.o #3614266 |
+| P1 | Signed-url grant inventory API | **Merged 1.x** | GH #44 / d.o #3614267 |
+| P2 | Commerce order-scan performance | **Merged 1.x** | GH #45 / d.o #3614268 |
+| P2 | Pre-shared token TTL / max uses | **Merged 1.x** | GH #46 / d.o #3614269 |
+| P1 | File Gate resource audience / token-exchange notes | **Partial** (KEYCLOAK + assurance-redeem docs) | docs only unless new ticket |
+| P2 | Charts / Prometheus metrics | **Backlog** | not filed |
+| — | Native WebAuthn as secondary path | **Docs + 1.3/1.4** | — |
+
+**Exit for B product code:** merged to `1.x`. Tag as **1.5.0** when cutting a release.
 
 ---
 
@@ -94,31 +91,30 @@ dual-venue issues Fixed/closed when shipped, d.o project page notes if needed.
 **Not all of this lives in the file_gate repo.** Jira DEV is authority; GitHub
 issues on `infra` / `webcms` are implementation records.
 
-| Phase | Work | Repo | Ticket |
-|-------|------|------|--------|
-| C1 | Keycloak WebAuthn (YubiKey) for operator login | infra | **new** |
-| C2 | Stable `acr` mapping for WebAuthn (document exact string) | infra | **new** (with C1) |
-| C3 | Optional PIV/X.509 authenticator or edge mTLS → KC | infra | **new** (later) |
-| C4 | Drupal OIDC: refresh / retain usable tokens; record acr at login | webcms | **new** |
-| C5 | File Gate field config on W&L site (issuer, aud, acr, step-up URL) | webcms | **new** |
-| C6 | File Gate step-up + session bridge integration (depends B P0) | file_gate + webcms | **new** |
-| C7 | Operator browser access policy on KC clients (related infra#477) | infra | link existing |
-| C8 | Future features: “require hardware ACR” pattern doc | internal | **new** |
+| Phase | Work | Repo | Ticket | State |
+|-------|------|------|--------|--------|
+| C1 | Keycloak WebAuthn (YubiKey) for operator login | infra | DEV-222 / [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) | **Open** |
+| C2 | Stable `acr` mapping for WebAuthn | infra | with C1 | **Open** |
+| C3 | Optional PIV/X.509 / edge mTLS → KC | infra | DEV-223 / [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | **Open** |
+| C4 | Drupal OIDC: refresh / retain tokens; record acr | webcms | DEV-224 / [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | **Open** |
+| C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **Open** |
+| C6 | Site step-up + session bridge dogfood | webcms | depends C1/C4/C5 + module #41 | **Open** |
+| C7 | Operator browser access policy on KC clients | infra | [infra#477](https://github.com/Wilkes-Liberty/infra/issues/477) | **Open** |
+| C8 | “Require hardware ACR” pattern doc | internal | — | **Open** |
 
-**Exit criteria for C:** One YubiKey enrolls only in Keycloak; Drupal login and
-assurance-gated downloads both require that ACR; no second enrollment UI required
-for operators.
+Epic: [DEV-221](https://wilkesliberty.atlassian.net/browse/DEV-221).  
+Branch key: `DEV-221` (e.g. `feature/DEV-221-keycloak-webauthn`).
 
 ---
 
 ## D — Ops / dogfood
 
-| Work | Ticket |
-|------|--------|
-| Run `docs/E2E-ASSURANCE.md` against Keycloak WebAuthn (not only native RP) | extend #37 |
-| Enable `audit_chain` on W&L Drupal; configure signing key; `drush audit-chain:verify` | **new** (webcms) |
-| Secret rotation drill using `docs/SECRET_ROTATION.md` | ops note |
-| Compromised-secret tabletop | ops note |
+| Work | Ticket | State |
+|------|--------|--------|
+| Run `docs/E2E-ASSURANCE.md` against Keycloak WebAuthn | after C1 | **Open** |
+| Enable `audit_chain` on W&L Drupal; signing key; verify | DEV-226 / [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | **Open** (module soft integration already shipped) |
+| Secret rotation drill | ops | **Open** |
+| Compromised-secret tabletop | ops | **Open** |
 
 ---
 
@@ -138,55 +134,56 @@ for operators.
 
 ---
 
-## Ticket index (filled when issues are filed)
+## Ticket index
 
-Update this table when creating or closing issues. Do not invent keys.
-
-### File Gate (GitHub Wilkes-Liberty/file_gate + d.o)
+### File Gate (GitHub + d.o) — module product
 
 | Topic | GH | d.o | State |
 |-------|----|-----|--------|
-| Open redirect | [#40](https://github.com/Wilkes-Liberty/file_gate/issues/40) | [#3614254](https://www.drupal.org/project/file_gate/issues/3614254) | **Closed / Fixed in 1.4.0** |
-| OTP named secrets | [#39](https://github.com/Wilkes-Liberty/file_gate/issues/39) | [#3614253](https://www.drupal.org/project/file_gate/issues/3614253) | **Closed / Fixed in 1.4.0** |
-| Enrollment UI | [#38](https://github.com/Wilkes-Liberty/file_gate/issues/38) | [#3614251](https://www.drupal.org/project/file_gate/issues/3614251) | **Closed / Fixed in 1.4.0** |
-| Manual E2E | [#37](https://github.com/Wilkes-Liberty/file_gate/issues/37) | [#3614250](https://www.drupal.org/project/file_gate/issues/3614250) | **Closed / Fixed in 1.4.0** |
-| A2 mint OIDC | [#36](https://github.com/Wilkes-Liberty/file_gate/issues/36) | [#3614249](https://www.drupal.org/project/file_gate/issues/3614249) | **Closed / Fixed in 1.4.0** |
-| Session bridge from Drupal SSO | [#41](https://github.com/Wilkes-Liberty/file_gate/issues/41) | [#3614264](https://www.drupal.org/project/file_gate/issues/3614264) | **Merged 1.x** (tag in next minor) |
-| IdP step-up authorize helper | [#42](https://github.com/Wilkes-Liberty/file_gate/issues/42) | [#3614265](https://www.drupal.org/project/file_gate/issues/3614265) | **Merged 1.x** |
-| OTP without query string | [#43](https://github.com/Wilkes-Liberty/file_gate/issues/43) | [#3614266](https://www.drupal.org/project/file_gate/issues/3614266) | **Merged 1.x** |
-| Grant inventory API | [#44](https://github.com/Wilkes-Liberty/file_gate/issues/44) | [#3614267](https://www.drupal.org/project/file_gate/issues/3614267) | **Merged 1.x** |
-| Commerce scale | [#45](https://github.com/Wilkes-Liberty/file_gate/issues/45) | [#3614268](https://www.drupal.org/project/file_gate/issues/3614268) | **Merged 1.x** |
-| Pre-shared token TTL | [#46](https://github.com/Wilkes-Liberty/file_gate/issues/46) | [#3614269](https://www.drupal.org/project/file_gate/issues/3614269) | **Merged 1.x** |
+| Open redirect | [#40](https://github.com/Wilkes-Liberty/file_gate/issues/40) | [#3614254](https://www.drupal.org/project/file_gate/issues/3614254) | **Done 1.4.0** |
+| OTP named secrets | [#39](https://github.com/Wilkes-Liberty/file_gate/issues/39) | [#3614253](https://www.drupal.org/project/file_gate/issues/3614253) | **Done 1.4.0** |
+| Enrollment UI | [#38](https://github.com/Wilkes-Liberty/file_gate/issues/38) | [#3614251](https://www.drupal.org/project/file_gate/issues/3614251) | **Done 1.4.0** |
+| Manual E2E docs | [#37](https://github.com/Wilkes-Liberty/file_gate/issues/37) | [#3614250](https://www.drupal.org/project/file_gate/issues/3614250) | **Done 1.4.0** |
+| A2 mint OIDC | [#36](https://github.com/Wilkes-Liberty/file_gate/issues/36) | [#3614249](https://www.drupal.org/project/file_gate/issues/3614249) | **Done 1.4.0** |
+| Session bridge SSO | [#41](https://github.com/Wilkes-Liberty/file_gate/issues/41) | [#3614264](https://www.drupal.org/project/file_gate/issues/3614264) | **Done on 1.x** (PR #48) |
+| IdP step-up ACR | [#42](https://github.com/Wilkes-Liberty/file_gate/issues/42) | [#3614265](https://www.drupal.org/project/file_gate/issues/3614265) | **Done on 1.x** |
+| OTP no query secrets | [#43](https://github.com/Wilkes-Liberty/file_gate/issues/43) | [#3614266](https://www.drupal.org/project/file_gate/issues/3614266) | **Done on 1.x** |
+| Grant inventory | [#44](https://github.com/Wilkes-Liberty/file_gate/issues/44) | [#3614267](https://www.drupal.org/project/file_gate/issues/3614267) | **Done on 1.x** |
+| Commerce scale | [#45](https://github.com/Wilkes-Liberty/file_gate/issues/45) | [#3614268](https://www.drupal.org/project/file_gate/issues/3614268) | **Done on 1.x** |
+| Campaign token TTL | [#46](https://github.com/Wilkes-Liberty/file_gate/issues/46) | [#3614269](https://www.drupal.org/project/file_gate/issues/3614269) | **Done on 1.x** |
 
-### Platform (Jira DEV + GH)
+GitHub: **no open issues** on Wilkes-Liberty/file_gate (2026-07-31 sweep).  
+drupal.org: shipped work at **Fixed** (auto-closes after the usual Fixed window).
+
+### Platform (still open)
 
 | Topic | Jira | GH | State |
 |-------|------|-----|--------|
-| Epic: unified hardware auth | **[DEV-221](https://wilkesliberty.atlassian.net/browse/DEV-221)** | — | Open |
+| Epic: unified hardware auth | [DEV-221](https://wilkesliberty.atlassian.net/browse/DEV-221) | — | Open |
 | Keycloak WebAuthn + ACR | [DEV-222](https://wilkesliberty.atlassian.net/browse/DEV-222) | [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) | Open |
-| Keycloak PIV/X.509 follow-on | [DEV-223](https://wilkesliberty.atlassian.net/browse/DEV-223) | [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | Open |
-| Drupal OIDC token refresh / acr | [DEV-224](https://wilkesliberty.atlassian.net/browse/DEV-224) | [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | Open |
-| Site File Gate assurance config | [DEV-225](https://wilkesliberty.atlassian.net/browse/DEV-225) | [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | Open |
+| Keycloak PIV follow-on | [DEV-223](https://wilkesliberty.atlassian.net/browse/DEV-223) | [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | Open |
+| Drupal OIDC refresh / acr | [DEV-224](https://wilkesliberty.atlassian.net/browse/DEV-224) | [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | Open |
+| Site File Gate config | [DEV-225](https://wilkesliberty.atlassian.net/browse/DEV-225) | [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | Open |
 | audit_chain on W&L site | [DEV-226](https://wilkesliberty.atlassian.net/browse/DEV-226) | [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | Open |
 
-**Branch key for all platform work under this epic:** `DEV-221` (e.g. `feature/DEV-221-keycloak-webauthn`).
+Related open (not closed here — not confirmed done): [infra#500](https://github.com/Wilkes-Liberty/infra/issues/500) mint secret blast radius (depends on scoped secrets in use + ui mint plan).
 
 ---
 
 ## Method of work
 
 1. **One goal, many trackers** — this PLAN is the map; tickets are the units.
-2. **Ship A before building C6** — gap-closure must be on `1.x` first.
+2. **Module product vs platform** — close GH/d.o when code is on `1.x` (tag for releases); platform needs deploy.
 3. **IdP before native RP** — do not dogfood W&L on File Gate native WebAuthn as primary.
 4. **Dual-venue for OSS** — every new File Gate issue gets d.o the same day.
 5. **DEV key on platform branches** — `feature/DEV-N-slug` for infra/webcms work.
-6. **Close tickets only when reality matches** — merged+deployed for platform; release tag for module.
+6. **audit_chain** — soft-enable on sites that need a durable trail; no hard module dependency.
 
 ---
 
 ## Immediate next actions (operator)
 
-1. Review/merge `feature/file-gate-gap-closure` → tag when ready.
-2. Close GH/d.o #36–#40 when the release ships (Fixed → Closed).
-3. Execute workstream **C1** (Keycloak WebAuthn) in parallel with remaining **B** items.
-4. Keep this PLAN ticket index updated as each issue is created or closed.
+1. Tag **1.5.0** from current `1.x` when ready (PR #48 content + CHANGELOG Unreleased).
+2. Create d.o release node for 1.5.0; leave Fixed issues to auto-close or mark Closed (fixed) after tag.
+3. Platform: **C1** Keycloak WebAuthn (DEV-222 / infra#503), then C4–C6 and **webcms#481** audit_chain enable.
+4. Keep this PLAN index updated when platform tickets move.
