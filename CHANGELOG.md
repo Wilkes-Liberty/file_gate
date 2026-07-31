@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-31
+
 ### Security
 - **Assurance plain-link primary path (#33 / d.o #3612909).** For
   `verify_at: redeem`, a browser that opens the signed download URL without a
