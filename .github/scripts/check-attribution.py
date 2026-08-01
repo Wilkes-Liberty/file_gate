@@ -162,6 +162,11 @@ def short(rev: str) -> str:
     return rev[:12] if re.fullmatch(r"[0-9a-f]{40}", rev) else rev
 
 
+def escape_workflow_message(message: str) -> str:
+    """Escape a workflow command message for GitHub Actions logging."""
+    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def read_optional(path):
     """Read a title/body file. Returns (text, error); exactly one is set.
 
@@ -226,8 +231,7 @@ def main() -> int:
         return 0
 
     for finding in findings:
-        safe = finding.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-        print(f"::error::{safe}")
+        print(f"::error::{escape_workflow_message(finding)}")
     print(REMEDY)
     return 1
 
