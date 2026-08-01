@@ -96,8 +96,8 @@ issues on `infra` / `webcms` are implementation records.
 | C1 | Keycloak WebAuthn (YubiKey) for operator login | infra | DEV-222 / [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) | **Merged** ([infra PR #514](https://github.com/Wilkes-Liberty/infra/pull/514)); staging live + verified; physical-key pass pending, prod binding = Phase C |
 | C2 | Stable `acr` mapping for WebAuthn | infra | with C1 | **Done** — ACR frozen: `phrh` (contract in [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) comment; runbook `infra/docs/runbooks/KEYCLOAK_WEBAUTHN_STEPUP.md`) |
 | C3 | Optional PIV/X.509 / edge mTLS → KC | infra | DEV-223 / [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | **Open** |
-| C4 | Drupal OIDC: refresh / retain tokens; record acr | webcms | DEV-224 / [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | **Open** |
-| C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **Open** |
+| C4 | Drupal OIDC: refresh / retain tokens; record acr | webcms | DEV-224 / [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | **In review** ([webcms PR #488](https://github.com/Wilkes-Liberty/webcms/pull/488): wl_oidc_session) |
+| C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **In progress** — audience `file-gate` live on staging ([infra PR #517](https://github.com/Wilkes-Liberty/infra/pull/517) in review); site field config pending |
 | C6 | Site step-up + session bridge dogfood | webcms | [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) (depends C1/C4/C5 + module #41) | **Open** |
 | C7 | Operator browser access policy on KC clients | infra | [infra#477](https://github.com/Wilkes-Liberty/infra/issues/477) | **Open** |
 | C8 | “Require hardware ACR” pattern doc | internal | [internal#82](https://github.com/Wilkes-Liberty/internal/issues/82) | **Open** |
