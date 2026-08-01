@@ -132,7 +132,14 @@ def commits_oldest_first(base: str, head: str) -> List[Tuple[str, str]]:
     """(sha, full message) for each non-merge commit in base..head, oldest first."""
     sep = "\x1e"
     out = git(
-        ["log", "--reverse", "--no-merges", f"--format=%H{sep}%B%x00", f"{base}..{head}"]
+        [
+            "log",
+            "--reverse",
+            "--topo-order",
+            "--no-merges",
+            f"--format=%H{sep}%B%x00",
+            f"{base}..{head}",
+        ]
     ).stdout
     commits: List[Tuple[str, str]] = []
     for record in out.split("\x00"):
