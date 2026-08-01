@@ -93,8 +93,8 @@ issues on `infra` / `webcms` are implementation records.
 
 | Phase | Work | Repo | Ticket | State |
 |-------|------|------|--------|--------|
-| C1 | Keycloak WebAuthn (YubiKey) for operator login | infra | DEV-222 / [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) | **In review** ([infra PR #514](https://github.com/Wilkes-Liberty/infra/pull/514); staging verified, physical-key pass pending) |
-| C2 | Stable `acr` mapping for WebAuthn | infra | with C1 | **In review** — ACR frozen: `phrh` (see [infra#503 comment](https://github.com/Wilkes-Liberty/infra/issues/503)) |
+| C1 | Keycloak WebAuthn (YubiKey) for operator login | infra | DEV-222 / [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) | **Merged** ([infra PR #514](https://github.com/Wilkes-Liberty/infra/pull/514)); staging live + verified; physical-key pass pending, prod binding = Phase C |
+| C2 | Stable `acr` mapping for WebAuthn | infra | with C1 | **Done** — ACR frozen: `phrh` (contract in [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503) comment; runbook `infra/docs/runbooks/KEYCLOAK_WEBAUTHN_STEPUP.md`) |
 | C3 | Optional PIV/X.509 / edge mTLS → KC | infra | DEV-223 / [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | **Open** |
 | C4 | Drupal OIDC: refresh / retain tokens; record acr | webcms | DEV-224 / [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | **Open** |
 | C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **Open** |
