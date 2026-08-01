@@ -41,9 +41,9 @@ Design history: `docs/design/piv-cac-webauthn.md`.
 
 ```
 A  Gap-closure on 1.x               DONE — 1.4.0
-B  File Gate product backlog        DONE on 1.x (PR #48); tag next minor when ready
-C  Unified hardware auth (W&L)      OPEN — Keycloak + Drupal + site config
-D  Ops / dogfood                    OPEN — E2E on Keycloak, audit_chain on site
+B  File Gate product backlog        DONE on 1.x — tagged **1.5.0**
+C  Unified hardware auth (W&L)      OPEN — Keycloak + Drupal + site config (all phases ticketed)
+D  Ops / dogfood                    OPEN — E2E/rotation/tabletop ticketed; audit_chain **Done** on site
 ```
 
 ---
@@ -98,9 +98,9 @@ issues on `infra` / `webcms` are implementation records.
 | C3 | Optional PIV/X.509 / edge mTLS → KC | infra | DEV-223 / [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | **Open** |
 | C4 | Drupal OIDC: refresh / retain tokens; record acr | webcms | DEV-224 / [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | **Open** |
 | C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **Open** |
-| C6 | Site step-up + session bridge dogfood | webcms | depends C1/C4/C5 + module #41 | **Open** |
+| C6 | Site step-up + session bridge dogfood | webcms | [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) (depends C1/C4/C5 + module #41) | **Open** |
 | C7 | Operator browser access policy on KC clients | infra | [infra#477](https://github.com/Wilkes-Liberty/infra/issues/477) | **Open** |
-| C8 | “Require hardware ACR” pattern doc | internal | — | **Open** |
+| C8 | “Require hardware ACR” pattern doc | internal | [internal#82](https://github.com/Wilkes-Liberty/internal/issues/82) | **Open** |
 
 Epic: [DEV-221](https://wilkesliberty.atlassian.net/browse/DEV-221).  
 Branch key: `DEV-221` (e.g. `feature/DEV-221-keycloak-webauthn`).
@@ -111,10 +111,11 @@ Branch key: `DEV-221` (e.g. `feature/DEV-221-keycloak-webauthn`).
 
 | Work | Ticket | State |
 |------|--------|--------|
-| Run `docs/E2E-ASSURANCE.md` against Keycloak WebAuthn | after C1 | **Open** |
-| Enable `audit_chain` on W&L Drupal; signing key; verify | DEV-226 / [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | **Open** (module soft integration already shipped) |
-| Secret rotation drill | ops | **Open** |
-| Compromised-secret tabletop | ops | **Open** |
+| Run `docs/E2E-ASSURANCE.md` against Keycloak WebAuthn | [webcms#485](https://github.com/Wilkes-Liberty/webcms/issues/485) (after C1) | **Open** |
+| Enable `audit_chain` on W&L Drupal; signing key; verify | DEV-226 / [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | **Done** (v1.35.0 prod 2026-08-01) |
+| Secret rotation drill | [infra#508](https://github.com/Wilkes-Liberty/infra/issues/508) | **Open** |
+| Compromised-secret tabletop | [infra#509](https://github.com/Wilkes-Liberty/infra/issues/509) | **Open** |
+| wl-onprem runner: Docker Desktop `credsStore` hang | [infra#510](https://github.com/Wilkes-Liberty/infra/issues/510) | **Open** (ops hygiene from 2026-08-01 staging deploy) |
 
 ---
 
@@ -164,7 +165,13 @@ drupal.org: shipped work at **Fixed** (auto-closes after the usual Fixed window)
 | Keycloak PIV follow-on | [DEV-223](https://wilkesliberty.atlassian.net/browse/DEV-223) | [infra#504](https://github.com/Wilkes-Liberty/infra/issues/504) | Open |
 | Drupal OIDC refresh / acr | [DEV-224](https://wilkesliberty.atlassian.net/browse/DEV-224) | [webcms#479](https://github.com/Wilkes-Liberty/webcms/issues/479) | Open |
 | Site File Gate config | [DEV-225](https://wilkesliberty.atlassian.net/browse/DEV-225) | [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | Open |
-| audit_chain on W&L site | [DEV-226](https://wilkesliberty.atlassian.net/browse/DEV-226) | [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | Open |
+| audit_chain on W&L site | [DEV-226](https://wilkesliberty.atlassian.net/browse/DEV-226) | [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | **Done** (v1.35.0) |
+| C6 site dogfood (step-up + bridge) | under DEV-221 | [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) | Open |
+| E2E-ASSURANCE vs Keycloak WebAuthn | under DEV-221 | [webcms#485](https://github.com/Wilkes-Liberty/webcms/issues/485) | Open |
+| C8 “require hardware ACR” pattern | under DEV-221 | [internal#82](https://github.com/Wilkes-Liberty/internal/issues/82) | Open |
+| Secret rotation drill | under DEV-221 | [infra#508](https://github.com/Wilkes-Liberty/infra/issues/508) | Open |
+| Compromised-secret tabletop | under DEV-221 | [infra#509](https://github.com/Wilkes-Liberty/infra/issues/509) | Open |
+| Runner Docker credsStore hang | — (ops) | [infra#510](https://github.com/Wilkes-Liberty/infra/issues/510) | Open |
 
 Related open (not closed here — not confirmed done): [infra#500](https://github.com/Wilkes-Liberty/infra/issues/500) mint secret blast radius (depends on scoped secrets in use + ui mint plan).
 
@@ -183,7 +190,7 @@ Related open (not closed here — not confirmed done): [infra#500](https://githu
 
 ## Immediate next actions (operator)
 
-1. Tag **1.5.0** from current `1.x` when ready (PR #48 content + CHANGELOG Unreleased).
-2. Create d.o release node for 1.5.0; leave Fixed issues to auto-close or mark Closed (fixed) after tag.
-3. Platform: **C1** Keycloak WebAuthn (DEV-222 / infra#503), then C4–C6 and **webcms#481** audit_chain enable.
-4. Keep this PLAN index updated when platform tickets move.
+1. Module **1.5.0** shipped (GH + d.o); Fixed issues closed on d.o.
+2. Platform: **C1** Keycloak WebAuthn (DEV-222 / [infra#503](https://github.com/Wilkes-Liberty/infra/issues/503)), then C4–C5, then **C6** [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) + E2E [webcms#485](https://github.com/Wilkes-Liberty/webcms/issues/485).
+3. Ops: rotation drill [infra#508](https://github.com/Wilkes-Liberty/infra/issues/508), tabletop [infra#509](https://github.com/Wilkes-Liberty/infra/issues/509); runner [infra#510](https://github.com/Wilkes-Liberty/infra/issues/510).
+4. **webcms#481** audit_chain enable is **Done** (site v1.35.0). Keep this PLAN index updated when platform tickets move.
