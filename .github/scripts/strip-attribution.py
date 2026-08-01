@@ -96,6 +96,8 @@ def clean_message(message: str) -> Tuple[str, List[str]]:
     raw = message.replace("\r\n", "\n").replace("\r", "\n")
     if raw.endswith("\n"):
         raw = raw[:-1]
+    original_norm = raw + "\n"
+
     lines = raw.split("\n")
     if not lines:
         return "\n", []
@@ -107,6 +109,9 @@ def clean_message(message: str) -> Tuple[str, List[str]]:
             removed.append(line)
             continue
         out.append(line)
+
+    if not removed:
+        return original_norm, []
 
     # Drop trailing blank lines in the body (keep subject even if alone).
     while len(out) > 1 and out[-1].strip() == "":
