@@ -226,8 +226,7 @@ def main() -> int:
         return 0
 
     for finding in findings:
-        safe = finding.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-        print(f"::error::{safe}")
+        print(f"::error::{finding}")
     print(REMEDY)
     return 1
 
