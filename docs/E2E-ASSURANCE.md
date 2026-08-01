@@ -15,9 +15,39 @@ d.o [#3614250](https://www.drupal.org/project/file_gate/issues/3614250).
 - For native WebAuthn only: `web-auth/webauthn-lib`, field `verify_at: webauthn`,
   `rp_id` + origins; user registered at `/user/{uid}/file-gate-webauthn`.
 
+## 0. IdP enrollment (once per operator)
+
+The IdP path assumes the hardware key is enrolled **at the IdP**, not in File
+Gate. Two routes exist when the IdP offers optional WebAuthn (the recommended
+posture — nothing forces enrollment and password login keeps working):
+
+- **Self-service, ahead of time:** the IdP's account console. Keycloak:
+  Account Console → **Signing in** → **Two-factor authentication** →
+  **Security key** → register, then name the key so multiple keys are
+  distinguishable.
+- **Inline, at first step-up:** with the register action enabled at the IdP, a
+  user who hits the step-up flow (`acr_values` requested) without an enrolled
+  credential is prompted to register in-line after their password factor, then
+  continues. Verified behavior on Keycloak 26.
+
+Checklist:
+
+1. Enroll the key by either route.
+2. Verify at the IdP that the credential exists (Keycloak admin:
+   Users → *user* → Credentials → a `webauthn` entry) and carries the label
+   you set.
+3. Enroll a **second key or spare before relying on the first** — required
+   before any enforcement phase.
+4. Lost-key drill: confirm password(+OTP) login still works, remove the
+   credential in the account console, re-enroll the replacement.
+
+**Pass criteria:** credential visible at the IdP with the chosen label; login
+without the key still works (enrollment is optional); the same key satisfies
+the step-up in §1.
+
 ## 1. OIDC redeem + plain-link bridge (primary / IdP-first)
 
-1. (W&L) Log into Drupal via Keycloak with the same YubiKey used for ACR.
+1. (W&L) Log into Drupal via Keycloak with the same YubiKey enrolled in §0.
 2. Mint a grant for an assurance field (`verify_at: redeem`, bridge on);
    include `subject` = OIDC `sub` when testing per-user binding.
 3. Open the signed download URL in a browser **without** Authorization.
