@@ -2,8 +2,13 @@
 
 **Audience:** operators and integrators who run File Gate behind a real IdP
 (Keycloak, login.gov-style ICAM, Okta, Entra, …).  
-**W&L status:** recommended architecture for wilkesliberty.com; Keycloak today
-is password + TOTP — WebAuthn/PIV is planned work (see `PLAN.md` workstream C).
+**W&L status:** delivered for staging (2026-08-01). Keycloak emits the frozen ACR
+string **`phrh`** (phishing-resistant hardware-protected, OpenID EAP vocabulary)
+when a WebAuthn step-up completes; plain password+TOTP logins emit `"1"`. Copy
+`phrh` byte-exact into `required_acr`. The site-specific contract (issuer,
+step-up URL, flow design, rollback) lives in the infra repo's
+`docs/runbooks/KEYCLOAK_WEBAUTHN_STEPUP.md`; program state is `PLAN.md`
+workstream C.
 
 ---
 
