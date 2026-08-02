@@ -12,6 +12,14 @@ All notable changes to **File Gate** are documented here. The format is based on
   tree. Roadmap and scheduling are tracked internally; the module's own documentation
   (`API.md`, `ADR.md`, `KEYCLOAK-UNIFIED-AUTH.md`, `assurance-redeem.md`) is unaffected.
 
+### Fixed
+- **Assurance bridge unreachable beside simple_oauth (#54 / d.o #3614535).** The
+  bridge and WebAuthn assertion routes now pin `_auth: ['cookie']` so a global
+  authentication provider that consumes `Authorization` (simple_oauth being the
+  common case) can no longer reject the external IdP Bearer/DPoP token before
+  the controller validates it. Without the pin, redemption on such sites always
+  failed with simple_oauth's `access_denied` — and no File Gate log entry.
+
 ## [1.5.0] - 2026-07-31
 
 ### Security
