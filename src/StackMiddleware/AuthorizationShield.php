@@ -52,7 +52,9 @@ final class AuthorizationShield implements HttpKernelInterface {
   public function handle(Request $request, int $type = self::MAIN_REQUEST, bool $catch = TRUE): Response {
     if (in_array($request->getPathInfo(), self::PATHS, TRUE)) {
       $authorization = (string) $request->headers->get('Authorization', '');
-      if (str_starts_with($authorization, 'Bearer ') || str_starts_with($authorization, 'DPoP ')) {
+      // Case-insensitive: RFC 7235 auth schemes are case-insensitive and the
+      // downstream reader accepts any case, so the shield must be as broad.
+      if (stripos($authorization, 'Bearer ') === 0 || stripos($authorization, 'DPoP ') === 0) {
         $request->attributes->set(self::ATTRIBUTE, $authorization);
         $request->headers->remove('Authorization');
       }

@@ -27,7 +27,7 @@ final class AuthorizationShieldTest extends UnitTestCase {
    */
   private function shield(): AuthorizationShield {
     $kernel = $this->createMock(HttpKernelInterface::class);
-    $kernel->method('handle')->willReturnCallback(function (Request $request): Response {
+    $kernel->method('handle')->willReturnCallback(function (Request $request, int $type = HttpKernelInterface::MAIN_REQUEST, bool $catch = TRUE): Response {
       $this->inner = $request;
       return new Response();
     });
@@ -46,6 +46,17 @@ final class AuthorizationShieldTest extends UnitTestCase {
       $this->assertSame('Bearer token-value', $this->inner->attributes->get(AuthorizationShield::ATTRIBUTE), $path);
       $this->assertSame('Bearer token-value', AuthorizationShield::authorization($this->inner), $path);
     }
+  }
+
+  /**
+   * Scheme matching is case-insensitive (RFC 7235).
+   */
+  public function testLowercaseSchemeStripped(): void {
+    $request = Request::create('/api/file-gate/download', 'GET');
+    $request->headers->set('Authorization', 'bearer token-value');
+    $this->shield()->handle($request);
+    $this->assertFalse($this->inner->headers->has('Authorization'));
+    $this->assertSame('bearer token-value', AuthorizationShield::authorization($this->inner));
   }
 
   /**
