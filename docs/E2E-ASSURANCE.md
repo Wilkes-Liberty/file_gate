@@ -102,6 +102,6 @@ token paste. Until then, mark this section N/A.
 
 | Date | Operator | Paths | Result |
 |------|----------|-------|--------|
-| _YYYY-MM-DD_ | | OIDC / WebAuthn / DPoP | |
+| 2026-08-02 | jmcerda | §0 IdP enrollment (2 keys) + OIDC step-up login (acr phrh, aud file-gate, 300 s lifespan; silent SSO re-auth inside 300 s recency window) | PASS |
 
 Do not require CI runners to hold hardware keys.
