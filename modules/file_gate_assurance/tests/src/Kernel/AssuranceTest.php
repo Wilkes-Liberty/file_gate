@@ -16,6 +16,7 @@ use Drupal\file\Entity\File;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\MintController;
+use Drupal\file_gate\StackMiddleware\AuthorizationShield;
 use Firebase\JWT\JWT;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
@@ -170,6 +171,35 @@ final class AssuranceTest extends KernelTestBase {
     // Plain download with only the bridge cookie (no Authorization).
     $download_request = Request::create('/api/file-gate/download', 'GET', $query);
     $download_request->cookies->set($bridge_cookie->getName(), $bridge_cookie->getValue());
+    $response = DownloadController::create($this->container)->download($download_request);
+    $this->assertInstanceOf(BinaryFileResponse::class, $response);
+    $this->assertSame(200, $response->getStatusCode());
+  }
+
+  /**
+   * A token stashed by the Authorization shield redeems like the header.
+   *
+   * On stacks with a global authentication provider (simple_oauth) the shield
+   * middleware removes the Authorization header pre-routing and stashes it in
+   * a request attribute (GH #56). Both the bridge and the direct download must
+   * honor the stash exactly as they would the live header.
+   */
+  public function testShieldedAuthorizationRedeems(): void {
+    $file = $this->createFile('shielded.pdf');
+    $query = $this->mintQuery($file);
+    $token = $this->idpToken();
+
+    // Bridge POST with the stashed attribute and NO Authorization header.
+    $bridge_request = Request::create('/api/file-gate/assurance/bridge?' . http_build_query($query), 'POST');
+    $bridge_request->attributes->set(AuthorizationShield::ATTRIBUTE, 'Bearer ' . $token);
+    $bridge_request->headers->set('Accept', 'application/json');
+    $bridge_response = BridgeController::create($this->container)->establish($bridge_request);
+    $this->assertSame(200, $bridge_response->getStatusCode(), (string) $bridge_response->getContent());
+    $this->assertNotEmpty($bridge_response->headers->getCookies());
+
+    // Direct Bearer download through the stash as well.
+    $download_request = Request::create('/api/file-gate/download', 'GET', $this->mintQuery($this->createFile('shielded2.pdf')));
+    $download_request->attributes->set(AuthorizationShield::ATTRIBUTE, 'Bearer ' . $this->idpToken());
     $response = DownloadController::create($this->container)->download($download_request);
     $this->assertInstanceOf(BinaryFileResponse::class, $response);
     $this->assertSame(200, $response->getStatusCode());

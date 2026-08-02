@@ -10,6 +10,7 @@ use Drupal\Core\Url;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\StackMiddleware\AuthorizationShield;
 use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
 use Drupal\file_gate_assurance\SessionBridge;
 use Drupal\file_gate_assurance\SessionOidcToken;
@@ -95,8 +96,10 @@ final class BridgeController implements ContainerInjectionInterface {
       return $this->error('Invalid or expired grant.', Response::HTTP_FORBIDDEN);
     }
 
-    // Live OIDC (+ optional DPoP). Prefer Authorization; else same-origin SSO
-    // session token from openid_connect when allowed (GH #41).
+    // Live OIDC (+ optional DPoP). Prefer Authorization (raw, or stashed by
+    // the AuthorizationShield middleware on stacks with a global provider,
+    // GH #56); else same-origin SSO session token from openid_connect when
+    // allowed (GH #41).
     $auth_request = $this->requestWithSessionToken($request, $gate['settings']);
     if (!$method->liveAssuranceSatisfied($auth_request)) {
       $this->logger->warning(
@@ -456,7 +459,10 @@ HTML;
    *   Same request, or a duplicate with Bearer from the SSO session.
    */
   private function requestWithSessionToken(Request $request, array $settings): Request {
-    $authorization = (string) $request->headers->get('Authorization', '');
+    // Read via the shield: a stashed Bearer/DPoP value counts as presented
+    // Authorization even though the raw header was removed pre-routing
+    // (GH #56).
+    $authorization = AuthorizationShield::authorization($request);
     if ($authorization !== '') {
       return $request;
     }

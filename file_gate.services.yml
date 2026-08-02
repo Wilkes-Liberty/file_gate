@@ -80,3 +80,12 @@ services:
     class: Drupal\file_gate\EventSubscriber\GatedFieldSchemeValidator
     tags:
       - { name: event_subscriber }
+
+  # Stashes Bearer/DPoP Authorization into a request attribute on File Gate's
+  # own token endpoints before any authentication provider runs, so a global
+  # provider (e.g. simple_oauth) cannot 401 a foreign IdP token pre-routing
+  # (GH #56 / d.o #3614535).
+  http_middleware.file_gate_authorization_shield:
+    class: Drupal\file_gate\StackMiddleware\AuthorizationShield
+    tags:
+      - { name: http_middleware, priority: 180 }

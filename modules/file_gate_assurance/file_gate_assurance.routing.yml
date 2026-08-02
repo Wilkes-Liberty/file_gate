@@ -26,9 +26,10 @@ file_gate_assurance.bridge:
     # validates the signed grant; there is no Drupal session role for this.
     _access: 'TRUE'
   options:
-    # Pin provider-based authentication to cookie: without this, any global
-    # provider that consumes Authorization (e.g. simple_oauth) rejects the
-    # external IdP Bearer/DPoP token before this controller can validate it.
+    # Restricts post-routing provider authentication to cookie. NOTE: this
+    # cannot stop a GLOBAL provider (e.g. simple_oauth) from 401-ing a foreign
+    # Bearer token pre-routing — that is the AuthorizationShield middleware's
+    # job (GH #56); the pin only covers non-global providers.
     _auth: ['cookie']
     no_cache: TRUE
 
@@ -99,8 +100,8 @@ file_gate_assurance.webauthn_assert_options:
     # Open by design: options only issued for a valid signed grant query.
     _access: 'TRUE'
   options:
-    # Same _auth pin as the bridge route: keep Authorization headers out of
-    # provider-based authentication on open-by-design endpoints.
+    # Same post-routing _auth pin as the bridge route (non-global providers
+    # only; these endpoints receive no Authorization from our clients).
     _auth: ['cookie']
     no_cache: TRUE
 
@@ -113,6 +114,6 @@ file_gate_assurance.webauthn_assert:
     # Open by design: assertion + grant validation establish the bridge cookie.
     _access: 'TRUE'
   options:
-    # Same _auth pin as the bridge route.
+    # Same post-routing _auth pin as the bridge route.
     _auth: ['cookie']
     no_cache: TRUE

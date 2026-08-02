@@ -12,6 +12,7 @@ use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\MintTimeOidcInterface;
 use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
+use Drupal\file_gate\StackMiddleware\AuthorizationShield;
 use Drupal\file_gate_assurance\AssuranceVerifierInterface;
 use Drupal\file_gate_assurance\SessionBridge;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -473,7 +474,9 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
    *   The token, or NULL when absent.
    */
   private function bearerToken(Request $request): ?string {
-    $authorization = (string) $request->headers->get('Authorization', '');
+    // Read via the shield: on stacks with a global authentication provider
+    // the raw header was stashed into an attribute pre-routing (GH #56).
+    $authorization = AuthorizationShield::authorization($request);
     foreach (['Bearer ', 'DPoP '] as $scheme) {
       if (stripos($authorization, $scheme) === 0) {
         $token = trim(substr($authorization, strlen($scheme)));

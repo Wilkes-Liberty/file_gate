@@ -40,6 +40,12 @@ Browser GET same download URL
   → signature + max_uses enforced; file streams
 ```
 
+Sites that also run a **global authentication provider** (simple_oauth is the
+common case) would normally 401 any foreign Bearer token before routing. File
+Gate ships an `AuthorizationShield` http middleware that stashes the
+Bearer/DPoP `Authorization` value on its own token endpoints before providers
+run, so the standard headers above work unchanged on such stacks (GH #56).
+
 API clients that send `Accept: application/json` receive **401** with:
 
 ```http

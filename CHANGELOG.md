@@ -6,6 +6,23 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Assurance token endpoints beside simple_oauth, correctly this time (#56 /
+  d.o #3614535).** The 1.5.1 `_auth: ['cookie']` route pin turned out to be
+  inert for this failure: global authentication providers (simple_oauth
+  registers `global: TRUE`) authenticate at request priority 300 — before
+  routing — so they 401 a foreign Bearer token before any route option is
+  consulted. Verified by probing a live 1.5.1 site. A new `AuthorizationShield`
+  http middleware now stashes the Bearer/DPoP `Authorization` value into a
+  request attribute and removes the header on File Gate's own token endpoints
+  (`/api/file-gate/download`, `/api/file-gate/assurance/bridge`) before any
+  provider runs; handlers read the stash transparently. Clients keep standard
+  `Authorization: Bearer`/`DPoP` wire semantics — no client changes. Basic
+  (service-secret) credentials and all other routes, including the
+  permission-gated WebAuthn registration endpoints, are untouched. Regression
+  coverage is behavioral: shield unit tests in both directions plus a
+  stashed-attribute redeem through the bridge and the direct download.
+
 ## [1.5.1] - 2026-08-02
 
 ### Fixed
