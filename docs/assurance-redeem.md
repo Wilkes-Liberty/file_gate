@@ -143,7 +143,6 @@ Requires `composer require web-auth/webauthn-lib`.
 
 ## Related
 
-- **Program plan & ticket index:** `docs/PLAN.md`
 - **IdP-first architecture:** `docs/KEYCLOAK-UNIFIED-AUTH.md`
 - Design: `docs/design/piv-cac-webauthn.md`
 - Module: `modules/file_gate_assurance/README.md`

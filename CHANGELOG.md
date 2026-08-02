@@ -6,6 +6,12 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+- **`docs/PLAN.md`.** The programme plan was an internal working document — workstreams,
+  scheduling and an index of internal ticket keys — that had ended up in the published
+  tree. Roadmap and scheduling are tracked internally; the module's own documentation
+  (`API.md`, `ADR.md`, `KEYCLOAK-UNIFIED-AUTH.md`, `assurance-redeem.md`) is unaffected.
+
 ## [1.5.0] - 2026-07-31
 
 ### Security
