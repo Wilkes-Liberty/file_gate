@@ -6,11 +6,7 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
-### Removed
-- **`docs/PLAN.md`.** The programme plan was an internal working document — workstreams,
-  scheduling and an index of internal ticket keys — that had ended up in the published
-  tree. Roadmap and scheduling are tracked internally; the module's own documentation
-  (`API.md`, `ADR.md`, `KEYCLOAK-UNIFIED-AUTH.md`, `assurance-redeem.md`) is unaffected.
+## [1.5.1] - 2026-08-02
 
 ### Fixed
 - **Assurance bridge unreachable beside simple_oauth (#54 / d.o #3614535).** The
@@ -19,6 +15,12 @@ All notable changes to **File Gate** are documented here. The format is based on
   common case) can no longer reject the external IdP Bearer/DPoP token before
   the controller validates it. Without the pin, redemption on such sites always
   failed with simple_oauth's `access_denied` — and no File Gate log entry.
+
+### Removed
+- **`docs/PLAN.md`.** The programme plan was an internal working document — workstreams,
+  scheduling and an index of internal ticket keys — that had ended up in the published
+  tree. Roadmap and scheduling are tracked internally; the module's own documentation
+  (`API.md`, `ADR.md`, `KEYCLOAK-UNIFIED-AUTH.md`, `assurance-redeem.md`) is unaffected.
 
 ## [1.5.0] - 2026-07-31
 
