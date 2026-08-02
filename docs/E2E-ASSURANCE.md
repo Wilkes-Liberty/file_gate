@@ -105,5 +105,6 @@ token paste. Until then, mark this section N/A.
 | 2026-08-02 | jmcerda | §0 IdP enrollment (2 keys) + OIDC step-up login (acr phrh, aud file-gate, 300 s lifespan; silent SSO re-auth inside 300 s recency window) | PASS |
 | 2026-08-02 | jmcerda | §1 OIDC redeem: step-up page + fail-closed on acr "1" session OK; Bearer redeem blocked — simple_oauth intercepts the token before the bridge controller ([#3614535](https://www.drupal.org/project/file_gate/issues/3614535)) | FAIL |
 | 2026-08-02 | jmcerda | §1 re-run on 1.5.1 (webcms staging): no-header POST reaches the bridge controller, any Bearer 401s pre-routing (route-independent) — the `_auth` route pin proven inert against global providers; root cause + fix constraints in [#56](https://github.com/Wilkes-Liberty/file_gate/issues/56), fixed by the 1.5.2 AuthorizationShield middleware. Full §1 re-run pending a site bump to 1.5.2 | FAIL (superseded by 1.5.2) |
+| 2026-08-02 | jmcerda | §1 OIDC redeem re-run on 1.5.2 (AuthorizationShield): hardware `acr phrh` token → bridge 200 → **216 KB PDF streamed**; spent link → 403; plain-login token (`acr 0`) → step-up failed, `insufficient_user_authentication`, no bytes | PASS |
 
 Do not require CI runners to hold hardware keys.
