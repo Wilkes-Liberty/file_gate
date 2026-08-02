@@ -86,7 +86,7 @@ final class AuthorizationShieldTest extends UnitTestCase {
   }
 
   /**
-   * authorization() falls back to the live header when nothing was stashed.
+   * The authorization() helper falls back to the live header when unstashed.
    */
   public function testAuthorizationFallsBackToHeader(): void {
     $request = Request::create('/api/file-gate/download', 'GET');
