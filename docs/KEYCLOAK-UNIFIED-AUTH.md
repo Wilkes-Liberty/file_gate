@@ -7,8 +7,8 @@ string **`phrh`** (phishing-resistant hardware-protected, OpenID EAP vocabulary)
 when a WebAuthn step-up completes; plain password+TOTP logins emit `"1"`. Copy
 `phrh` byte-exact into `required_acr`. The site-specific contract (issuer,
 step-up URL, flow design, rollback) lives in the infra repo's
-`docs/runbooks/KEYCLOAK_WEBAUTHN_STEPUP.md`; program state is `PLAN.md`
-workstream C.
+`docs/runbooks/KEYCLOAK_WEBAUTHN_STEPUP.md`; programme scheduling is tracked
+internally.
 
 ---
 
@@ -139,13 +139,10 @@ applies.
 | File Gate on site | Module product; assurance configurable | issuer/aud/acr + step-up to Keycloak |
 | Native WebAuthn UI | Available in module | Fallback only |
 
-Platform tickets: see `PLAN.md` workstream C.
-
 ---
 
 ## Related module docs
 
-- `PLAN.md` — goal, workstreams, ticket index  
 - `assurance-redeem.md` — redeem protocol  
 - `E2E-ASSURANCE.md` — lab checklist (extend with Keycloak WebAuthn)  
 - `design/piv-cac-webauthn.md` — original design decisions  

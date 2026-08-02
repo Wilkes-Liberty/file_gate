@@ -81,9 +81,9 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 - **Secret rotation with dual keys**, multi-field mint pin, forced identity mint,
   mint-time OIDC (A2), WebAuthn enrollment UI — see `CHANGELOG.md` and
   `docs/SECRET_ROTATION.md`, `docs/E2E-ASSURANCE.md`.
-- **Program plan:** stated goal, workstreams, and ticket index in
-  [`docs/PLAN.md`](docs/PLAN.md). IdP-first (Keycloak) architecture:
-  [`docs/KEYCLOAK-UNIFIED-AUTH.md`](docs/KEYCLOAK-UNIFIED-AUTH.md).
+- **IdP-first (Keycloak) architecture:**
+  [`docs/KEYCLOAK-UNIFIED-AUTH.md`](docs/KEYCLOAK-UNIFIED-AUTH.md). Roadmap and
+  scheduling are tracked internally rather than in this repository.
 - **Optional identity-aware mint.** Pass `account` (user UUID) or `uid` on mint
   so a grant cannot exceed that user's download and host-entity view rights.
 
