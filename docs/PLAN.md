@@ -100,7 +100,7 @@ issues on `infra` / `webcms` are implementation records.
 | C5 | File Gate field config on W&L site | webcms | DEV-225 / [webcms#480](https://github.com/Wilkes-Liberty/webcms/issues/480) | **In progress** — audience `file-gate` live on staging ([infra PR #517](https://github.com/Wilkes-Liberty/infra/pull/517) merged); site field config pending |
 | C6 | Site step-up + session bridge dogfood | webcms | [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) (depends C1/C4/C5 + module #41) | **Open** |
 | C7 | Operator browser access policy on KC clients | infra | [infra#477](https://github.com/Wilkes-Liberty/infra/issues/477) | **Open** |
-| C8 | “Require hardware ACR” pattern doc | internal | [internal#82](https://github.com/Wilkes-Liberty/internal/issues/82) | **Open** |
+| C8 | “Require hardware ACR” pattern doc | internal | tracked internally | **Open** |
 
 Epic: [DEV-221](https://wilkesliberty.atlassian.net/browse/DEV-221).  
 Branch key: `DEV-221` (e.g. `feature/DEV-221-keycloak-webauthn`).
@@ -168,7 +168,7 @@ drupal.org: shipped work at **Fixed** (auto-closes after the usual Fixed window)
 | audit_chain on W&L site | [DEV-226](https://wilkesliberty.atlassian.net/browse/DEV-226) | [webcms#481](https://github.com/Wilkes-Liberty/webcms/issues/481) | **Done** (v1.35.0) |
 | C6 site dogfood (step-up + bridge) | under DEV-221 | [webcms#484](https://github.com/Wilkes-Liberty/webcms/issues/484) | Open |
 | E2E-ASSURANCE vs Keycloak WebAuthn | under DEV-221 | [webcms#485](https://github.com/Wilkes-Liberty/webcms/issues/485) | Open |
-| C8 “require hardware ACR” pattern | under DEV-221 | [internal#82](https://github.com/Wilkes-Liberty/internal/issues/82) | Open |
+| C8 “require hardware ACR” pattern | tracked internally | — | Open |
 | Secret rotation drill | under DEV-221 | [infra#508](https://github.com/Wilkes-Liberty/infra/issues/508) | Open |
 | Compromised-secret tabletop | under DEV-221 | [infra#509](https://github.com/Wilkes-Liberty/infra/issues/509) | Open |
 | Runner Docker credsStore hang | — (ops) | [infra#510](https://github.com/Wilkes-Liberty/infra/issues/510) | Open |
