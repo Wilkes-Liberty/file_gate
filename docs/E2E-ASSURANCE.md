@@ -103,5 +103,6 @@ token paste. Until then, mark this section N/A.
 | Date | Operator | Paths | Result |
 |------|----------|-------|--------|
 | 2026-08-02 | jmcerda | §0 IdP enrollment (2 keys) + OIDC step-up login (acr phrh, aud file-gate, 300 s lifespan; silent SSO re-auth inside 300 s recency window) | PASS |
+| 2026-08-02 | jmcerda | §1 OIDC redeem: step-up page + fail-closed on acr "1" session OK; Bearer redeem blocked — simple_oauth intercepts the token before the bridge controller ([#3614535](https://www.drupal.org/project/file_gate/issues/3614535)) | FAIL |
 
 Do not require CI runners to hold hardware keys.
