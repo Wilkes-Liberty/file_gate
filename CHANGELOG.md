@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-08-02
+
 ### Fixed
 - **Assurance token endpoints beside simple_oauth, correctly this time (#56 /
   d.o #3614535).** The 1.5.1 `_auth: ['cookie']` route pin turned out to be
