@@ -34,15 +34,19 @@ final class StepUpAuthorizeUrl {
     if ($base === '') {
       return FALSE;
     }
-    if (preg_match('#^https?://#i', $base)) {
-      return TRUE;
-    }
-    // Site-relative: exactly one leading "/" (reject //network-path), and no
-    // backslash or control characters (mirrors sanitizeReturnTo()).
-    if (!str_starts_with($base, '/') || str_starts_with($base, '//')) {
+    // No backslashes or control characters in ANY base, absolute or relative
+    // (mirrors sanitizeReturnTo()).
+    if (str_contains($base, '\\') || preg_match('/[\x00-\x1F\x7F]/', $base)) {
       return FALSE;
     }
-    if (str_contains($base, '\\') || preg_match('/[\x00-\x1F\x7F]/', $base)) {
+    if (preg_match('#^https?://#i', $base)) {
+      // Absolute: must parse and carry a real host, so degenerate forms like
+      // "https:///path" are rejected here rather than surviving to build().
+      $parts = parse_url($base);
+      return is_array($parts) && !empty($parts['scheme']) && !empty($parts['host']);
+    }
+    // Site-relative: exactly one leading "/" (reject //network-path).
+    if (!str_starts_with($base, '/') || str_starts_with($base, '//')) {
       return FALSE;
     }
     return TRUE;

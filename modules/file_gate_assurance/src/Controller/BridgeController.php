@@ -461,11 +461,14 @@ HTML;
     if ($acr_param === '') {
       $acr_param = 'acr_values';
     }
+    // Fail closed: a base that passes isTrustedBase() but fails build()'s
+    // parsing must not leak through as the raw setting — the built value is
+    // the only thing ever embedded in the page (GH #63 review).
     return $this->stepUpAuthorizeUrl->build($login, $acr, '', [
       'append_acr' => $append_acr,
       'append_return' => FALSE,
       'acr_param' => $acr_param,
-    ]) ?: $login;
+    ]);
   }
 
   /**
