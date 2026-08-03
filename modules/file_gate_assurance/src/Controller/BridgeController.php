@@ -280,7 +280,7 @@ final class BridgeController implements ContainerInjectionInterface {
     // the Authorization header is built. Fail early with a useful message.
     if (t && !JWS_RE.test(t)) {
       console.error('file_gate: the stored access token is not compact-JWS shaped (expected three dot-separated base64url segments); refusing to build the Authorization header.');
-      showError('The stored access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear sessionStorage.file_gate_access_token and retry.');
+      showError('The provided access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear the stored token (window.fileGateAccessToken or sessionStorage.file_gate_access_token) and retry.');
       return;
     }
     if (!t) {

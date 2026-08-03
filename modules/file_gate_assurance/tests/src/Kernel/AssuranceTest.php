@@ -772,7 +772,7 @@ final class AssuranceTest extends KernelTestBase {
     // The compact-JWS shape regex and its application to the stored token.
     $this->assertStringContainsString('const JWS_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;', $html);
     $this->assertStringContainsString('if (t && !JWS_RE.test(t))', $html);
-    $this->assertStringContainsString('The stored access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear sessionStorage.file_gate_access_token and retry.', $html);
+    $this->assertStringContainsString('The provided access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear the stored token (window.fileGateAccessToken or sessionStorage.file_gate_access_token) and retry.', $html);
     // The DPoP proof goes through the same gate.
     $this->assertStringContainsString('!JWS_RE.test(window.fileGateDpopProof)', $html);
     $this->assertStringContainsString('The provided DPoP proof is not a valid compact JWS', $html);
