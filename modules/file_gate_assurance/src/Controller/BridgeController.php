@@ -416,8 +416,10 @@ HTML;
   /**
    * Field-configured IdP login URL for the gated file, or empty.
    *
-   * Only http(s) absolute URLs from gate method settings are accepted. Query
-   * parameters named login_url are intentionally ignored.
+   * Only http(s) absolute URLs or site-relative paths (a single leading
+   * slash; same-origin by construction) from gate method settings are
+   * accepted (GH #62). Query parameters named login_url are intentionally
+   * ignored.
    *
    * @param string $uuid
    *   File UUID from the step-up query.
@@ -441,9 +443,11 @@ HTML;
     if ($login === '') {
       return '';
     }
-    // Absolute http(s) only — blocks javascript: and relative open redirects.
-    if (!preg_match('#^https?://#i', $login)) {
-      $this->logger->warning('Ignored non-http(s) step_up_login_url for file @uuid.', [
+    // Absolute http(s), or a site-relative path with a single leading slash —
+    // blocks javascript:, //network-path references, and other open
+    // redirects (GH #62).
+    if (!$this->stepUpAuthorizeUrl->isTrustedBase($login)) {
+      $this->logger->warning('Ignored untrusted step_up_login_url for file @uuid.', [
         '@uuid' => $uuid,
       ]);
       return '';

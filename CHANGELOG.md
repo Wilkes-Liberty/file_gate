@@ -6,6 +6,19 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`step_up_login_url` accepts a site-relative path (#62 / d.o #3614675).**
+  The assurance step-up login URL may now be a site-relative path with a single
+  leading slash (for example `/oidc/step-up`) as well as an absolute http(s)
+  URL, so a site that provides its own step-up initiator route can keep the
+  setting environment-neutral in exported config. A relative target is
+  same-origin by construction; network-path references (`//host`), backslashes,
+  and control characters are rejected, and the query-supplied `login_url` stays
+  ignored — the open-redirect defense is unchanged.
+  `StepUpAuthorizeUrl::build()` appends `acr_values` (and a sanitized
+  `return_to`) to a relative base exactly as it does to an absolute one.
+
 ### Fixed
 
 - **Step-up page validates the stored token shape (#53 / d.o #3614534).** A
