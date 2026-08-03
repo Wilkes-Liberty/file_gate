@@ -14,28 +14,40 @@ use Symfony\Component\HttpFoundation\Request;
  * authentication (PIV/CAC or FIDO2/WebAuthn). It never re-does the hardware
  * crypto. This is federation (NIST SP 800-63C) — an *asserted* assurance level.
  *
- * The verifier is provider-agnostic: it is configured only with an issuer URL
- * and an expected audience, discovers the IdP's JWKS via OIDC discovery, and
- * pins the signing algorithm to the published keys. No IdP is assumed.
+ * The verifier is provider-agnostic: it is configured only with a list of
+ * trusted issuers (each with its own expected audience and acceptable acr
+ * values), discovers each IdP's JWKS via OIDC discovery, and pins the signing
+ * algorithm to the published keys. No IdP is assumed.
  */
 interface AssuranceVerifierInterface {
 
   /**
    * Verifies a presented bearer token and (optionally) a DPoP proof.
    *
+   * The token is matched to exactly one configured trusted issuer by its
+   * `iss` claim; that entry's audience and acr policy are the only ones that
+   * apply — there is no cross-matching between entries and no laxer fallback
+   * when no entry matches.
+   *
    * @param string $token
    *   The bearer JWT (access or ID token) presented by the client.
    * @param array $config
-   *   The gate method settings: at least "issuer" and "audience"; optionally
-   *   "leeway" (seconds), "dpop" (bool). See the module README.
+   *   The gate method settings: either "trusted_issuers" (a list of entries,
+   *   each with "issuer", "audience", and "required_acr") or the legacy single
+   *   keys "issuer"/"audience"/"required_acr", which behave as a one-entry
+   *   list; optionally "leeway" (seconds), "dpop" (bool). See the module
+   *   README.
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The redemption request (source of the DPoP header and the htu/htm the
    *   DPoP proof is bound to).
    *
    * @return array|null
    *   The verified claims — ['sub' => string|null, 'acr' => string|null,
-   *   'amr' => string[]] — or NULL when the token (or a required DPoP proof) is
-   *   missing, malformed, or fails any check. Fails closed.
+   *   'amr' => string[], 'issuer' => string, 'required_acr' => string[]] where
+   *   "issuer" and "required_acr" identify the matched entry and its acr
+   *   policy — or NULL when the token (or a required DPoP proof) is missing,
+   *   malformed, matches no configured issuer, or fails any check. Fails
+   *   closed, including on an invalid trusted-issuer configuration.
    */
   public function verify(string $token, array $config, Request $request): ?array;
 

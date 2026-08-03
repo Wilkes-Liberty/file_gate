@@ -219,8 +219,11 @@ The optional **File Gate Assurance** submodule (`file_gate_assurance`) adds the
 `assurance` method: a signed URL whose delivery also requires a hardware-backed,
 phishing-resistant NIST SP 800-63 assurance level proven at any OIDC IdP —
 PIV/CAC (HSPD-12 / FIPS 201) or FIDO2/WebAuthn — with opt-in DPoP (RFC 9449)
-sender-constraining. It is **federation** (an *asserted* level), not File Gate
-acting as an AAL3 verifier. See
+sender-constraining. A field trusts a **list of issuers** (`trusted_issuers`),
+each with its own audience and accepted `acr` values; a token is matched to
+exactly one entry by `iss`, with no cross-matching and no fallback, and the
+legacy single-issuer settings behave as a one-entry list. It is **federation**
+(an *asserted* level), not File Gate acting as an AAL3 verifier. See
 [`modules/file_gate_assurance/README.md`](modules/file_gate_assurance/README.md)
 and the design note in
 [`docs/design/piv-cac-webauthn.md`](docs/design/piv-cac-webauthn.md).

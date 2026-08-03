@@ -15,6 +15,7 @@ use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
 use Drupal\file_gate_assurance\SessionBridge;
 use Drupal\file_gate_assurance\SessionOidcToken;
 use Drupal\file_gate_assurance\StepUpAuthorizeUrl;
+use Drupal\file_gate_assurance\TrustedIssuerSet;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -453,7 +454,9 @@ HTML;
       return '';
     }
     $settings = $gate['settings'];
-    $acr = array_values(array_filter(array_map('strval', (array) ($settings['required_acr'] ?? []))));
+    // Advertisement only: the cross-issuer union prompts the IdP; enforcement
+    // at redemption uses the matched issuer's own acr list.
+    $acr = TrustedIssuerSet::fromSettings($settings)->acrUnion();
     // Append acr_values by default for Keycloak hardware ACR prompts (GH #42).
     $append_acr = !array_key_exists('step_up_append_acr', $settings)
       || !empty($settings['step_up_append_acr']);

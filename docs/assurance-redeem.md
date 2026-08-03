@@ -56,9 +56,25 @@ and a JSON body listing `step_up` and `bridge` URLs (RFC 9470-style).
 
 ## Integrator checklist
 
-1. Field method: `assurance`, `verify_at: redeem`, non-empty `required_acr`,
-   `issuer`, `audience`. Prefer `dpop: true` and `max_uses: 1` for sensitive
-   files. Keep **plain-link session bridge** enabled (default).
+1. Field method: `assurance`, `verify_at: redeem`, and at least one entry in
+   `trusted_issuers` — each entry carries its own `issuer`, `audience`, and
+   non-empty `required_acr`:
+
+   ```yaml
+   trusted_issuers:
+     - issuer: 'https://idp.example.gov'
+       audience: 'file-gate-api'
+       required_acr: ['http://idmanagement.gov/ns/assurance/aal/3']
+     - issuer: 'https://sso.partner.example'
+       audience: 'file-gate-partner'
+       required_acr: ['urn:partner:acr:phrh']
+   ```
+
+   A token is matched to **exactly one** entry by its `iss` — no
+   cross-matching between entries, no laxer fallback when none matches. The
+   legacy single-issuer keys (`issuer`, `audience`, `required_acr`) keep
+   working as a one-entry list. Prefer `dpop: true` and `max_uses: 1` for
+   sensitive files. Keep **plain-link session bridge** enabled (default).
 2. Mint with `subject` when the grant is per-user (binds `sh=`).
 3. After IdP login, set either:
    - `sessionStorage.setItem('file_gate_access_token', accessToken)`, or
