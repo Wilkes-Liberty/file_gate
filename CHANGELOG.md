@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-03
+
 ### Changed
 - **Friendlier response for a dead download link (#66).** A denied gated
   download (expired, spent, or tampered grant) now renders a plain, themeless
