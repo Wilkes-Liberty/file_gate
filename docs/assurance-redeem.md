@@ -64,6 +64,8 @@ and a JSON body listing `step_up` and `bridge` URLs (RFC 9470-style).
    - `sessionStorage.setItem('file_gate_access_token', accessToken)`, or
    - `window.fileGateAccessToken = accessToken`
    and optionally `window.fileGateDpopProof` when DPoP is required.
+   A stored value that is not compact-JWS shaped (`xxxxx.yyyyy.zzzzz`) is
+   rejected client-side with an actionable message before any bridge call.
 4. Optional field setting **Step-up login URL**: the step-up page redirects
    there with `return_to=` when no token is present. Absolute **http(s)** only.
    The query parameter `login_url` is **ignored** (open-redirect defense).

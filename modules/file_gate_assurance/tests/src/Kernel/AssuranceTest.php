@@ -755,6 +755,33 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
+   * The step-up page gates stored token shapes before building headers.
+   *
+   * A malformed sessionStorage value (non-Latin-1 characters being the worst
+   * case) used to reach the Authorization header build, where fetch throws a
+   * cryptic TypeError (GH #53). The page must ship the compact-JWS shape
+   * guard for both the Bearer token and the DPoP proof, surface an actionable
+   * message, and keep raw exception detail out of the UI.
+   */
+  public function testStepUpPageValidatesTokenShape(): void {
+    $file = $this->createFile('stepup-shape.pdf');
+    $query = $this->mintViaController($file);
+    $request = Request::create('/api/file-gate/assurance/step-up', 'GET', $query);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $html = (string) $response->getContent();
+    // The compact-JWS shape regex and its application to the stored token.
+    $this->assertStringContainsString('const JWS_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;', $html);
+    $this->assertStringContainsString('if (t && !JWS_RE.test(t))', $html);
+    $this->assertStringContainsString('The stored access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear sessionStorage.file_gate_access_token and retry.', $html);
+    // The DPoP proof goes through the same gate.
+    $this->assertStringContainsString('!JWS_RE.test(window.fileGateDpopProof)', $html);
+    $this->assertStringContainsString('The provided DPoP proof is not a valid compact JWS', $html);
+    // Raw exception detail goes to the console, not the page.
+    $this->assertStringContainsString('Step-up failed — see the browser console for details.', $html);
+    $this->assertStringNotContainsString('e && e.message ? e.message : String(e)', $html);
+  }
+
+  /**
    * Creates a private file referenced by an entity_test via the gated field.
    *
    * @param string $filename
