@@ -6,6 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **CI: the attribution check is now the shared workflow.**
+  `.github/workflows/attribution.yml` becomes a thin caller pinned to
+  `Wilkes-Liberty/shared-ci@v1`, and the vendored `.github/scripts/` copies are
+  removed. One implementation for every repository makes copy drift structurally
+  impossible instead of merely detectable.
+
 ## [1.5.2] - 2026-08-02
 
 ### Fixed
