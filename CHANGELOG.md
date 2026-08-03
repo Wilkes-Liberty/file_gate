@@ -31,7 +31,6 @@ All notable changes to **File Gate** are documented here. The format is based on
   form migrates them to the list shape. The field form now edits up to four
   trusted-issuer rows and validates them (duplicate, incomplete, non-http(s),
   or empty-acr entries are rejected before save).
->>>>>>> c9f02d2 (Assurance: accept a list of trusted issuers, each with its own audience and acr)
 
 ### Changed
 
