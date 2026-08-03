@@ -68,18 +68,23 @@ jobs:
       - name: Build a Drupal codebase
         run: |
           retry() {
-            local n
+            rc=0
             for n in 1 2 3; do
               "$@" && return 0
+              rc=$?
               if [ "$n" -lt 3 ]; then
-                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
-                sleep $((15 * n))
+                echo "::warning::attempt $n of 3 failed (exit $rc): $* - retrying"
+                sleep "$((15 * n))"
               fi
             done
-            return 1
+            return "$rc"
           }
-          retry composer create-project drupal/recommended-project:${{ matrix.drupal }} drupal \
-            --no-interaction --stability dev --no-install
+          scaffold() {
+            rm -rf drupal
+            composer create-project drupal/recommended-project:${{ matrix.drupal }} drupal \
+              --no-interaction --stability dev --no-install
+          }
+          retry scaffold
           cd drupal
           composer config minimum-stability dev
           composer config prefer-stable true
@@ -135,18 +140,23 @@ jobs:
       - name: Build a Drupal codebase
         run: |
           retry() {
-            local n
+            rc=0
             for n in 1 2 3; do
               "$@" && return 0
+              rc=$?
               if [ "$n" -lt 3 ]; then
-                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
-                sleep $((15 * n))
+                echo "::warning::attempt $n of 3 failed (exit $rc): $* - retrying"
+                sleep "$((15 * n))"
               fi
             done
-            return 1
+            return "$rc"
           }
-          retry composer create-project drupal/recommended-project:^11.4 drupal \
-            --no-interaction --stability dev --no-install
+          scaffold() {
+            rm -rf drupal
+            composer create-project drupal/recommended-project:^11.4 drupal \
+              --no-interaction --stability dev --no-install
+          }
+          retry scaffold
           cd drupal
           composer config minimum-stability dev
           composer config prefer-stable true
