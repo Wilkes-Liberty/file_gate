@@ -62,11 +62,22 @@ the step-up in §1.
 **Pass criteria:** file bytes download; second use fails if max_uses=1;
 **same physical key** works for site login and this path.
 
-## 1b. Same-origin session bridge (when implemented)
+## 1b. Same-origin session bridge — SHIPPED, verified 2026-08-03
 
-When the Drupal session → File Gate bridge ships: while logged in via SSO with
-sufficient ACR, open the download URL and expect bridge without a separate
-token paste. Until then, mark this section N/A.
+While logged in via SSO with a session that carries the required ACR, open the
+download URL and the bridge establishes `FG_AB` without a separate token paste.
+
+**Verified end-to-end with real hardware (2026-08-03, file_gate 1.6.0):** a
+gated link opened with no Authorization header redirected through an
+integrating site's server-side step-up initiator to the IdP, a single WebAuthn
+(YubiKey) touch satisfied `acr_values` step-up, and on return the same-origin
+session bridge minted `FG_AB` from the OIDC session token and streamed the
+file — one touch, no token pasting, no devtools. The audit chain showed the
+deny-first attempt, the step-up, the bridge establishment, and delivery in
+order, with no token-refresh errors. Failure directions confirmed in the same
+run: no token → step-up page (not the file); a malformed stored token →
+actionable client-side message; a garbage Bearer → 403; an expired grant →
+plain themeless 403 (§1 step 7; the page is generic and self-contained, #66).
 
 ## 2. Native WebAuthn
 

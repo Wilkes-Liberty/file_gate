@@ -199,6 +199,36 @@ final class FileGateTest extends KernelTestBase {
   }
 
   /**
+   * A denied download renders a plain themeless 403, not the admin page (#66).
+   *
+   * Exercises the real HTTP kernel (not the direct controller call) so the
+   * DownloadDeniedSubscriber runs: an expired grant must produce File Gate's
+   * own generic 403 rather than Drupal's active-theme access-denied page.
+   */
+  public function testDeniedDownloadRendersPlain403(): void {
+    $file = $this->createReferencedFile('field_gated', 'gated.pdf');
+    $resource = $this->container->get('stream_wrapper_manager')->normalizeUri($file->getFileUri());
+    $claims = ['exp' => $this->container->get('datetime.time')->getRequestTime() - 10];
+    $sig = $this->container->get('file_gate.grant_signer')->sign($resource, $claims);
+
+    $request = Request::create('/api/file-gate/download', 'GET', [
+      'f' => $file->uuid(),
+      'exp' => $claims['exp'],
+      'sig' => $sig,
+    ]);
+    $response = $this->container->get('http_kernel')->handle($request);
+
+    $this->assertSame(403, $response->getStatusCode());
+    $this->assertStringContainsString('text/html', (string) $response->headers->get('Content-Type'));
+    $content = (string) $response->getContent();
+    $this->assertStringContainsString('no longer valid', $content);
+    // The subscriber's page is self-contained — none of Drupal's themed
+    // access-denied chrome, and no disclosure of why the grant failed.
+    $this->assertStringNotContainsString('not authorized to access this page', $content);
+    $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+  }
+
+  /**
    * The download route rejects a tampered signature.
    */
   public function testDownloadRejectsTamperedSignature(): void {
