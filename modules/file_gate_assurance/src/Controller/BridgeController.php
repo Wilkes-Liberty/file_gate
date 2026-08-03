@@ -208,6 +208,7 @@ final class BridgeController implements ContainerInjectionInterface {
   <p><button type="button" id="retry" hidden>Retry</button></p>
   <script>
 (function () {
+  const JWS_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
   const bridgePath = {$bridge_js};
   const downloadPath = {$download_js};
   const loginUrl = {$login_js};
@@ -274,6 +275,14 @@ final class BridgeController implements ContainerInjectionInterface {
       return;
     }
     const t = token();
+    // A malformed stored value (for example a pasted JSON blob or a value with
+    // non-Latin-1 characters) would make fetch throw a cryptic TypeError when
+    // the Authorization header is built. Fail early with a useful message.
+    if (t && !JWS_RE.test(t)) {
+      console.error('file_gate: the stored access token is not compact-JWS shaped (expected three dot-separated base64url segments); refusing to build the Authorization header.');
+      showError('The provided access token is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Sign in again, or clear the stored token (window.fileGateAccessToken or sessionStorage.file_gate_access_token) and retry.');
+      return;
+    }
     if (!t) {
       if (loginUrl) {
         status.textContent = 'Redirecting to sign in…';
@@ -288,6 +297,12 @@ final class BridgeController implements ContainerInjectionInterface {
     status.textContent = 'Verifying assurance…';
     const headers = { 'Authorization': 'Bearer ' + t, 'Accept': 'application/json' };
     if (typeof window.fileGateDpopProof === 'string' && window.fileGateDpopProof) {
+      // DPoP proofs are compact JWS too — apply the same shape gate.
+      if (!JWS_RE.test(window.fileGateDpopProof)) {
+        console.error('file_gate: window.fileGateDpopProof is not compact-JWS shaped (expected three dot-separated base64url segments); refusing to build the DPoP headers.');
+        showError('The provided DPoP proof is not a valid compact JWS (expected xxxxx.yyyyy.zzzzz). Set window.fileGateDpopProof to a freshly signed proof and retry.');
+        return;
+      }
       headers['Authorization'] = 'DPoP ' + t;
       headers['DPoP'] = window.fileGateDpopProof;
     }
@@ -368,7 +383,9 @@ final class BridgeController implements ContainerInjectionInterface {
         await runOidc();
       }
     } catch (e) {
-      showError(e && e.message ? e.message : String(e));
+      // Raw exception detail belongs in the console, not the page.
+      console.error(e);
+      showError('Step-up failed — see the browser console for details.');
     }
   }
 

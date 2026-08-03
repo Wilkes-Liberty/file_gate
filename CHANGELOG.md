@@ -6,6 +6,21 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Step-up page validates the stored token shape (#53 / d.o #3614534).** A
+  malformed access token (from either supported source,
+  `window.fileGateAccessToken` or `sessionStorage.file_gate_access_token`) used
+  to reach the `Authorization` header build, where a non-Latin-1 value makes
+  `fetch` throw the cryptic `String contains non ISO-8859-1 code point`
+  TypeError — and that raw message rendered on the page. The access token and
+  the separate DPoP proof value (`window.fileGateDpopProof`) are now each
+  checked against a compact-JWS shape regex before any bridge call: a mismatch
+  shows an actionable message (sign in again, or clear the stored value) with
+  the raw diagnostic in the console. The step-up error handler likewise stops
+  surfacing raw exception internals in the UI and points to the browser console
+  instead.
+
 ### Changed
 
 - **CI: the attribution check is now the shared workflow.**
