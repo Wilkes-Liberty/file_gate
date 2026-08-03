@@ -6,6 +6,17 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Friendlier response for a dead download link (#66).** A denied gated
+  download (expired, spent, or tampered grant) now renders a plain, themeless
+  403 on the download route instead of Drupal's active-theme access-denied
+  page — which, for a signed-in staff member, was the full admin chrome and
+  read as a fault rather than an expired link. Still a 403, still discloses no
+  grant state, and a dead link is still never offered step-up. Implemented as
+  a scoped exception subscriber, so the controller's deny contract and its
+  security logging are unchanged.
+
+
 ## [1.6.0] - 2026-08-03
 
 ### Added

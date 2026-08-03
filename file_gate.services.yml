@@ -1,5 +1,13 @@
 services:
 
+  # Renders a plain, themeless 403 for a denied gated download (#66), so an
+  # expired/spent link does not surface Drupal's admin-themed access-denied
+  # page to a signed-in staff member.
+  file_gate.download_denied_subscriber:
+    class: Drupal\file_gate\EventSubscriber\DownloadDeniedSubscriber
+    tags:
+      - { name: event_subscriber }
+
   # Resolves legacy + named mint/signing secrets and field scopes.
   file_gate.secret_registry:
     class: Drupal\file_gate\SecretRegistry
