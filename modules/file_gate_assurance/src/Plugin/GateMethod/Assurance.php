@@ -812,7 +812,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       }
     }
     foreach (['required_amr', 'allowed_subjects', 'origins'] as $key) {
-      $list = array_filter(array_map('trim', preg_split('/\R/', (string) ($values[$key] ?? ''))));
+      $list = array_filter(
+        array_map('trim', preg_split('/\\R/', (string) ($values[$key] ?? ''))),
+        static fn (string $v): bool => $v !== '',
+      );
       if ($list) {
         $settings[$key] = array_values($list);
       }
@@ -838,7 +841,10 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       }
       $issuer = trim((string) ($row['issuer'] ?? ''));
       $audience = trim((string) ($row['audience'] ?? ''));
-      $acr = array_values(array_filter(array_map('trim', preg_split('/\R/', (string) ($row['required_acr'] ?? '')))));
+      $acr = array_values(array_filter(
+        array_map('trim', preg_split('/\R/', (string) ($row['required_acr'] ?? ''))),
+        static fn (string $v): bool => $v !== '',
+      ));
       if ($issuer === '' && $audience === '' && $acr === []) {
         continue;
       }
