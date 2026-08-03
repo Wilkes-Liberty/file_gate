@@ -70,10 +70,15 @@ third_party_settings:
     method_settings:
       verify_at: redeem                 # 'redeem' (default), 'mint', or 'client_cert'
       aal: 3                            # bound into the grant (audit + tamper)
-      issuer: 'https://idp.example.gov' # your OIDC issuer (required for redeem)
-      audience: 'file-gate-api'         # expected token aud (required for redeem)
-      required_acr:                     # acceptable acr values — as YOUR IdP emits
-        - 'http://idmanagement.gov/ns/assurance/aal/3'
+      trusted_issuers:                  # trusted OIDC issuers (required for redeem)
+        - issuer: 'https://idp.example.gov'
+          audience: 'file-gate-api'     # this issuer's expected token aud
+          required_acr:                 # acceptable acr values — as THIS IdP emits
+            - 'http://idmanagement.gov/ns/assurance/aal/3'
+        - issuer: 'https://sso.partner.example'
+          audience: 'file-gate-partner'
+          required_acr:
+            - 'urn:partner:acr:phrh'
       required_amr: []                  # optional, advisory; enforced only if set
       dpop: false                       # true = require an RFC 9449 DPoP proof
       introspect: false                 # true = RFC 7662 live revocation check
@@ -88,13 +93,21 @@ third_party_settings:
       max_uses: 1
 ```
 
+A presented token is matched to **exactly one** entry by its `iss` claim: only
+that entry's audience and acr values apply — there is no cross-matching between
+entries and no laxer fallback when no entry matches. The legacy single-issuer
+keys (`issuer`, `audience`, `required_acr` directly under `method_settings`)
+keep working forever and behave as a one-entry list; saving the field's
+settings form migrates them to `trusted_issuers`.
+
 | Setting | Meaning |
 |---|---|
 | `verify_at` | `redeem` (verify a live token at delivery), `mint` (trust the caller; audit binding only), or `client_cert` (edge mTLS — below). |
 | `aal` | The assurance level bound into the signed grant (audit + downgrade protection). |
-| `issuer` | The OIDC issuer URL. JWKS is found via OIDC discovery. Required for `redeem`. |
-| `audience` | The token audience to require. Required for `redeem`. |
-| `required_acr` | Acceptable `acr` values, **exactly as your IdP emits them**. Empty denies. The decision is driven by `acr` (IdP policy). |
+| `trusted_issuers` | The trusted OIDC issuers. Each entry has its own `issuer` URL (JWKS via OIDC discovery), `audience`, and `required_acr` list. Matched exactly-one by the token's `iss`; duplicate issuers invalidate the whole set (every token denied). Required for `redeem`. |
+| `trusted_issuers[].issuer` | That entry's OIDC issuer URL, compared byte-exactly against the token's `iss`. |
+| `trusted_issuers[].audience` | The token audience to require for that issuer. |
+| `trusted_issuers[].required_acr` | Acceptable `acr` values for that issuer, **exactly as it emits them**. Empty denies. The decision is driven by `acr` (IdP policy). |
 | `required_amr` | Optional advisory `amr` values to also require. Off unless set; `amr` is advisory (RFC 8176). |
 | `dpop` | `true` to require a DPoP proof (RFC 9449) sender-constraining the token. |
 | `introspect` | `true` for a live RFC 7662 revocation check (adds a round-trip). Needs `introspection_endpoint`; the client secret is injected globally (below), never stored here. |
@@ -177,6 +190,10 @@ all do this; the specifics are the IdP's, not File Gate's.
   (`none`/HMAC rejected). The File Gate HMAC `download_secret` is never used as a
   JWT key.
 - The issuer and its JWKS come from configuration, never the token (no SSRF).
+  The token's unverified `iss` only *selects* among the admin-configured
+  trusted issuers; an issuer no entry matches is denied without any discovery
+  or JWKS network traffic, and the verified claims' `iss` is re-checked after
+  signature verification.
 - DPoP proofs are checked for `htm`/`htu` binding, freshness, single use (replay
   protection), and that the token's `cnf.jkt` matches the proving key.
 - Mid-grant IdP session revocation is not reflected until the token expires;

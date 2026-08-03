@@ -17,13 +17,15 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Default OIDC + DPoP implementation of the assurance verifier.
  *
- * Provider-agnostic: configured only with an issuer URL and an expected
- * audience, it discovers the IdP's JWKS via OIDC discovery, pins the signing
- * algorithm to the published keys (never the token header — this defeats
- * alg-confusion, which matters here because File Gate owns an HMAC secret too),
- * and validates the standard registered claims. When DPoP is enabled it also
- * verifies an RFC 9449 proof and binds it to the access token via the token's
- * `cnf.jkt` confirmation thumbprint.
+ * Provider-agnostic: configured only with a list of trusted issuers — each
+ * carrying its own expected audience and acceptable acr values — it matches
+ * the presented token to exactly one entry by `iss`, discovers that IdP's
+ * JWKS via OIDC discovery, pins the signing algorithm to the published keys
+ * (never the token header — this defeats alg-confusion, which matters here
+ * because File Gate owns an HMAC secret too), and validates the standard
+ * registered claims. When DPoP is enabled it also verifies an RFC 9449 proof
+ * and binds it to the access token via the token's `cnf.jkt` confirmation
+ * thumbprint.
  *
  * @see \Drupal\file_gate_assurance\AssuranceVerifierInterface
  */
@@ -97,11 +99,15 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    * {@inheritdoc}
    */
   public function verify(string $token, array $config, Request $request): ?array {
-    $issuer = (string) ($config['issuer'] ?? '');
-    $audience = (string) ($config['audience'] ?? '');
-    // Fail closed on misconfiguration — an unconfigured verifier verifies
-    // nothing.
-    if ($token === '' || $issuer === '' || $audience === '') {
+    if ($token === '') {
+      return NULL;
+    }
+    // Fail closed on misconfiguration — an empty, incomplete, or ambiguous
+    // (duplicate-issuer) trusted-issuer set verifies nothing. This is a
+    // configuration error, so it is logged distinctly from token rejections.
+    $set = TrustedIssuerSet::fromSettings($config);
+    if (!$set->isValid()) {
+      $this->logger->error('Assurance: the trusted issuer configuration is invalid (empty, an entry missing its issuer or audience, or two entries with the same issuer) — refusing to verify any token.');
       return NULL;
     }
 
@@ -110,7 +116,22 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       return NULL;
     }
 
-    $jwks = $this->loadJwks($issuer);
+    // Peek the UNVERIFIED payload `iss` — only to select among the
+    // admin-configured entries, never to supply a URL. The JWKS below is
+    // always discovered from the matched entry's configured issuer string, so
+    // a forged `iss` still cannot point verification anywhere (see
+    // loadJwks()); and an issuer no entry matches returns without any JWKS or
+    // discovery HTTP, so unknown issuers never trigger network traffic.
+    $peeked_iss = $this->peekIssuer($token);
+    if ($peeked_iss === NULL) {
+      return NULL;
+    }
+    $entry = $set->match($peeked_iss);
+    if ($entry === NULL) {
+      return NULL;
+    }
+
+    $jwks = $this->loadJwks($entry->issuer);
     if ($jwks === NULL) {
       return NULL;
     }
@@ -121,8 +142,8 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       // The IdP may have rotated its signing key since we cached the JWKS. Drop
       // the cache, refetch once, and retry before giving up — otherwise a valid
       // token signed by the new key is rejected until the cache expires.
-      $this->cache->delete($this->jwksCacheId($issuer));
-      $jwks = $this->loadJwks($issuer);
+      $this->cache->delete($this->jwksCacheId($entry->issuer));
+      $jwks = $this->loadJwks($entry->issuer);
       if ($jwks === NULL) {
         return NULL;
       }
@@ -133,10 +154,14 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     }
 
     // Pin issuer and audience: never trust a token minted for another party.
-    if (($claims->iss ?? NULL) !== $issuer) {
+    // The issuer re-check is defense in depth — the peek above read the
+    // UNVERIFIED payload; this reads the signature-verified claims.
+    if (($claims->iss ?? NULL) !== $entry->issuer) {
       return NULL;
     }
-    if (!in_array($audience, (array) ($claims->aud ?? []), TRUE)) {
+    // The MATCHED entry's audience only: an audience accepted for another
+    // configured issuer never satisfies this token (no cross-matching).
+    if (!in_array($entry->audience, (array) ($claims->aud ?? []), TRUE)) {
       return NULL;
     }
     // A token with no expiry never expires; require one explicitly (php-jwt
@@ -163,10 +188,15 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       }
     }
 
+    // The matched entry's identity and acr policy travel with the claims so
+    // callers enforce THIS issuer's requirements — never another entry's, and
+    // never a cross-issuer union.
     return [
       'sub' => isset($claims->sub) ? (string) $claims->sub : NULL,
       'acr' => isset($claims->acr) ? (string) $claims->acr : NULL,
       'amr' => array_map('strval', (array) ($claims->amr ?? [])),
+      'issuer' => $entry->issuer,
+      'required_acr' => $entry->requiredAcr,
     ];
   }
 
@@ -477,6 +507,34 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     }
     $host = strtolower((string) ($parts['host'] ?? ''));
     return $scheme === 'http' && in_array($host, ['127.0.0.1', '::1', 'localhost'], TRUE);
+  }
+
+  /**
+   * Reads a JWT's unverified payload `iss` claim.
+   *
+   * Selection only: the value picks which admin-configured trusted issuer the
+   * token claims to come from. It is never used as a URL, and the signature
+   * verification plus the verified-claims issuer re-check in verify() decide
+   * whether the claim was honest.
+   *
+   * @param string $jwt
+   *   The encoded JWT.
+   *
+   * @return string|null
+   *   The payload `iss` when the token has three segments, a decodable JSON
+   *   payload, and a non-empty string `iss`; otherwise NULL.
+   */
+  private function peekIssuer(string $jwt): ?string {
+    if (substr_count($jwt, '.') !== 2) {
+      return NULL;
+    }
+    [, $payload_b64] = explode('.', $jwt, 3);
+    $payload = json_decode($this->base64UrlDecode($payload_b64), TRUE);
+    if (!is_array($payload)) {
+      return NULL;
+    }
+    $iss = $payload['iss'] ?? NULL;
+    return is_string($iss) && $iss !== '' ? $iss : NULL;
   }
 
   /**

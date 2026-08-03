@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Drupal\Tests\file_gate_assurance\Kernel;
 
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\Form\FormState;
+use Drupal\Core\Logger\RfcLoggerTrait;
+use Drupal\Core\Logger\RfcLogLevel;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
@@ -21,11 +24,13 @@ use Firebase\JWT\JWT;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Drupal\file_gate_assurance\Controller\BridgeController;
 use Drupal\file_gate_assurance\SessionBridge;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -58,6 +63,9 @@ final class AssuranceTest extends KernelTestBase {
   private const ISSUER = 'https://idp.example.test';
   private const AUDIENCE = 'file-gate-api';
   private const ACR = 'aal3';
+  private const ISSUER_B = 'https://idp-b.example.test';
+  private const AUDIENCE_B = 'file-gate-api-b';
+  private const ACR_B = 'aal3-hspd12';
   private const HTU = 'http://localhost/api/file-gate/download';
 
   /**
@@ -66,9 +74,22 @@ final class AssuranceTest extends KernelTestBase {
   private string $idpKey;
 
   /**
+   * The second IdP's RSA private key (PEM) — a DISTINCT keypair.
+   *
+   * Distinct on purpose: if verification ever selected the wrong issuer's
+   * JWKS, the signature check would fail instead of accidentally passing.
+   */
+  private string $idpBKey;
+
+  /**
    * The current field method settings (mirrored onto the gated field).
    */
   private array $settings;
+
+  /**
+   * Requests the mocked HTTP client actually made (history middleware).
+   */
+  private array $httpHistory = [];
 
   /**
    * {@inheritdoc}
@@ -402,9 +423,19 @@ final class AssuranceTest extends KernelTestBase {
     $method = $this->container->get('plugin.manager.file_gate.gate_method')
       ->createInstance('assurance', []);
 
-    $form = $method->fieldSettingsForm(['verify_at' => 'redeem']);
+    // Legacy single-issuer settings prefill the first trusted-issuer row.
+    $form = $method->fieldSettingsForm([
+      'verify_at' => 'redeem',
+      'issuer' => 'https://idp.example',
+      'audience' => 'file-gate',
+      'required_acr' => ['aal3'],
+    ]);
     $this->assertArrayHasKey('verify_at', $form);
-    $this->assertArrayHasKey('issuer', $form);
+    $this->assertArrayHasKey('trusted_issuers', $form);
+    $this->assertSame('https://idp.example', $form['trusted_issuers'][0]['issuer']['#default_value']);
+    $this->assertSame('file-gate', $form['trusted_issuers'][0]['audience']['#default_value']);
+    $this->assertSame('aal3', $form['trusted_issuers'][0]['required_acr']['#default_value']);
+    $this->assertSame('', $form['trusted_issuers'][3]['issuer']['#default_value']);
     $this->assertArrayHasKey('dpop', $form);
     // Inherited from signed_url.
     $this->assertArrayHasKey('ttl', $form);
@@ -415,9 +446,12 @@ final class AssuranceTest extends KernelTestBase {
       'max_uses' => '0',
       'verify_at' => 'client_cert',
       'aal' => '3',
-      'issuer' => ' https://idp.example ',
-      'audience' => 'file-gate',
-      'required_acr' => "aal3\naal2",
+      'trusted_issuers' => [
+        ['issuer' => ' https://idp.example ', 'audience' => 'file-gate', 'required_acr' => "aal3\naal2"],
+        ['issuer' => '', 'audience' => '', 'required_acr' => ''],
+        ['issuer' => 'https://idp-b.example', 'audience' => 'file-gate-b', 'required_acr' => 'aal3-b'],
+        ['issuer' => '', 'audience' => '', 'required_acr' => ''],
+      ],
       'dpop' => 1,
       'introspect' => 0,
       'leeway' => '30',
@@ -426,12 +460,179 @@ final class AssuranceTest extends KernelTestBase {
     ]);
     $this->assertSame('client_cert', $settings['verify_at']);
     $this->assertSame(3, $settings['aal']);
-    $this->assertSame('https://idp.example', $settings['issuer']);
-    $this->assertSame(['aal3', 'aal2'], $settings['required_acr']);
+    // Fully-empty rows are skipped; values are trimmed and acr lines split.
+    $this->assertSame([
+      [
+        'issuer' => 'https://idp.example',
+        'audience' => 'file-gate',
+        'required_acr' => ['aal3', 'aal2'],
+      ],
+      [
+        'issuer' => 'https://idp-b.example',
+        'audience' => 'file-gate-b',
+        'required_acr' => ['aal3-b'],
+      ],
+    ], $settings['trusted_issuers']);
+    // The legacy flat keys are dropped on save (migration-on-save).
+    $this->assertArrayNotHasKey('issuer', $settings);
+    $this->assertArrayNotHasKey('audience', $settings);
+    $this->assertArrayNotHasKey('required_acr', $settings);
     $this->assertTrue($settings['dpop']);
     $this->assertFalse($settings['introspect']);
     $this->assertSame(30, $settings['leeway']);
     $this->assertSame(['CN=Jane Doe'], $settings['allowed_subjects']);
+  }
+
+  /**
+   * Settings validation rejects ambiguous or incomplete issuer rows.
+   */
+  public function testAssuranceSettingsValidation(): void {
+    $method = $this->container->get('plugin.manager.file_gate.gate_method')
+      ->createInstance('assurance', []);
+    $form_state = new FormState();
+    $method->fieldSettingsValidate([
+      'trusted_issuers' => [
+        ['issuer' => 'https://idp.example', 'audience' => 'file-gate', 'required_acr' => 'aal3'],
+        // Duplicate issuer: ambiguous, rejected.
+        ['issuer' => 'https://idp.example', 'audience' => 'file-gate-2', 'required_acr' => 'aal3'],
+        // Non-http(s) issuer, missing audience, empty acr list.
+        ['issuer' => 'ftp://bad.example', 'audience' => '', 'required_acr' => ''],
+        // Fully empty rows are simply skipped.
+        ['issuer' => '', 'audience' => '', 'required_acr' => ''],
+      ],
+    ], $form_state);
+    $errors = $form_state->getErrors();
+    $prefix = 'file_gate_settings][assurance][trusted_issuers][';
+    $this->assertArrayHasKey($prefix . '1][issuer', $errors);
+    $this->assertArrayHasKey($prefix . '2][issuer', $errors);
+    $this->assertArrayHasKey($prefix . '2][audience', $errors);
+    $this->assertArrayHasKey($prefix . '2][required_acr', $errors);
+    $this->assertStringContainsString('at least one accepted acr value', (string) $errors[$prefix . '2][required_acr']);
+    $this->assertArrayNotHasKey($prefix . '0][issuer', $errors);
+    $this->assertCount(4, $errors);
+  }
+
+  /**
+   * Each configured issuer verifies against its own audience, acr, and keys.
+   */
+  public function testMultiIssuerEachEntryVerifies(): void {
+    $this->replaceSettings($this->twoIssuerSettings());
+    // Issuer A's token, signed by A's key, with A's audience and acr.
+    $ok = $this->download($this->mintQuery($this->createFile('a.pdf')), $this->bearer($this->idpToken()));
+    $this->assertSame(200, $ok->getStatusCode());
+    // Issuer B's token, signed by B's own DISTINCT key — proves the JWKS is
+    // selected per matched issuer, not shared or cross-checked.
+    $ok = $this->download($this->mintQuery($this->createFile('b.pdf')), $this->bearer($this->secondIssuerToken()));
+    $this->assertSame(200, $ok->getStatusCode());
+  }
+
+  /**
+   * A token from issuer A carrying issuer B's acr is denied.
+   *
+   * The mandated anti-cross-matching case: B's acr is acceptable for B only;
+   * the matched entry (A) decides, and its list does not contain B's acr.
+   */
+  public function testMultiIssuerCrossAcrDenied(): void {
+    $this->replaceSettings($this->twoIssuerSettings());
+    $file = $this->createFile('doc.pdf');
+    $token = $this->idpToken(['acr' => self::ACR_B]);
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), $this->bearer($token));
+  }
+
+  /**
+   * A token from issuer A carrying issuer B's audience is denied.
+   */
+  public function testMultiIssuerCrossAudienceDenied(): void {
+    $this->replaceSettings($this->twoIssuerSettings());
+    $file = $this->createFile('doc.pdf');
+    $token = $this->idpToken(['aud' => self::AUDIENCE_B]);
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->download($this->mintQuery($file), $this->bearer($token));
+  }
+
+  /**
+   * An unknown issuer is denied without any discovery or JWKS HTTP.
+   */
+  public function testUnknownIssuerDeniedWithoutDiscovery(): void {
+    $this->replaceSettings($this->twoIssuerSettings());
+    $this->mockHttpClient([]);
+    $file = $this->createFile('doc.pdf');
+    $token = $this->idpToken(['iss' => 'https://unknown.example.test']);
+    try {
+      $this->download($this->mintQuery($file), $this->bearer($token));
+      $this->fail('A token from an unknown issuer must be denied.');
+    }
+    catch (AccessDeniedHttpException) {
+      // Expected: fail closed.
+    }
+    $this->assertCount(0, $this->httpHistory, 'An unknown issuer must not trigger any network traffic.');
+  }
+
+  /**
+   * Two entries with the same issuer invalidate the whole set (fail closed).
+   */
+  public function testDuplicateIssuersFailClosed(): void {
+    $records = new \ArrayObject();
+    $spy = new class($records) implements LoggerInterface {
+      use RfcLoggerTrait;
+
+      public function __construct(
+        private readonly \ArrayObject $records,
+      ) {}
+
+      /**
+       * {@inheritdoc}
+       */
+      public function log($level, string|\Stringable $message, array $context = []): void {
+        $this->records[] = ['level' => $level, 'message' => (string) $message];
+      }
+
+    };
+    $this->container->get('logger.factory')->addLogger($spy);
+
+    $config = [
+      'trusted_issuers' => [
+        ['issuer' => self::ISSUER, 'audience' => self::AUDIENCE, 'required_acr' => [self::ACR]],
+        ['issuer' => self::ISSUER, 'audience' => 'other-audience', 'required_acr' => ['aal2']],
+      ],
+    ];
+    $result = $this->container->get('file_gate_assurance.verifier')
+      ->verify($this->idpToken(), $config, Request::create('/api/file-gate/download'));
+    $this->assertNull($result, 'A duplicate issuer invalidates the whole set.');
+
+    $logged = FALSE;
+    foreach ($records as $record) {
+      if ((int) $record['level'] === RfcLogLevel::ERROR && str_contains($record['message'], 'trusted issuer configuration is invalid')) {
+        $logged = TRUE;
+      }
+    }
+    $this->assertTrue($logged, 'The invalid set is logged as a configuration error.');
+  }
+
+  /**
+   * Legacy single-key settings behave exactly as a one-entry list.
+   */
+  public function testLegacySettingsBehaveAsOneEntryList(): void {
+    // Legacy single-key shape (the setUp default) grants.
+    $ok = $this->download($this->mintQuery($this->createFile('legacy.pdf')), $this->bearer($this->idpToken()));
+    $this->assertSame(200, $ok->getStatusCode());
+
+    // The same configuration expressed as a one-entry trusted_issuers list
+    // behaves identically.
+    $this->replaceSettings([
+      'verify_at' => 'redeem',
+      'aal' => 3,
+      'trusted_issuers' => [
+        [
+          'issuer' => self::ISSUER,
+          'audience' => self::AUDIENCE,
+          'required_acr' => [self::ACR],
+        ],
+      ],
+    ]);
+    $ok = $this->download($this->mintQuery($this->createFile('list.pdf')), $this->bearer($this->idpToken()));
+    $this->assertSame(200, $ok->getStatusCode());
   }
 
   /**
@@ -547,6 +748,8 @@ final class AssuranceTest extends KernelTestBase {
    */
   private function mockHttpClient(array $responses): void {
     $handler = HandlerStack::create(new MockHandler($responses));
+    $this->httpHistory = [];
+    $handler->push(Middleware::history($this->httpHistory));
     $this->container->set('http_client', new Client(['handler' => $handler]));
   }
 
@@ -577,12 +780,25 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
-   * Generates the IdP RSA key and seeds its JWKS into the verifier cache.
+   * Generates both IdPs' RSA keys and seeds their JWKS into the cache.
    */
   private function seedIdp(): void {
+    $this->idpKey = $this->seedIssuerJwks(self::ISSUER);
+    $this->idpBKey = $this->seedIssuerJwks(self::ISSUER_B);
+  }
+
+  /**
+   * Generates an RSA keypair for an issuer and seeds its JWKS into the cache.
+   *
+   * @param string $issuer
+   *   The issuer URL to seed a key set for.
+   *
+   * @return string
+   *   The issuer's private key (PEM), for signing that issuer's tokens.
+   */
+  private function seedIssuerJwks(string $issuer): string {
     $res = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
     openssl_pkey_export($res, $pem);
-    $this->idpKey = $pem;
     $details = openssl_pkey_get_details($res);
     $jwks = [
       'keys' => [
@@ -597,7 +813,8 @@ final class AssuranceTest extends KernelTestBase {
       ],
     ];
     $this->container->get('cache.default')
-      ->set('file_gate_assurance:jwks:' . hash('sha256', self::ISSUER), $jwks);
+      ->set('file_gate_assurance:jwks:' . hash('sha256', $issuer), $jwks);
+    return $pem;
   }
 
   /**
@@ -611,6 +828,44 @@ final class AssuranceTest extends KernelTestBase {
     FieldStorageConfig::loadByName('entity_test', 'field_gated')
       ->setThirdPartySetting('file_gate', 'method_settings', $this->settings)
       ->save();
+  }
+
+  /**
+   * Replaces the field's method settings wholesale (no merge).
+   *
+   * @param array $settings
+   *   The complete method settings to store.
+   */
+  private function replaceSettings(array $settings): void {
+    $this->settings = $settings;
+    FieldStorageConfig::loadByName('entity_test', 'field_gated')
+      ->setThirdPartySetting('file_gate', 'method_settings', $this->settings)
+      ->save();
+  }
+
+  /**
+   * The two-entry trusted_issuers settings used by the multi-issuer tests.
+   *
+   * @return array
+   *   Method settings with issuers A and B, each with its own audience/acr.
+   */
+  private function twoIssuerSettings(): array {
+    return [
+      'verify_at' => 'redeem',
+      'aal' => 3,
+      'trusted_issuers' => [
+        [
+          'issuer' => self::ISSUER,
+          'audience' => self::AUDIENCE,
+          'required_acr' => [self::ACR],
+        ],
+        [
+          'issuer' => self::ISSUER_B,
+          'audience' => self::AUDIENCE_B,
+          'required_acr' => [self::ACR_B],
+        ],
+      ],
+    ];
   }
 
   /**
@@ -651,6 +906,30 @@ final class AssuranceTest extends KernelTestBase {
       'exp' => $now + 300,
     ], $overrides);
     return JWT::encode($payload, $this->idpKey, 'RS256', 'test-1');
+  }
+
+  /**
+   * Builds a token signed by the SECOND IdP with the given claim overrides.
+   *
+   * @param array $overrides
+   *   Claims to override on the default issuer-B token.
+   *
+   * @return string
+   *   The encoded JWT, signed with issuer B's own key.
+   */
+  private function secondIssuerToken(array $overrides = []): string {
+    $now = $this->container->get('datetime.time')->getRequestTime();
+    $payload = array_merge([
+      'iss' => self::ISSUER_B,
+      'aud' => self::AUDIENCE_B,
+      'sub' => 'user-456',
+      'acr' => self::ACR_B,
+      'amr' => ['hwk'],
+      'iat' => $now,
+      'nbf' => $now,
+      'exp' => $now + 300,
+    ], $overrides);
+    return JWT::encode($payload, $this->idpBKey, 'RS256', 'test-1');
   }
 
   /**

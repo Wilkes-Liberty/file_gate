@@ -208,10 +208,11 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
 /**
  * Validation handler for the gating controls on the field config edit form.
  *
- * Enabling gating converts the field to private storage; block that when the
- * field already stores data in a non-private scheme, because the storage scheme
- * cannot be changed once a field has data and the existing files would become
- * unreachable.
+ * Delegates the selected method's own settings validation to the plugin, then
+ * enforces the storage constraint: enabling gating converts the field to
+ * private storage; block that when the field already stores data in a
+ * non-private scheme, because the storage scheme cannot be changed once a
+ * field has data and the existing files would become unreachable.
  */
 function _file_gate_field_config_edit_form_validate(array &$form, FormStateInterface $form_state): void {
   if (!$form_state->getValue('file_gate_gated')) {
@@ -223,6 +224,16 @@ function _file_gate_field_config_edit_form_validate(array &$form, FormStateInter
   if ($method === '' || !isset($options[$method])) {
     $form_state->setErrorByName('file_gate_method', t('Select a valid gate method.'));
     return;
+  }
+
+  // Let the selected method validate its own submitted settings, mirroring how
+  // the submit handler resolves the plugin and its values. Feature-detected:
+  // fieldSettingsValidate() lives on GateMethodBase, not the interface, so
+  // third-party methods implementing the interface directly keep working.
+  $values = (array) ($form_state->getValue(['file_gate_settings', $method]) ?? []);
+  $plugin = \Drupal::service('plugin.manager.file_gate.gate_method')->createInstance($method, []);
+  if (method_exists($plugin, 'fieldSettingsValidate')) {
+    $plugin->fieldSettingsValidate($values, $form_state);
   }
 
   $form_object = $form_state->getFormObject();

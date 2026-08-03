@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate_assurance\Plugin\GateMethod;
 
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\Core\Url;
@@ -15,6 +16,7 @@ use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
 use Drupal\file_gate\StackMiddleware\AuthorizationShield;
 use Drupal\file_gate_assurance\AssuranceVerifierInterface;
 use Drupal\file_gate_assurance\SessionBridge;
+use Drupal\file_gate_assurance\TrustedIssuerSet;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -59,10 +61,11 @@ use Symfony\Component\HttpFoundation\Response;
  * - verify_at: "redeem" (default), "mint", or "client_cert";
  * - aal: the assurance level to bind into the signed grant (audit + tamper
  *   binding), e.g. 3;
- * - issuer: the OIDC issuer URL (required for "redeem");
- * - audience: the expected token audience (required for "redeem");
- * - required_acr: the acceptable `acr` values, exactly as your IdP emits them
- *   (required for "redeem"); empty denies;
+ * - trusted_issuers: the trusted OIDC issuers (required for "redeem"), a list
+ *   of entries each with its own issuer URL, expected audience, and acceptable
+ *   `acr` values (exactly as that IdP emits them; empty denies). A token is
+ *   matched to exactly one entry by `iss` — no cross-matching. The legacy
+ *   single keys issuer/audience/required_acr keep working as a one-entry list;
  * - required_amr: optional advisory `amr` values to also require (off by
  *   default);
  * - dpop: TRUE to require an RFC 9449 DPoP proof (opt-in hardening);
@@ -169,13 +172,13 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         'error' => 'Mint-time OIDC token failed verification.',
       ], Response::HTTP_FORBIDDEN);
     }
-    // Same rule as redeem: empty acr allowlist denies (fail closed).
-    $required_acr = $this->requiredAcrList();
-    $acr = isset($claims['acr']) ? (string) $claims['acr'] : '';
-    if ($required_acr === [] || $acr === '' || !in_array($acr, $required_acr, TRUE)) {
+    // Same rule as redeem: the MATCHED issuer's acr list decides, and an empty
+    // list denies (fail closed). The advertised acr_values are the
+    // cross-issuer union — advertisement only, not the enforcement input.
+    if (!$this->acrSatisfied($claims)) {
       return new JsonResponse([
         'error' => 'Mint-time OIDC token acr is insufficient.',
-        'acr_values' => $required_acr,
+        'acr_values' => $this->requiredAcrList(),
       ], Response::HTTP_FORBIDDEN);
     }
     if (!empty($this->configuration['introspect']) && !$this->verifier->introspect($token, $this->configuration)) {
@@ -261,11 +264,38 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   /**
    * Required acr values from field configuration.
    *
+   * The deduplicated union across every configured trusted issuer, kept ONLY
+   * for challenge advertisement (WWW-Authenticate acr_values, step-up URLs) —
+   * never an enforcement input. Enforcement uses the matched entry's own acr
+   * list, which the verifier returns with the claims (see acrSatisfied()).
+   *
    * @return list<string>
-   *   Accepted acr strings.
+   *   Accepted acr strings across all trusted issuers.
    */
   public function requiredAcrList(): array {
-    return array_values(array_filter(array_map('strval', (array) ($this->configuration['required_acr'] ?? []))));
+    return TrustedIssuerSet::fromSettings($this->configuration)->acrUnion();
+  }
+
+  /**
+   * Whether verified claims carry an acr the MATCHED issuer accepts.
+   *
+   * The verifier returns the matched entry's own required_acr with the
+   * claims; only that list decides. An absent or empty list denies (fail
+   * closed) — never falls back to another issuer's list or the union.
+   *
+   * @param array $claims
+   *   The verified claims from the assurance verifier.
+   *
+   * @return bool
+   *   TRUE only when the token's acr is on the matched issuer's list.
+   */
+  private function acrSatisfied(array $claims): bool {
+    $required = array_map('strval', (array) ($claims['required_acr'] ?? []));
+    if ($required === []) {
+      return FALSE;
+    }
+    $acr = (string) ($claims['acr'] ?? '');
+    return $acr !== '' && in_array($acr, $required, TRUE);
   }
 
   /**
@@ -365,9 +395,9 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       return FALSE;
     }
 
-    // The decision is driven by `acr` (IdP policy). Empty allowlist ⇒ deny.
-    $required_acr = $this->requiredAcrList();
-    if ($required_acr === [] || !in_array((string) $claims['acr'], $required_acr, TRUE)) {
+    // The decision is driven by `acr` (IdP policy), against the MATCHED
+    // issuer's own list. Empty allowlist ⇒ deny.
+    if (!$this->acrSatisfied($claims)) {
       return FALSE;
     }
 
@@ -514,24 +544,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#default_value' => (int) ($settings['aal'] ?? 0),
         '#description' => $this->t('Bound into the signed grant (audit + downgrade protection), e.g. 3. 0 = none.'),
       ],
-      'issuer' => [
-        '#type' => 'textfield',
-        '#title' => $this->t('OIDC issuer URL'),
-        '#default_value' => $settings['issuer'] ?? '',
-        '#description' => $this->t('Redemption mode. The JWKS is found via OIDC discovery on this issuer.'),
-      ],
-      'audience' => [
-        '#type' => 'textfield',
-        '#title' => $this->t('Expected token audience'),
-        '#default_value' => $settings['audience'] ?? '',
-        '#description' => $this->t('Redemption mode. The token’s <code>aud</code> must contain this value.'),
-      ],
-      'required_acr' => [
-        '#type' => 'textarea',
-        '#title' => $this->t('Accepted acr values'),
-        '#default_value' => $lines((array) ($settings['required_acr'] ?? [])),
-        '#description' => $this->t('Redemption mode. One <code>acr</code> value per line, exactly as your IdP emits. Empty denies.'),
-      ],
+      'trusted_issuers' => $this->trustedIssuersFormRows($settings),
       'required_amr' => [
         '#type' => 'textarea',
         '#title' => $this->t('Required amr values (advisory)'),
@@ -663,10 +676,98 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   }
 
   /**
+   * Builds the fixed trusted-issuer rows for the settings form.
+   *
+   * Four fixed rows: the design bounds real deployments at two issuers, so
+   * four gives headroom without AJAX add-more machinery. Prefilled from the
+   * NORMALIZED set, so a legacy single-issuer configuration shows in row 1.
+   *
+   * @param array $settings
+   *   The current method settings.
+   *
+   * @return array
+   *   The Form API container of rows.
+   */
+  private function trustedIssuersFormRows(array $settings): array {
+    $lines = static fn (array $v): string => implode("\n", $v);
+    $entries = TrustedIssuerSet::fromSettings($settings)->entries();
+    $rows = [
+      '#type' => 'container',
+    ];
+    for ($i = 0; $i < 4; $i++) {
+      $entry = $entries[$i] ?? NULL;
+      $rows[$i] = [
+        '#type' => 'details',
+        '#title' => $this->t('Trusted issuer @number', ['@number' => $i + 1]),
+        '#open' => FALSE,
+        'issuer' => [
+          '#type' => 'textfield',
+          '#title' => $this->t('OIDC issuer URL'),
+          '#default_value' => $entry->issuer ?? '',
+          '#description' => $this->t('Redemption mode. The JWKS is found via OIDC discovery on this issuer. A token is matched to exactly one trusted issuer by its <code>iss</code> claim.'),
+        ],
+        'audience' => [
+          '#type' => 'textfield',
+          '#title' => $this->t('Expected token audience'),
+          '#default_value' => $entry->audience ?? '',
+          '#description' => $this->t('Redemption mode. A token from this issuer must carry this value in <code>aud</code>. Another issuer’s audience never applies.'),
+        ],
+        'required_acr' => [
+          '#type' => 'textarea',
+          '#title' => $this->t('Accepted acr values'),
+          '#default_value' => $lines($entry->requiredAcr ?? []),
+          '#description' => $this->t('Redemption mode. One <code>acr</code> value per line, exactly as this issuer emits. Empty denies.'),
+        ],
+      ];
+    }
+    return $rows;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsValidate(array $values, FormStateInterface $form_state): void {
+    $seen = [];
+    foreach ($this->submittedIssuerRows($values) as $delta => $row) {
+      $number = $delta + 1;
+      $name = implode('][', [
+        'file_gate_settings',
+        $this->getPluginId(),
+        'trusted_issuers',
+        (string) $delta,
+      ]);
+      if ($row['issuer'] === '') {
+        $form_state->setErrorByName($name . '][issuer', $this->t('Trusted issuer @number: an issuer URL is required when an audience or acr values are set.', ['@number' => $number]));
+      }
+      elseif (!preg_match('#^https?://#i', $row['issuer'])) {
+        $form_state->setErrorByName($name . '][issuer', $this->t('Trusted issuer @number: the issuer must be an absolute http(s) URL.', ['@number' => $number]));
+      }
+      elseif (isset($seen[$row['issuer']])) {
+        $form_state->setErrorByName($name . '][issuer', $this->t('Trusted issuer @number repeats the issuer %issuer. Each issuer may be listed only once — a duplicate makes the whole configuration ambiguous and every token is denied.', [
+          '@number' => $number,
+          '%issuer' => $row['issuer'],
+        ]));
+      }
+      else {
+        $seen[$row['issuer']] = TRUE;
+      }
+      if ($row['audience'] === '') {
+        $form_state->setErrorByName($name . '][audience', $this->t('Trusted issuer @number: an expected audience is required.', ['@number' => $number]));
+      }
+      if ($row['required_acr'] === []) {
+        $form_state->setErrorByName($name . '][required_acr', $this->t('Trusted issuer @number: list at least one accepted acr value — an empty list silently denies every token from this issuer.', ['@number' => $number]));
+      }
+    }
+  }
+
+  /**
    * {@inheritdoc}
    */
   public function fieldSettingsSubmit(array $values): array {
-    // Inherit ttl / available_until / max_uses.
+    // Inherit ttl / available_until / max_uses. The settings are rebuilt from
+    // the submitted values alone, so for every key this method manages a
+    // cleared form value clears the stored key — a previously stored value
+    // never silently survives an emptied field.
     $settings = parent::fieldSettingsSubmit($values);
 
     $mode = $values['verify_at'] ?? 'redeem';
@@ -682,9 +783,18 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     $settings['step_up_append_acr'] = !empty($values['step_up_append_acr']);
     $settings['session_bridge_sso'] = !empty($values['session_bridge_sso']);
 
+    // Migration-on-save: the form edits trusted_issuers, so saving normalizes
+    // a legacy single-issuer configuration (prefilled into row 1) into the
+    // list shape and drops the legacy issuer/audience/required_acr keys.
+    $issuers = [];
+    foreach ($this->submittedIssuerRows($values) as $row) {
+      $issuers[] = $row;
+    }
+    if ($issuers !== []) {
+      $settings['trusted_issuers'] = $issuers;
+    }
+
     $string_keys = [
-      'issuer',
-      'audience',
       'step_up_login_url',
       'step_up_acr_param',
       'rp_id',
@@ -701,13 +811,50 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         $settings[$key] = $value;
       }
     }
-    foreach (['required_acr', 'required_amr', 'allowed_subjects', 'origins'] as $key) {
-      $list = array_filter(array_map('trim', preg_split('/\R/', (string) ($values[$key] ?? ''))));
+    foreach (['required_amr', 'allowed_subjects', 'origins'] as $key) {
+      $list = array_filter(
+        array_map('trim', preg_split('/\\R/', (string) ($values[$key] ?? ''))),
+        static fn (string $v): bool => $v !== '',
+      );
       if ($list) {
         $settings[$key] = array_values($list);
       }
     }
     return $settings;
+  }
+
+  /**
+   * Normalizes the submitted trusted-issuer rows, skipping fully-empty ones.
+   *
+   * @param array $values
+   *   The submitted settings-form values.
+   *
+   * @return array<int, array{issuer: string, audience: string, required_acr: list<string>}>
+   *   Normalized rows keyed by their ORIGINAL row delta (so validation errors
+   *   target the right form element); fully-empty rows are omitted.
+   */
+  private function submittedIssuerRows(array $values): array {
+    $rows = [];
+    foreach ((array) ($values['trusted_issuers'] ?? []) as $delta => $row) {
+      if (!is_array($row)) {
+        continue;
+      }
+      $issuer = trim((string) ($row['issuer'] ?? ''));
+      $audience = trim((string) ($row['audience'] ?? ''));
+      $acr = array_values(array_filter(
+        array_map('trim', preg_split('/\R/', (string) ($row['required_acr'] ?? ''))),
+        static fn (string $v): bool => $v !== '',
+      ));
+      if ($issuer === '' && $audience === '' && $acr === []) {
+        continue;
+      }
+      $rows[(int) $delta] = [
+        'issuer' => $issuer,
+        'audience' => $audience,
+        'required_acr' => $acr,
+      ];
+    }
+    return $rows;
   }
 
 }

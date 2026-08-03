@@ -18,6 +18,33 @@ All notable changes to **File Gate** are documented here. The format is based on
   ignored — the open-redirect defense is unchanged.
   `StepUpAuthorizeUrl::build()` appends `acr_values` (and a sanitized
   `return_to`) to a relative base exactly as it does to an absolute one.
+- **Assurance: multiple trusted issuers (#60).** The `assurance` method now
+  accepts a `trusted_issuers` list — each entry with its own `issuer`,
+  `audience`, and `required_acr` — so one gated field can serve users from
+  several IdPs. A presented token is matched to exactly one entry by its `iss`
+  claim and only that entry's audience and acr apply: no cross-matching
+  between entries, no laxer fallback when none matches, and an unknown issuer
+  is denied without any discovery or JWKS network traffic. Duplicate issuers
+  make the whole set invalid and every token is denied (fail closed), with the
+  configuration error logged. The legacy single-issuer keys keep working
+  forever as a one-entry list (no update hook); saving the field's settings
+  form migrates them to the list shape. The field form now edits up to four
+  trusted-issuer rows and validates them (duplicate, incomplete, non-http(s),
+  or empty-acr entries are rejected before save).
+
+### Changed
+
+- **Clearing a managed assurance setting in the field form now actually clears
+  it.** The assurance method's settings are rebuilt from the submitted form
+  values on every save, so emptying a field (an issuer row, the step-up login
+  URL, the introspection endpoint, …) removes the stored key. Previously an
+  emptied value could leave the old stored value silently in effect.
+
+- **CI: the attribution check is now the shared workflow.**
+  `.github/workflows/attribution.yml` becomes a thin caller pinned to
+  `Wilkes-Liberty/shared-ci@v1`, and the vendored `.github/scripts/` copies are
+  removed. One implementation for every repository makes copy drift structurally
+  impossible instead of merely detectable.
 
 ### Fixed
 
@@ -33,14 +60,6 @@ All notable changes to **File Gate** are documented here. The format is based on
   the raw diagnostic in the console. The step-up error handler likewise stops
   surfacing raw exception internals in the UI and points to the browser console
   instead.
-
-### Changed
-
-- **CI: the attribution check is now the shared workflow.**
-  `.github/workflows/attribution.yml` becomes a thin caller pinned to
-  `Wilkes-Liberty/shared-ci@v1`, and the vendored `.github/scripts/` copies are
-  removed. One implementation for every repository makes copy drift structurally
-  impossible instead of merely detectable.
 
 ## [1.5.2] - 2026-08-02
 
