@@ -755,6 +755,55 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
+   * A site-relative step_up_login_url is trusted and gets acr appended.
+   *
+   * Same-origin by construction, so the open-redirect defense is unchanged
+   * (GH #62).
+   */
+  public function testStepUpAcceptsRelativeLoginUrl(): void {
+    $this->configure(['step_up_login_url' => '/oidc/step-up']);
+    $file = $this->createFile('stepup-relative.pdf');
+    $query = $this->mintViaController($file);
+    $request = Request::create('/api/file-gate/assurance/step-up', 'GET', $query);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $html = (string) $response->getContent();
+    // loginUrl is json_encode'd into the page, so slashes are escaped.
+    $expected = json_encode('/oidc/step-up?acr_values=' . self::ACR, JSON_THROW_ON_ERROR);
+    $this->assertStringContainsString('const loginUrl = ' . $expected . ';', $html);
+  }
+
+  /**
+   * Untrusted step_up_login_url values fall back exactly like an empty one.
+   *
+   * A network-path reference (//host) resolves to another origin and a
+   * javascript: URL is script injection — both must leave the page with no
+   * login URL (loginUrl = null), the same rendering as an unset field.
+   */
+  public function testStepUpRejectsUntrustedLoginUrl(): void {
+    $file = $this->createFile('stepup-untrusted.pdf');
+    $query = $this->mintViaController($file);
+
+    // Baseline: an empty setting renders loginUrl = null.
+    $request = Request::create('/api/file-gate/assurance/step-up', 'GET', $query);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $this->assertStringContainsString('const loginUrl = null;', (string) $response->getContent());
+
+    // Network-path reference: rejected, identical fallback.
+    $this->configure(['step_up_login_url' => '//evil.example']);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $html = (string) $response->getContent();
+    $this->assertStringNotContainsString('evil.example', $html);
+    $this->assertStringContainsString('const loginUrl = null;', $html);
+
+    // javascript: URL: rejected, identical fallback.
+    $this->configure(['step_up_login_url' => 'javascript:alert(1)']);
+    $response = BridgeController::create($this->container)->stepUpPage($request);
+    $html = (string) $response->getContent();
+    $this->assertStringNotContainsString('alert(1)', $html);
+    $this->assertStringContainsString('const loginUrl = null;', $html);
+  }
+
+  /**
    * The step-up page gates stored token shapes before building headers.
    *
    * A malformed sessionStorage value (non-Latin-1 characters being the worst

@@ -556,7 +556,7 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#type' => 'textfield',
         '#title' => $this->t('Step-up login URL (optional)'),
         '#default_value' => $settings['step_up_login_url'] ?? '',
-        '#description' => $this->t('Absolute http(s) IdP authorize or front-end login URL (field only — never from the query). Prefer the IdP authorize endpoint so ACR can be requested (GH #42). The step-up page may append <code>return_to</code>.'),
+        '#description' => $this->t('Absolute http(s) IdP authorize or front-end login URL, or a site-relative path such as <code>/oidc/step-up</code> when this site provides its own step-up initiator route (field only — never from the query; GH #62). Prefer the IdP authorize endpoint so ACR can be requested (GH #42). The step-up page may append <code>return_to</code>.'),
       ],
       'step_up_append_acr' => [
         '#type' => 'checkbox',

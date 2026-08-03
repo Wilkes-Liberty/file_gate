@@ -67,8 +67,11 @@ and a JSON body listing `step_up` and `bridge` URLs (RFC 9470-style).
    A stored value that is not compact-JWS shaped (`xxxxx.yyyyy.zzzzz`) is
    rejected client-side with an actionable message before any bridge call.
 4. Optional field setting **Step-up login URL**: the step-up page redirects
-   there with `return_to=` when no token is present. Absolute **http(s)** only.
-   The query parameter `login_url` is **ignored** (open-redirect defense).
+   there with `return_to=` when no token is present. Absolute **http(s)**, or a
+   **site-relative path** with a single leading slash (for example
+   `/oidc/step-up`) when the site provides its own step-up initiator route
+   (GH #62). The query parameter `login_url` is **ignored** (open-redirect
+   defense).
 5. Open the minted path as a normal link.
 
 ## Mint-time OIDC (A2)

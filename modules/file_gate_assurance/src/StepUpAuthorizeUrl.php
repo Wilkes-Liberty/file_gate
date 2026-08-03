@@ -7,18 +7,57 @@ namespace Drupal\file_gate_assurance;
 /**
  * Builds IdP authorize URLs for assurance step-up (GH #42).
  *
- * Only absolute http(s) bases from field config are accepted (same open
- * redirect rule as BridgeController). Optional query params append acr_values
- * and a return_to so Keycloak (or any OIDC IdP) can force WebAuthn/PIV when
- * the current SSO session lacks sufficient ACR.
+ * Only absolute http(s) bases or site-relative paths from field config are
+ * accepted (same open redirect rule as BridgeController; GH #62). Optional
+ * query params append acr_values and a return_to so Keycloak (or any OIDC
+ * IdP) can force WebAuthn/PIV when the current SSO session lacks sufficient
+ * ACR.
  */
 final class StepUpAuthorizeUrl {
+
+  /**
+   * Decides whether a base URL is trusted as a step-up login target.
+   *
+   * Accepted: an absolute http(s) URL, or a site-relative path with exactly
+   * one leading slash. Network-path references (//host), backslashes, and
+   * control characters are rejected — a single-slash relative path is
+   * same-origin by construction, so it cannot become an open redirect.
+   *
+   * @param string $base
+   *   The candidate base from field settings.
+   *
+   * @return bool
+   *   TRUE when the base may be used as a step-up login target.
+   */
+  public function isTrustedBase(string $base): bool {
+    $base = trim($base);
+    if ($base === '') {
+      return FALSE;
+    }
+    // No backslashes or control characters in ANY base, absolute or relative
+    // (mirrors sanitizeReturnTo()).
+    if (str_contains($base, '\\') || preg_match('/[\x00-\x1F\x7F]/', $base)) {
+      return FALSE;
+    }
+    if (preg_match('#^https?://#i', $base)) {
+      // Absolute: must parse and carry a real host, so degenerate forms like
+      // "https:///path" are rejected here rather than surviving to build().
+      $parts = parse_url($base);
+      return is_array($parts) && !empty($parts['scheme']) && !empty($parts['host']);
+    }
+    // Site-relative: exactly one leading "/" (reject //network-path).
+    if (!str_starts_with($base, '/') || str_starts_with($base, '//')) {
+      return FALSE;
+    }
+    return TRUE;
+  }
 
   /**
    * Builds a step-up URL from a trusted field-configured base.
    *
    * @param string $base
-   *   Absolute http(s) authorize or login URL from field settings only.
+   *   Absolute http(s) authorize or login URL, or a site-relative path with a
+   *   single leading slash, from field settings only.
    * @param list<string> $required_acr
    *   ACR values to request (empty skips the acr query param).
    * @param string $return_to
@@ -27,15 +66,20 @@ final class StepUpAuthorizeUrl {
    *   Keys: acr_param, return_param, append_acr, append_return.
    *
    * @return string
-   *   Absolute URL, or empty string when base is untrusted/empty.
+   *   Built URL (absolute, or site-relative when the base was), or empty
+   *   string when base is untrusted/empty.
    */
   public function build(string $base, array $required_acr = [], string $return_to = '', array $options = []): string {
     $base = trim($base);
-    if ($base === '' || !preg_match('#^https?://#i', $base)) {
+    if (!$this->isTrustedBase($base)) {
       return '';
     }
+    $relative = !preg_match('#^https?://#i', $base);
     $parts = parse_url($base);
-    if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+    if (!is_array($parts)) {
+      return '';
+    }
+    if (!$relative && (empty($parts['scheme']) || empty($parts['host']))) {
       return '';
     }
 
@@ -53,19 +97,24 @@ final class StepUpAuthorizeUrl {
       $query[$acr_param] = implode(' ', array_values(array_filter(array_map('strval', $required_acr))));
     }
     if ($append_return && $return_to !== '' && $return_param !== '') {
-      // Only allow relative paths or same-host absolute URLs as return targets.
-      $safe_return = $this->sanitizeReturnTo($return_to, $parts['host']);
+      // Only allow relative paths or same-host absolute URLs as return
+      // targets. A relative base has no host, so only relative return targets
+      // can match it.
+      $safe_return = $this->sanitizeReturnTo($return_to, (string) ($parts['host'] ?? ''));
       if ($safe_return !== '') {
         $query[$return_param] = $safe_return;
       }
     }
 
-    $scheme = strtolower((string) $parts['scheme']);
-    $host = (string) $parts['host'];
-    $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
     $path = $parts['path'] ?? '';
     $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
     $qs = $query !== [] ? '?' . http_build_query($query) : '';
+    if ($relative) {
+      return $path . $qs . $fragment;
+    }
+    $scheme = strtolower((string) $parts['scheme']);
+    $host = (string) $parts['host'];
+    $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
     return $scheme . '://' . $host . $port . $path . $qs . $fragment;
   }
 

@@ -69,7 +69,7 @@ without a second hardware enrollment in Drupal or File Gate.
 | `audience` | Resource audience for File Gate (may need mapper or token exchange) |
 | `required_acr` | Exact string(s) IdP emits for WebAuthn/PIV |
 | Bridge | Enabled |
-| `step_up_login_url` | IdP **authorize** URL (absolute https); module may append `acr_values` (GH #42) |
+| `step_up_login_url` | IdP **authorize** URL (absolute https, or a site-relative initiator path; GH #62); module may append `acr_values` (GH #42) |
 | `step_up_append_acr` | On (default) — append field `required_acr` as `acr_values` |
 | `session_bridge_sso` | On (default) — use openid_connect session token same-origin (GH #41) |
 | `verify_oidc_at_mint` | On only if mint BFF can present File-Gate-audienced tokens (A2) |
