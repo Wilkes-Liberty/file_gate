@@ -6,15 +6,17 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-20
+
 ### Added
-- **Identity-aware mint: User hosts, field view, nested parents.** Acting-account
-  mint now requires (1) file download access, (2) view access on every
-  referencing host, (3) view access on the referencing *field* (so a
-  field-level deny is not skipped), and (4) view access on each
-  `getParentEntity()` ancestor when the usage host is a child (paragraph /
-  inline). A gated file with no resolvable host is refused. Kernel coverage
-  for a `user` host (own vs other) and for a field-view deny; unit coverage
-  for the parent walker.
+- **Identity-aware mint: User hosts, field view, nested parents (d.o
+  #3618403).** Acting-account mint now requires (1) file download access,
+  (2) view access on every referencing host, (3) view access on the
+  referencing *field* (so a field-level deny is not skipped), and (4) view
+  access on each `getParentEntity()` ancestor when the usage host is a child
+  (paragraph / inline). A gated file with no resolvable host is refused.
+  Kernel coverage for a `user` host (own vs other) and for a field-view deny;
+  unit coverage for the parent walker.
 
 ## [1.6.1] - 2026-08-03
 
