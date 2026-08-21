@@ -1,0 +1,24 @@
+<?php
+
+/**
+ * @file
+ * Test-only field access: field_gated view requires a named permission.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Access\AccessResultInterface;
+use Drupal\Core\Field\FieldDefinitionInterface;
+use Drupal\Core\Field\FieldItemListInterface;
+use Drupal\Core\Session\AccountInterface;
+
+/**
+ * Implements hook_entity_field_access().
+ */
+function file_gate_test_field_access_entity_field_access(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
+  if ($field_definition->getName() !== 'field_gated' || $operation !== 'view') {
+    return AccessResult::neutral();
+  }
+  return AccessResult::allowedIfHasPermission($account, 'view gated test field');
+}
