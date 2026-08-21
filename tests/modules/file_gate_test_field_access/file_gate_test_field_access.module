@@ -20,5 +20,8 @@ function file_gate_test_field_access_entity_field_access(string $operation, Fiel
   if ($field_definition->getName() !== 'field_gated' || $operation !== 'view') {
     return AccessResult::neutral();
   }
-  return AccessResult::allowedIfHasPermission($account, 'view gated test field');
+  // allowedIfHasPermission() is neutral without the permission, which does
+  // not deny. Field access ANDs hook results starting from allowed().
+  return AccessResult::forbiddenIf(!$account->hasPermission('view gated test field'))
+    ->addCacheContexts(['user.permissions']);
 }
