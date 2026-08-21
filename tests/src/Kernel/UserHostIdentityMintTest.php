@@ -6,7 +6,7 @@ namespace Drupal\Tests\file_gate\Kernel;
 
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\StreamWrapper\PrivateStream;
-use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
+use Drupal\Core\StreamWrapper\StreamWrapperInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\field\Entity\FieldConfig;
@@ -57,7 +57,7 @@ final class UserHostIdentityMintTest extends KernelTestBase {
 
     $this->setSetting('file_private_path', $this->siteDirectory . '/private');
     $this->container->get('stream_wrapper_manager')
-      ->registerWrapper('private', PrivateStream::class, StreamWrapperManagerInterface::WRITE_VISIBLE);
+      ->registerWrapper('private', PrivateStream::class, StreamWrapperInterface::WRITE_VISIBLE);
 
     $this->config('file_gate.settings')->set('download_secret', self::SECRET)->save();
 
@@ -82,7 +82,6 @@ final class UserHostIdentityMintTest extends KernelTestBase {
    */
   public function testOwnerMintsOwnUserFile(): void {
     $owner = $this->createUser([]);
-    $this->assertInstanceOf(UserInterface::class, $owner);
     $file = $this->attachFileToUser($owner);
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
@@ -98,8 +97,6 @@ final class UserHostIdentityMintTest extends KernelTestBase {
   public function testOtherUserCannotMint(): void {
     $owner = $this->createUser([]);
     $other = $this->createUser([]);
-    $this->assertInstanceOf(UserInterface::class, $owner);
-    $this->assertInstanceOf(UserInterface::class, $other);
     $file = $this->attachFileToUser($owner);
 
     $response = MintController::create($this->container)->mint($this->mintRequest([

@@ -6,7 +6,7 @@ namespace Drupal\Tests\file_gate\Kernel;
 
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\StreamWrapper\PrivateStream;
-use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
+use Drupal\Core\StreamWrapper\StreamWrapperInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\entity_test\Entity\EntityTest;
@@ -60,7 +60,7 @@ final class FieldAccessIdentityMintTest extends KernelTestBase {
 
     $this->setSetting('file_private_path', $this->siteDirectory . '/private');
     $this->container->get('stream_wrapper_manager')
-      ->registerWrapper('private', PrivateStream::class, StreamWrapperManagerInterface::WRITE_VISIBLE);
+      ->registerWrapper('private', PrivateStream::class, StreamWrapperInterface::WRITE_VISIBLE);
 
     $this->config('file_gate.settings')->set('download_secret', self::SECRET)->save();
 
@@ -85,7 +85,6 @@ final class FieldAccessIdentityMintTest extends KernelTestBase {
    */
   public function testHostViewWithoutFieldViewIsDenied(): void {
     $user = $this->createUser(['access content', 'view test entity']);
-    $this->assertInstanceOf(UserInterface::class, $user);
     $file = $this->createFile($user);
 
     $response = MintController::create($this->container)->mint($this->mintRequest([
@@ -104,7 +103,6 @@ final class FieldAccessIdentityMintTest extends KernelTestBase {
       'view test entity',
       'view gated test field',
     ]);
-    $this->assertInstanceOf(UserInterface::class, $user);
     $file = $this->createFile($user);
 
     $response = MintController::create($this->container)->mint($this->mintRequest([

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate;
 
-use Drupal\Core\Entity\FieldableEntityInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\file\FileInterface;
 use Drupal\file\FileReferenceResolver;
@@ -36,9 +35,6 @@ final class HostAccess {
     $saw_host = FALSE;
     foreach ($this->fileReferenceResolver->getReferences($file) as $usage) {
       $entity = $this->fileReferenceResolver->loadEntityFromUsage($usage);
-      if (!$entity instanceof FieldableEntityInterface) {
-        return FALSE;
-      }
       $saw_host = TRUE;
       if (!$entity->access('view', $account)) {
         return FALSE;
