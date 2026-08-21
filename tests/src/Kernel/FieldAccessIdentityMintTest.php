@@ -30,6 +30,11 @@ final class FieldAccessIdentityMintTest extends KernelTestBase {
   use UserCreationTrait;
 
   /**
+   * Uid 1 must not bypass field-view denials in this test.
+   */
+  protected bool $usesSuperUserAccessPolicy = FALSE;
+
+  /**
    * {@inheritdoc}
    */
   protected static $modules = [

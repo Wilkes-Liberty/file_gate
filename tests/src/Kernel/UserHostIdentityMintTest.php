@@ -30,6 +30,11 @@ final class UserHostIdentityMintTest extends KernelTestBase {
   use UserCreationTrait;
 
   /**
+   * Own vs other user-host access must not collapse to uid-1 bypass.
+   */
+  protected bool $usesSuperUserAccessPolicy = FALSE;
+
+  /**
    * {@inheritdoc}
    */
   protected static $modules = [
