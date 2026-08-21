@@ -64,6 +64,17 @@ services:
     class: Drupal\file_gate\GateMethodManager
     parent: default_plugin_manager
 
+  # Walks paragraph/inline hosts up to the parent entity.
+  file_gate.parent_walker:
+    class: Drupal\file_gate\ParentWalker
+
+  # Identity-aware mint: file download + host view + field view + parents.
+  file_gate.host_access:
+    class: Drupal\file_gate\HostAccess
+    arguments:
+      - '@Drupal\file\FileReferenceResolver'
+      - '@file_gate.parent_walker'
+
   # File-specific glue: given a managed file, decide whether (and how) it is gated
   # by reading the gate configuration off the field(s) that reference it.
   file_gate.resolver:

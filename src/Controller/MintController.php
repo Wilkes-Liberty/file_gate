@@ -13,12 +13,12 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Url;
 use Drupal\file\FileInterface;
-use Drupal\file\FileReferenceResolver;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\HostAccess;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\MintTimeOidcInterface;
 use Drupal\file_gate\Service\FileGateAudit;
@@ -79,10 +79,10 @@ final class MintController implements ContainerInjectionInterface {
    *   Secret registry (auth + field scope).
    * @param \Drupal\file_gate\ActiveSecret $activeSecret
    *   Request-cycle authenticated secret id for mint signing.
-   * @param \Drupal\file\FileReferenceResolver $fileReferenceResolver
-   *   Core file→host resolver (identity-aware mint host checks).
    * @param \Drupal\file_gate\Service\FileGateAudit $audit
    *   Durable audit logger (optional audit_chain).
+   * @param \Drupal\file_gate\HostAccess $hostAccess
+   *   Identity-aware mint host/field/parent checks.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -95,8 +95,8 @@ final class MintController implements ContainerInjectionInterface {
     private readonly TimeInterface $time,
     private readonly SecretRegistryInterface $secrets,
     private readonly ActiveSecret $activeSecret,
-    private readonly FileReferenceResolver $fileReferenceResolver,
     private readonly FileGateAudit $audit,
+    private readonly HostAccess $hostAccess,
   ) {}
 
   /**
@@ -114,8 +114,8 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('datetime.time'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.active_secret'),
-      $container->get(FileReferenceResolver::class),
       $container->get('file_gate.audit'),
+      $container->get('file_gate.host_access'),
     );
   }
 
@@ -390,31 +390,14 @@ final class MintController implements ContainerInjectionInterface {
       ], Response::HTTP_FORBIDDEN);
     }
 
-    if (!$file->access('download', $account)) {
-      $this->logger->warning('Mint refused: acting account @uid cannot download file @uuid.', [
+    if (!$this->hostAccess->actingAccountMayReach($file, $account)) {
+      $this->logger->warning('Mint refused: acting account @uid cannot reach file @uuid.', [
         '@uid' => (string) $account->id(),
         '@uuid' => $file->uuid(),
       ]);
       return new JsonResponse([
-        'error' => 'Acting account is not allowed to download that file.',
+        'error' => 'Acting account is not allowed to access the host content for that file.',
       ], Response::HTTP_FORBIDDEN);
-    }
-
-    // Require view access on every host entity core knows about (same graph as
-    // FileAccessControlHandler). Any forbidden host fails the mint closed.
-    foreach ($this->fileReferenceResolver->getReferences($file) as $usage) {
-      $entity = $this->fileReferenceResolver->loadEntityFromUsage($usage);
-      if (!$entity->access('view', $account)) {
-        $this->logger->warning('Mint refused: acting account @uid cannot view @type @id hosting file @uuid.', [
-          '@uid' => (string) $account->id(),
-          '@type' => $entity->getEntityTypeId(),
-          '@id' => (string) $entity->id(),
-          '@uuid' => $file->uuid(),
-        ]);
-        return new JsonResponse([
-          'error' => 'Acting account is not allowed to access the host content for that file.',
-        ], Response::HTTP_FORBIDDEN);
-      }
     }
 
     return NULL;

@@ -22,7 +22,7 @@ must present the shared secret; never call this from a browser.
 | `media` | string | A media entity UUID (requires the Media module). Its source file is used; the media must be published. |
 | `file` | string | A managed file UUID (media-agnostic). |
 | `subject` | string | Optional. Caller-asserted subject (assurance binds `sh=`). With A2, may be filled from the verified token `sub`. |
-| `account` | string | Optional (required when global `require_acting_account` or field `require_identity_mint`). Acting user UUID. Mint fails closed unless that user may download the file (and view host entities). Prefer over `uid`. |
+| `account` | string | Optional (required when global `require_acting_account` or field `require_identity_mint`). Acting user UUID. Mint fails closed unless that user may download the file, view every referencing host (including a user entity), view the referencing field, and view nested parents (`getParentEntity()`). A file with no resolvable host is refused. Prefer over `uid`. |
 | `uid` | int | Optional. Acting user id (same check as `account`). |
 | `field` | string | Field storage id (`entity_type.field_name`). **Required** when the file is gated by more than one field; selects which gate method/settings apply. |
 

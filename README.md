@@ -85,7 +85,10 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   [`docs/KEYCLOAK-UNIFIED-AUTH.md`](docs/KEYCLOAK-UNIFIED-AUTH.md). Roadmap and
   scheduling are tracked internally rather than in this repository.
 - **Optional identity-aware mint.** Pass `account` (user UUID) or `uid` on mint
-  so a grant cannot exceed that user's download and host-entity view rights.
+  so a grant cannot exceed that user's download rights, view rights on every
+  referencing host (including a `user` host), view rights on the referencing
+  field, and view rights on nested parents (`getParentEntity()`, e.g.
+  paragraphs). A file with no resolvable host is refused.
 
 ## Requirements
 

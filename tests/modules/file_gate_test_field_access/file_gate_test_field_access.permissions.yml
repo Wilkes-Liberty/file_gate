@@ -1,0 +1,3 @@
+'view gated test field':
+  title: 'View gated test field'
+  description: 'Test-only permission used by file_gate_test_field_access.'
