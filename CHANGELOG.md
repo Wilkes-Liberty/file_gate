@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-27
+
 ### Fixed
 - **A field-settings form save no longer strips `require_identity_mint` on
   non-assurance methods (d.o #3619534).** The setting is enforced by the
