@@ -65,8 +65,8 @@ final class GrantInventoryController implements ContainerInjectionInterface {
       $this->flood,
       $this->logger,
       'file_gate.grants',
-      (int) ($config->get('mint_flood_limit') ?: 50),
-      (int) ($config->get('mint_flood_window') ?: 60),
+      (int) ($config->get('flood_limit') ?: 50),
+      (int) ($config->get('flood_window') ?: 60),
     );
     if ($auth !== NULL) {
       return $auth;
@@ -103,8 +103,8 @@ final class GrantInventoryController implements ContainerInjectionInterface {
       $this->flood,
       $this->logger,
       'file_gate.grants_revoke',
-      (int) ($config->get('mint_flood_limit') ?: 50),
-      (int) ($config->get('mint_flood_window') ?: 60),
+      (int) ($config->get('flood_limit') ?: 50),
+      (int) ($config->get('flood_window') ?: 60),
     );
     if ($auth !== NULL) {
       return $auth;
