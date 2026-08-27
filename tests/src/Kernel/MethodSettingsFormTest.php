@@ -81,7 +81,7 @@ final class MethodSettingsFormTest extends KernelTestBase {
       $this->assertSame('checkbox', $form['require_identity_mint']['#type'], $id);
       $this->assertTrue($form['require_identity_mint']['#default_value'], $id);
 
-      // The form-shaped save of an enabled flag keeps it enabled…
+      // The form-shaped save of an enabled flag keeps it enabled.
       $settings = $method->fieldSettingsSubmit([
         'ttl' => '120',
         'available_until' => '0',
@@ -90,7 +90,7 @@ final class MethodSettingsFormTest extends KernelTestBase {
       ]);
       $this->assertTrue($settings['require_identity_mint'], $id);
 
-      // …and clearing the checkbox genuinely clears it (no sticky TRUE).
+      // And clearing the checkbox genuinely clears it (no sticky TRUE).
       $settings = $method->fieldSettingsSubmit([
         'ttl' => '120',
         'available_until' => '0',
