@@ -52,7 +52,52 @@ final class MethodSettingsFormTest extends KernelTestBase {
     $this->assertSame(300, $form['ttl']['#default_value']);
 
     $settings = $method->fieldSettingsSubmit(['ttl' => '300', 'available_until' => '0', 'max_uses' => '1']);
-    $this->assertSame(['ttl' => 300, 'available_until' => 0, 'max_uses' => 1], $settings);
+    $this->assertSame(
+      [
+        'ttl' => 300,
+        'available_until' => 0,
+        'max_uses' => 1,
+        'require_identity_mint' => FALSE,
+      ],
+      $settings,
+    );
+  }
+
+  /**
+   * Every mintable method exposes and round-trips require_identity_mint.
+   *
+   * Regression test for drupal.org issue 3619534: the setting is enforced by
+   * the mint controller for every method, but the non-assurance submit
+   * handlers rebuilt their settings from their own form values alone — so a
+   * config-imported TRUE was silently stripped by any form save, downgrading
+   * identity-bound grants to unbound ones without a trace.
+   */
+  public function testIdentityMintSettingSurvivesFormRoundTrip(): void {
+    foreach (['signed_url', 'token', 'referrer_lock'] as $id) {
+      $method = $this->method($id);
+
+      $form = $method->fieldSettingsForm(['require_identity_mint' => TRUE]);
+      $this->assertArrayHasKey('require_identity_mint', $form, $id);
+      $this->assertSame('checkbox', $form['require_identity_mint']['#type'], $id);
+      $this->assertTrue($form['require_identity_mint']['#default_value'], $id);
+
+      // The form-shaped save of an enabled flag keeps it enabled.
+      $settings = $method->fieldSettingsSubmit([
+        'ttl' => '120',
+        'available_until' => '0',
+        'max_uses' => '1',
+        'require_identity_mint' => 1,
+      ]);
+      $this->assertTrue($settings['require_identity_mint'], $id);
+
+      // And clearing the checkbox genuinely clears it (no sticky TRUE).
+      $settings = $method->fieldSettingsSubmit([
+        'ttl' => '120',
+        'available_until' => '0',
+        'max_uses' => '1',
+      ]);
+      $this->assertFalse($settings['require_identity_mint'], $id);
+    }
   }
 
   /**
