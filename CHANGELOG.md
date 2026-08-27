@@ -6,6 +6,15 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **The grants inventory routes honour the configured flood settings (d.o
+  #3619535).** `GrantInventoryController` read `mint_flood_limit` /
+  `mint_flood_window` — keys that do not exist in the schema — so every
+  configured value was silently ignored in favour of the hard-coded 50/60
+  fallback. Both inventory routes now read `flood_limit` / `flood_window`,
+  the same keys the mint route applies, and a kernel test pins that a
+  configured limit actually throttles.
+
 ## [1.7.0] - 2026-08-20
 
 ### Added
