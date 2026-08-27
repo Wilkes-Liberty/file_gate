@@ -6,6 +6,19 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **A field-settings form save no longer strips `require_identity_mint` on
+  non-assurance methods (d.o #3619534).** The setting is enforced by the
+  mint controller for every gate method, but only `assurance` exposed it —
+  `signed_url` and `token` rebuilt their settings from their own form
+  values, so a config-imported `require_identity_mint: true` was silently
+  removed by any editor pressing Save on the field configuration form,
+  downgrading identity-bound grants to unbound signed URLs with nothing
+  logged. Every mintable method (`signed_url`, `token`, and by inheritance
+  `referrer_lock`) now exposes the checkbox and round-trips the value;
+  `assurance` inherits the control instead of duplicating it. A kernel
+  test pins the round-trip in both directions for all three methods.
+
 ## [1.7.0] - 2026-08-20
 
 ### Added

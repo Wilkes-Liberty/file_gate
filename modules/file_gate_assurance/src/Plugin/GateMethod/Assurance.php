@@ -595,12 +595,8 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
         '#default_value' => !empty($settings['verify_oidc_at_mint']),
         '#description' => $this->t('Stronger than A1: mint must present a Bearer/DPoP token whose <code>aud</code> is this field’s audience (use RFC 8693 token exchange or an IdP audience mapper). Fail closed when missing or insufficient <code>acr</code>. Requires issuer, audience, and accepted acr values.'),
       ],
-      'require_identity_mint' => [
-        '#type' => 'checkbox',
-        '#title' => $this->t('Require acting account on mint'),
-        '#default_value' => !empty($settings['require_identity_mint']),
-        '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>, and that user must be allowed to download the file. Use for authenticated products so a secret-holding BFF cannot mint without naming a subject.'),
-      ],
+      // require_identity_mint is inherited from SignedUrl's form and submit
+      // since d.o #3619534 promoted it to every mintable method.
       'rp_id' => [
         '#type' => 'textfield',
         '#title' => $this->t('WebAuthn RP ID'),
@@ -779,7 +775,6 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
     $settings['introspect'] = !empty($values['introspect']);
     $settings['leeway'] = (int) ($values['leeway'] ?? 60);
     $settings['verify_oidc_at_mint'] = !empty($values['verify_oidc_at_mint']);
-    $settings['require_identity_mint'] = !empty($values['require_identity_mint']);
     $settings['step_up_append_acr'] = !empty($values['step_up_append_acr']);
     $settings['session_bridge_sso'] = !empty($values['session_bridge_sso']);
 

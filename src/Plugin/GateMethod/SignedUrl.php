@@ -372,6 +372,17 @@ class SignedUrl extends GateMethodBase {
         '#default_value' => (int) ($settings['max_uses'] ?? 0),
         '#description' => $this->t('0 = unlimited; 1 = a one-time link.'),
       ],
+      // Enforced by the mint controller for EVERY gate method, so every
+      // mintable method must expose and round-trip it: a submit handler that
+      // rebuilds its settings from its own form values alone silently strips
+      // a config-imported TRUE on the next form save — a silent security
+      // downgrade (d.o #3619534).
+      'require_identity_mint' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Require acting account on mint'),
+        '#default_value' => !empty($settings['require_identity_mint']),
+        '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>, and that user must be allowed to download the file. Use for authenticated products so a secret-holding BFF cannot mint without naming a subject.'),
+      ],
     ];
   }
 
@@ -383,6 +394,7 @@ class SignedUrl extends GateMethodBase {
     foreach (['ttl', 'available_until', 'max_uses'] as $key) {
       $settings[$key] = (int) ($values[$key] ?? 0);
     }
+    $settings['require_identity_mint'] = !empty($values['require_identity_mint']);
     return $settings;
   }
 

@@ -441,6 +441,14 @@ final class Token extends GateMethodBase {
         '#default_value' => $this->tokensFormDefault((array) ($settings['tokens'] ?? [])),
         '#description' => $this->t('Optional. One entry per line: SHA-256 hash only (unlimited), or <code>hash|exp|max</code> where <code>exp</code> is a Unix expiry (0 = none) and <code>max</code> is redemptions (0 = unlimited). Store hashes only — never plaintext. Prefer minted revocable tokens for sensitive files (GH #46).'),
       ],
+      // Enforced by the mint controller for every method; a rebuild-only
+      // submit strips a config-imported TRUE on form save (d.o #3619534).
+      'require_identity_mint' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Require acting account on mint'),
+        '#default_value' => !empty($settings['require_identity_mint']),
+        '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>, and that user must be allowed to download the file. Use for authenticated products so a secret-holding BFF cannot mint without naming a subject.'),
+      ],
     ];
   }
 
@@ -452,6 +460,7 @@ final class Token extends GateMethodBase {
     foreach (['ttl', 'available_until', 'max_uses'] as $key) {
       $settings[$key] = (int) ($values[$key] ?? 0);
     }
+    $settings['require_identity_mint'] = !empty($values['require_identity_mint']);
     $tokens = [];
     foreach (preg_split('/\R/', (string) ($values['tokens'] ?? '')) as $line) {
       $line = trim($line);
