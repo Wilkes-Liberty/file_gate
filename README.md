@@ -512,7 +512,7 @@ log aggregator.
 
 ## Maintainers
 
-- Jeremy Michael Cerda (jmcerda) — <https://www.drupal.org/u/jmcerda>
+- [Jeremy Michael Cerda](https://www.drupal.org/u/jmcerda) (jmcerda)
 - Sponsored by **Wilkes & Liberty, LLC** — <https://wilkesliberty.com>
 
 ## License
