@@ -7,13 +7,13 @@ namespace Drupal\file_gate\Plugin\GateMethod;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\LockBackendInterface;
-use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
+use Drupal\file_gate\FileResourceIdTrait;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
@@ -50,6 +50,7 @@ use Symfony\Component\HttpFoundation\Request;
 )]
 class SignedUrl extends GateMethodBase {
 
+  use FileResourceIdTrait;
   use GrantLockTrait;
 
   /**
@@ -71,11 +72,6 @@ class SignedUrl extends GateMethodBase {
    * The grant signer.
    */
   protected GrantSignerInterface $signer;
-
-  /**
-   * The stream wrapper manager (to normalize the file URI before signing).
-   */
-  protected StreamWrapperManagerInterface $streamWrapperManager;
 
   /**
    * The time service.
@@ -430,26 +426,6 @@ class SignedUrl extends GateMethodBase {
       $store->setWithExpire($token, $count + 1, max(1, $exp - $this->time->getRequestTime()));
       return TRUE;
     });
-  }
-
-  /**
-   * The signed resource id for a file: its UUID plus its normalized stream URI.
-   *
-   * The UUID binds the grant to this exact file entity, so two managed files
-   * that happen to reference the same private:// URI do not share a signature
-   * (a grant minted for one cannot be redeemed for the other). Normalizing the
-   * URI (e.g. collapsing "private://./x" to "private://x") guarantees the
-   * string signed at mint time matches the string validated at redemption,
-   * where core reconstructs the URI from the request path.
-   *
-   * @param \Drupal\file\FileInterface $file
-   *   The file.
-   *
-   * @return string
-   *   The resource id: "<uuid>|private://…".
-   */
-  private function resourceId(FileInterface $file): string {
-    return $file->uuid() . '|' . $this->streamWrapperManager->normalizeUri((string) $file->getFileUri());
   }
 
 }

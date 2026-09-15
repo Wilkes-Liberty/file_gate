@@ -7,8 +7,6 @@ namespace Drupal\file_gate\Controller;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
-use Drupal\Core\Entity\EntityRepositoryInterface;
-use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Language\LanguageManagerInterface;
@@ -16,6 +14,7 @@ use Drupal\Core\Mail\MailManagerInterface;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
+use Drupal\file_gate\FileTargetResolver;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\SecretRegistryInterface;
@@ -55,10 +54,8 @@ final class OtpController implements ContainerInjectionInterface {
   /**
    * Constructs the OTP controller.
    *
-   * @param \Drupal\Core\Entity\EntityRepositoryInterface $entityRepository
-   *   The entity repository (resolves file/media UUIDs).
-   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
-   *   The entity type manager.
+   * @param \Drupal\file_gate\FileTargetResolver $fileTargetResolver
+   *   Resolves file/media UUIDs from the OTP payload.
    * @param \Drupal\file_gate\FileGateResolver $resolver
    *   The gate resolver.
    * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
@@ -87,8 +84,7 @@ final class OtpController implements ContainerInjectionInterface {
    *   Gate method plugin manager.
    */
   public function __construct(
-    private readonly EntityRepositoryInterface $entityRepository,
-    private readonly EntityTypeManagerInterface $entityTypeManager,
+    private readonly FileTargetResolver $fileTargetResolver,
     private readonly FileGateResolver $resolver,
     private readonly ConfigFactoryInterface $configFactory,
     private readonly FloodInterface $flood,
@@ -109,8 +105,7 @@ final class OtpController implements ContainerInjectionInterface {
    */
   public static function create(ContainerInterface $container): static {
     return new static(
-      $container->get('entity.repository'),
-      $container->get('entity_type.manager'),
+      $container->get('file_gate.file_target_resolver'),
       $container->get('file_gate.resolver'),
       $container->get('config.factory'),
       $container->get('flood'),
@@ -149,7 +144,7 @@ final class OtpController implements ContainerInjectionInterface {
     if ($email === '' || $code === '') {
       return new JsonResponse(['error' => 'Provide "email" and "otp".'], Response::HTTP_BAD_REQUEST);
     }
-    $file = $this->resolveFile($data);
+    $file = $this->fileTargetResolver->resolve($data);
     if ($file instanceof JsonResponse) {
       return $file;
     }
@@ -217,7 +212,7 @@ final class OtpController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'Provide a valid "email".'], Response::HTTP_BAD_REQUEST);
     }
 
-    $file = $this->resolveFile($data);
+    $file = $this->fileTargetResolver->resolve($data);
     if ($file instanceof JsonResponse) {
       return $file;
     }
@@ -327,41 +322,6 @@ final class OtpController implements ContainerInjectionInterface {
       'secret_id' => $secret_id ?? 'legacy',
     ]);
     return TRUE;
-  }
-
-  /**
-   * Resolves the request payload to a managed file.
-   *
-   * @param array $data
-   *   The decoded JSON body: {"file": "<uuid>"} or {"media": "<uuid>"}.
-   *
-   * @return \Drupal\file\FileInterface|\Symfony\Component\HttpFoundation\JsonResponse
-   *   The resolved file, or a JsonResponse error (404/409/422/400).
-   */
-  private function resolveFile(array $data): FileInterface|JsonResponse {
-    if (!empty($data['file']) && is_string($data['file'])) {
-      $file = $this->entityRepository->loadEntityByUuid('file', $data['file']);
-      return $file instanceof FileInterface
-        ? $file
-        : new JsonResponse(['error' => 'File not found.'], Response::HTTP_NOT_FOUND);
-    }
-
-    if (!empty($data['media']) && is_string($data['media']) && $this->entityTypeManager->hasDefinition('media')) {
-      $media = $this->entityRepository->loadEntityByUuid('media', $data['media']);
-      if ($media === NULL || !method_exists($media, 'getSource')) {
-        return new JsonResponse(['error' => 'Media not found.'], Response::HTTP_NOT_FOUND);
-      }
-      if (method_exists($media, 'isPublished') && !$media->isPublished()) {
-        return new JsonResponse(['error' => 'Media is not published.'], Response::HTTP_CONFLICT);
-      }
-      $fid = $media->getSource()->getSourceFieldValue($media);
-      $file = $fid ? $this->entityTypeManager->getStorage('file')->load($fid) : NULL;
-      return $file instanceof FileInterface
-        ? $file
-        : new JsonResponse(['error' => 'Media has no file.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
-
-    return new JsonResponse(['error' => 'Provide a "file" or "media" UUID.'], Response::HTTP_BAD_REQUEST);
   }
 
 }

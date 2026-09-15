@@ -135,19 +135,6 @@ final class SessionBridge {
   }
 
   /**
-   * Clears the bridge cookie.
-   */
-  public function clearCookie(bool $secure = TRUE): Cookie {
-    return Cookie::create(self::COOKIE_NAME)
-      ->withValue('')
-      ->withExpires(1)
-      ->withPath('/api/file-gate')
-      ->withSecure($secure)
-      ->withHttpOnly(TRUE)
-      ->withSameSite('lax');
-  }
-
-  /**
    * Encodes and HMACs a bridge payload.
    *
    * @param array<string, mixed> $payload

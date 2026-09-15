@@ -71,7 +71,7 @@ final class GrantInventoryController implements ContainerInjectionInterface {
     if ($auth !== NULL) {
       return $auth;
     }
-    $secret_id = $request->attributes->get('file_gate.secret_id');
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
     $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
 
     $field = trim((string) $request->query->get('field', ''));
@@ -109,7 +109,7 @@ final class GrantInventoryController implements ContainerInjectionInterface {
     if ($auth !== NULL) {
       return $auth;
     }
-    $secret_id = $request->attributes->get('file_gate.secret_id');
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
     $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
 
     $data = json_decode($request->getContent(), TRUE);

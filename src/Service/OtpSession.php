@@ -51,20 +51,6 @@ final class OtpSession {
   }
 
   /**
-   * Email bound into a valid cookie for this file, or empty.
-   */
-  public function boundEmail(Request $request, string $file_uuid): string {
-    $payload = $this->decode((string) $request->cookies->get(self::COOKIE_NAME, ''));
-    if ($payload === NULL || ($payload['f'] ?? '') !== $file_uuid) {
-      return '';
-    }
-    if ((int) ($payload['exp'] ?? 0) <= $this->time->getRequestTime()) {
-      return '';
-    }
-    return (string) ($payload['e'] ?? '');
-  }
-
-  /**
    * Mints a cookie after a successful OTP check.
    */
   public function mintCookie(string $file_uuid, string $email, int $ttl = self::DEFAULT_TTL, bool $secure = TRUE): ?Cookie {

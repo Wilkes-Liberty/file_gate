@@ -6,6 +6,22 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+- **Dead public helpers on the mint/OTP/assurance path.**
+  `FileGateAudit::isAvailable()`, `OtpSession::boundEmail()`,
+  `SessionOidcToken::isAvailable()`, and `SessionBridge::clearCookie()`
+  had no callers. OTP `grants()` no longer reads a POST body for email/otp
+  — the download route is GET-only; query and `FG_OTP` cookie redeem are
+  unchanged.
+
+### Changed
+- **Mint and OTP share one `FileTargetResolver`** for file UUID, media
+  UUID, and unpublished-host resolution.
+- **`SignedUrl` and `Token` share one `resourceId()` helper.** The HMAC
+  binding (`<uuid>|<normalized-uri>`) is unchanged.
+- **Grant inventory reads the secret id via
+  `SecretRegistryInterface::REQUEST_ATTR_SECRET_ID`.**
+
 ## [1.8.0] - 2026-08-27
 
 ### Fixed

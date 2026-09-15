@@ -52,12 +52,4 @@ final class SessionOidcToken {
     return $token;
   }
 
-  /**
-   * Whether the openid_connect session service is present.
-   */
-  public function isAvailable(): bool {
-    return $this->openidSession !== NULL
-      && method_exists($this->openidSession, 'retrieveAccessToken');
-  }
-
 }

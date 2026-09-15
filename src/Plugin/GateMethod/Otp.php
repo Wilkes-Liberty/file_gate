@@ -79,9 +79,6 @@ final class Otp extends GateMethodBase {
   protected KeyValueExpirableFactoryInterface $keyValueExpirableFactory;
 
   /**
-   * The config factory.
-   */
-  /**
    * The time service.
    */
   protected TimeInterface $time;
@@ -120,18 +117,6 @@ final class Otp extends GateMethodBase {
 
     $email = self::normalizeEmail((string) $request->query->get('email', ''));
     $code = trim((string) $request->query->get('otp', ''));
-    // Also accept POST body for download clients that POST credentials.
-    if (($email === '' || $code === '') && $request->getMethod() === 'POST') {
-      $data = json_decode($request->getContent(), TRUE);
-      if (is_array($data)) {
-        if ($email === '') {
-          $email = self::normalizeEmail((string) ($data['email'] ?? ''));
-        }
-        if ($code === '') {
-          $code = trim((string) ($data['otp'] ?? ''));
-        }
-      }
-    }
     if ($email === '' || $code === '') {
       return FALSE;
     }

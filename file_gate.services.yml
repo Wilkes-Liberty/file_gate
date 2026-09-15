@@ -84,6 +84,13 @@ services:
       - '@entity_type.manager'
       - '@stream_wrapper_manager'
 
+  # Resolves mint/OTP {"file"|"media": uuid} payloads to a managed file.
+  file_gate.file_target_resolver:
+    class: Drupal\file_gate\FileTargetResolver
+    arguments:
+      - '@entity.repository'
+      - '@entity_type.manager'
+
   # Dedicated logger channel. Carries both security events (denied downloads,
   # failed mint authentication, fail-closed refusals) and usage/stats events
   # (successful mints and deliveries) for auditing and analytics.
