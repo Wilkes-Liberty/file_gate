@@ -17,6 +17,7 @@ use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
+use Drupal\file_gate\FileTargetResolver;
 use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\HostAccess;
 use Drupal\file_gate\SecretRegistryInterface;
@@ -83,6 +84,8 @@ final class MintController implements ContainerInjectionInterface {
    *   Durable audit logger (optional audit_chain).
    * @param \Drupal\file_gate\HostAccess $hostAccess
    *   Identity-aware mint host/field/parent checks.
+   * @param \Drupal\file_gate\FileTargetResolver $fileTargetResolver
+   *   Resolves file/media UUIDs from the mint payload.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -97,6 +100,7 @@ final class MintController implements ContainerInjectionInterface {
     private readonly ActiveSecret $activeSecret,
     private readonly FileGateAudit $audit,
     private readonly HostAccess $hostAccess,
+    private readonly FileTargetResolver $fileTargetResolver,
   ) {}
 
   /**
@@ -116,6 +120,7 @@ final class MintController implements ContainerInjectionInterface {
       $container->get('file_gate.active_secret'),
       $container->get('file_gate.audit'),
       $container->get('file_gate.host_access'),
+      $container->get('file_gate.file_target_resolver'),
     );
   }
 
@@ -156,7 +161,7 @@ final class MintController implements ContainerInjectionInterface {
     }
 
     // Resolve the target file. Returns a JsonResponse (error) or the file.
-    $file = $this->resolveFile($data);
+    $file = $this->fileTargetResolver->resolve($data);
     if ($file instanceof JsonResponse) {
       return $file;
     }
@@ -315,47 +320,6 @@ final class MintController implements ContainerInjectionInterface {
       'field' => $gate['field'],
       'method' => $gate['method'],
     ]);
-  }
-
-  /**
-   * Resolves the request payload to a managed file.
-   *
-   * @param array $data
-   *   The decoded JSON body: {"file": "<uuid>"} or {"media": "<uuid>"}.
-   *
-   * @return \Drupal\file\FileInterface|\Symfony\Component\HttpFoundation\JsonResponse
-   *   The resolved file, or a JsonResponse describing why it could not be
-   *   resolved (404 unknown, 409 unpublished host, 422 no file, 400 bad input).
-   */
-  private function resolveFile(array $data): FileInterface|JsonResponse {
-    // By file UUID (media-agnostic path).
-    if (!empty($data['file']) && is_string($data['file'])) {
-      $file = $this->entityRepository->loadEntityByUuid('file', $data['file']);
-      return $file instanceof FileInterface
-        ? $file
-        : new JsonResponse(['error' => 'File not found.'], Response::HTTP_NOT_FOUND);
-    }
-
-    // By media UUID — only when the Media module is installed. Duck-typed so
-    // the module never hard-depends on Media.
-    if (!empty($data['media']) && is_string($data['media']) && $this->entityTypeManager->hasDefinition('media')) {
-      $media = $this->entityRepository->loadEntityByUuid('media', $data['media']);
-      if ($media === NULL || !method_exists($media, 'getSource')) {
-        return new JsonResponse(['error' => 'Media not found.'], Response::HTTP_NOT_FOUND);
-      }
-      // Never mint for unpublished host content — the URL would be handed to
-      // the public for something that is not yet public.
-      if (method_exists($media, 'isPublished') && !$media->isPublished()) {
-        return new JsonResponse(['error' => 'Media is not published.'], Response::HTTP_CONFLICT);
-      }
-      $fid = $media->getSource()->getSourceFieldValue($media);
-      $file = $fid ? $this->entityTypeManager->getStorage('file')->load($fid) : NULL;
-      return $file instanceof FileInterface
-        ? $file
-        : new JsonResponse(['error' => 'Media has no file.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
-
-    return new JsonResponse(['error' => 'Provide a "file" or "media" UUID.'], Response::HTTP_BAD_REQUEST);
   }
 
   /**

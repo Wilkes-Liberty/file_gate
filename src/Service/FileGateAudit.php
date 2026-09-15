@@ -67,11 +67,4 @@ final class FileGateAudit {
     }
   }
 
-  /**
-   * Whether audit_chain is available for this request.
-   */
-  public function isAvailable(): bool {
-    return $this->chain !== NULL && method_exists($this->chain, 'log');
-  }
-
 }

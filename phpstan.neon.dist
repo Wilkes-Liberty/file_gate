@@ -31,10 +31,10 @@ parameters:
     - "#^Unsafe usage of new static#"
     - identifier: missingType.iterableValue
     - identifier: missingType.generics
-    # The mint and OTP controllers reach Media through method_exists() on
-    # purpose, so this module never hard-depends on the Media module: the call
-    # is already guarded by hasDefinition('media'), and the duck-typing is what
-    # keeps a site running a different media implementation from fataling.
+    # FileTargetResolver reaches Media through method_exists() on purpose, so
+    # this module never hard-depends on the Media module: the call is already
+    # guarded by hasDefinition('media'), and the duck-typing is what keeps a
+    # site running a different media implementation from fataling.
     # PHPStan resolves loadEntityByUuid('media', ...) to the concrete
     # Drupal\media\Entity\Media and therefore calls the check redundant. It is
     # not — deleting it to satisfy the analyser would remove a real guard.
@@ -42,8 +42,7 @@ parameters:
     -
       identifier: function.alreadyNarrowedType
       paths:
-        - src/Controller/MintController.php
-        - src/Controller/OtpController.php
+        - src/FileTargetResolver.php
     # firebase/php-jwt is an optional dependency: `suggest` in composer.json,
     # and file_gate_assurance.install reports it through hook_requirements when
     # it is absent. Only the Assurance submodule uses it, and only for OIDC
