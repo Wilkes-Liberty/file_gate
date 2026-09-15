@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-15
+
 ### Removed
 - **Dead public helpers on the mint/OTP/assurance path.**
   `FileGateAudit::isAvailable()`, `OtpSession::boundEmail()`,
@@ -21,6 +23,7 @@ All notable changes to **File Gate** are documented here. The format is based on
   binding (`<uuid>|<normalized-uri>`) is unchanged.
 - **Grant inventory reads the secret id via
   `SecretRegistryInterface::REQUEST_ATTR_SECRET_ID`.**
+- Maintainer author homepage now points at the drupal.org profile.
 
 ## [1.8.0] - 2026-08-27
 
