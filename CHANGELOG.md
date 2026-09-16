@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-16
+
 ### Fixed
 - **Single-jti revoke now drops grant inventory.** `POST /api/file-gate/revoke`
   with `{"jti":"…"}` spent the grant but left it listed on
