@@ -120,7 +120,7 @@ Server-to-server. Body:
 | Body | Effect |
 |------|--------|
 | `{"token":"<plaintext>"}` | Deletes a minted `token`-method row (field-scoped when field known). |
-| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent (optional ttl seconds). |
+| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent and drops it from inventory (optional ttl seconds; default 30 days). |
 
 ### `POST /api/file-gate/otp`
 

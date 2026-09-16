@@ -6,6 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Single-jti revoke now drops grant inventory.** `POST /api/file-gate/revoke`
+  with `{"jti":"…"}` spent the grant but left it listed on
+  `GET /api/file-gate/grants` until natural expiry. Both revoke paths now
+  share one `GrantInventory::revokeJti()` helper that writes the spent
+  counter and `forget()`s the row. The default kill-mark TTL is 30 days on
+  both paths (single-jti was 24 hours).
+
 ## [1.9.0] - 2026-09-15
 
 ### Removed
