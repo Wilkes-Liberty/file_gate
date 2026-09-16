@@ -12,6 +12,7 @@ use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
+use Drupal\file_gate\Service\GrantInventory;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -35,9 +36,10 @@ use Symfony\Component\HttpFoundation\Response;
  * Only minted tokens live in the store; pre-shared campaign tokens are revoked
  * by removing their hash from the field's "tokens" configuration, not here.
  *
- * Signed-URL grants may be revoked by jti (marks the jti as fully spent in the
- * redemption counter). Token-method grants are deleted from the token store
- * when the revoking secret is allowed for the token's field (when known).
+ * Signed-URL grants may be revoked by jti (marks the jti fully spent and
+ * drops it from grant inventory). Token-method grants are deleted from the
+ * token store when the revoking secret is allowed for the token's field
+ * (when known).
  */
 final class RevokeController implements ContainerInjectionInterface {
 
@@ -48,11 +50,6 @@ final class RevokeController implements ContainerInjectionInterface {
    * The token store collection name (keyed by the SHA-256 hash of the token).
    */
   private const TOKEN_COLLECTION = 'file_gate_tokens';
-
-  /**
-   * Signed-URL usage counter collection (same as SignedUrl).
-   */
-  private const REDEMPTION_COLLECTION = 'file_gate_redemptions';
 
   /**
    * Constructs the revoke controller.
@@ -71,6 +68,8 @@ final class RevokeController implements ContainerInjectionInterface {
    *   Secret registry.
    * @param \Drupal\file_gate\Service\FileGateAudit $audit
    *   Durable audit logger.
+   * @param \Drupal\file_gate\Service\GrantInventory $inventory
+   *   Signed-URL jti inventory (spend + forget on single-jti revoke).
    */
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
@@ -80,6 +79,7 @@ final class RevokeController implements ContainerInjectionInterface {
     private readonly LockBackendInterface $lock,
     private readonly SecretRegistryInterface $secrets,
     private readonly FileGateAudit $audit,
+    private readonly GrantInventory $inventory,
   ) {}
 
   /**
@@ -94,6 +94,7 @@ final class RevokeController implements ContainerInjectionInterface {
       $container->get('lock'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.audit'),
+      $container->get('file_gate.grant_inventory'),
     );
   }
 
@@ -193,7 +194,7 @@ final class RevokeController implements ContainerInjectionInterface {
   }
 
   /**
-   * Marks a signed_url jti as fully used so outstanding links fail.
+   * Marks a signed_url jti fully spent and drops it from inventory.
    *
    * @param string $jti
    *   The grant jti claim.
@@ -210,12 +211,11 @@ final class RevokeController implements ContainerInjectionInterface {
     if ($jti === '') {
       return new JsonResponse(['error' => 'Provide a non-empty "jti".'], Response::HTTP_BAD_REQUEST);
     }
-    // Optional ttl for how long to keep the kill mark (default 24h).
     $data = json_decode($request->getContent(), TRUE);
-    $ttl = is_array($data) ? max(60, (int) ($data['ttl'] ?? 86400)) : 86400;
-    // Use a high counter so any positive max_uses fails.
-    $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION)
-      ->setWithExpire($jti, PHP_INT_MAX, $ttl);
+    $ttl = is_array($data) && array_key_exists('ttl', $data)
+      ? (int) $data['ttl']
+      : NULL;
+    $this->inventory->revokeJti($jti, '', $ttl);
     $this->logger->info('Revoked signed_url jti from @ip.', [
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);

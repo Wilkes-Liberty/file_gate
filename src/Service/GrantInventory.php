@@ -12,13 +12,32 @@ use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
  * Secondary index of usage-limited signed_url grants (jti inventory, GH #44).
  *
  * Key-value expirable store holds metadata per jti and a per-field index list.
- * Used for operator list/bulk-revoke; not a substitute for HMAC validation.
+ * Used for operator list/revoke; not a substitute for HMAC validation.
  */
 final class GrantInventory {
 
   public const META_COLLECTION = 'file_gate_grant_meta';
 
   public const FIELD_INDEX_COLLECTION = 'file_gate_grant_field_index';
+
+  /**
+   * Usage-counter / revoke kill-mark collection (same store SignedUrl reads).
+   */
+  public const REDEMPTION_COLLECTION = 'file_gate_redemptions';
+
+  /**
+   * Default TTL for a revoke kill mark, in seconds.
+   *
+   * Single-jti revoke used 86400; bulk used 86400 * 30. The longer window is
+   * the safer pin: a kill mark that expires while the HMAC is still valid
+   * would resurrect the grant.
+   */
+  public const DEFAULT_KILL_TTL = 86400 * 30;
+
+  /**
+   * Floor applied to an explicit kill-mark TTL.
+   */
+  public const MIN_KILL_TTL = 60;
 
   public function __construct(
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
@@ -138,6 +157,29 @@ final class GrantInventory {
   }
 
   /**
+   * Marks a jti fully spent and drops it from inventory.
+   *
+   * Writes PHP_INT_MAX to the redemption counter so any positive max_uses
+   * fails, then forget()s the operator list row. Used by both
+   * POST /api/file-gate/revoke {jti} and bulk revoke.
+   *
+   * @param string $jti
+   *   Grant jti claim value.
+   * @param string $field
+   *   Field storage key when known; empty lets forget() read it from meta.
+   * @param int|null $ttl
+   *   Kill-mark TTL in seconds, or NULL for DEFAULT_KILL_TTL.
+   */
+  public function revokeJti(string $jti, string $field = '', ?int $ttl = NULL): void {
+    if ($jti === '') {
+      return;
+    }
+    $ttl = max(self::MIN_KILL_TTL, $ttl ?? self::DEFAULT_KILL_TTL);
+    $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
+    $this->forget($jti, $field);
+  }
+
+  /**
    * Removes inventory metadata for a jti (after revoke).
    */
   public function forget(string $jti, string $field = ''): void {
@@ -155,6 +197,13 @@ final class GrantInventory {
       unset($index[$jti]);
       $this->fieldIndexStore()->set($field, $index);
     }
+  }
+
+  /**
+   * Redemption-counter / kill-mark store.
+   */
+  private function redemptionStore(): KeyValueStoreExpirableInterface {
+    return $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
   }
 
   /**

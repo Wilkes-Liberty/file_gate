@@ -54,11 +54,6 @@ class SignedUrl extends GateMethodBase {
   use GrantLockTrait;
 
   /**
-   * The redemption-counter collection name (keyed by grant token).
-   */
-  private const REDEMPTION_COLLECTION = 'file_gate_redemptions';
-
-  /**
    * Core claims reserved by signed-url grants.
    */
   private const CORE_CLAIM_KEYS = [
@@ -184,7 +179,7 @@ class SignedUrl extends GateMethodBase {
       if ($token === '' || $max <= 0) {
         return FALSE;
       }
-      $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+      $store = $this->keyValueExpirableFactory->get(GrantInventory::REDEMPTION_COLLECTION);
       if ((int) $store->get($token, 0) >= $max) {
         return FALSE;
       }
@@ -417,7 +412,7 @@ class SignedUrl extends GateMethodBase {
       return FALSE;
     }
     return (bool) $this->runLocked('file_gate_redemption:' . $token, function () use ($token, $max, $exp): bool {
-      $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+      $store = $this->keyValueExpirableFactory->get(GrantInventory::REDEMPTION_COLLECTION);
       $count = (int) $store->get($token, 0);
       if ($count >= $max) {
         return FALSE;

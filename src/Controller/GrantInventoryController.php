@@ -7,7 +7,6 @@ namespace Drupal\file_gate\Controller;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Flood\FloodInterface;
-use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
 use Drupal\file_gate\Service\GrantInventory;
@@ -27,12 +26,9 @@ final class GrantInventoryController implements ContainerInjectionInterface {
 
   use SharedSecretAuthTrait;
 
-  private const REDEMPTION_COLLECTION = 'file_gate_redemptions';
-
   public function __construct(
     private readonly ConfigFactoryInterface $configFactory,
     private readonly FloodInterface $flood,
-    private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
     private readonly LoggerInterface $logger,
     private readonly SecretRegistryInterface $secrets,
     private readonly GrantInventory $inventory,
@@ -46,7 +42,6 @@ final class GrantInventoryController implements ContainerInjectionInterface {
     return new static(
       $container->get('config.factory'),
       $container->get('flood'),
-      $container->get('keyvalue.expirable'),
       $container->get('logger.channel.file_gate'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.grant_inventory'),
@@ -135,8 +130,7 @@ final class GrantInventoryController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'Provide "jtis" or "all": true.'], Response::HTTP_BAD_REQUEST);
     }
 
-    $ttl = max(60, (int) ($data['ttl'] ?? 86400 * 30));
-    $store = $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+    $ttl = array_key_exists('ttl', $data) ? (int) $data['ttl'] : NULL;
     $allowed = [];
     foreach ($this->inventory->listForField($field, $secret_id, $sh) as $row) {
       $allowed[(string) $row['jti']] = TRUE;
@@ -147,8 +141,7 @@ final class GrantInventoryController implements ContainerInjectionInterface {
       if ($jti === '' || empty($allowed[$jti])) {
         continue;
       }
-      $store->setWithExpire($jti, PHP_INT_MAX, $ttl);
-      $this->inventory->forget($jti, $field);
+      $this->inventory->revokeJti($jti, $field, $ttl);
       $revoked++;
     }
 
