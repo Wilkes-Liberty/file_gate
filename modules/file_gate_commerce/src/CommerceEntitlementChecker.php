@@ -12,11 +12,6 @@ use Psr\Log\LoggerInterface;
 /**
  * Entitlement checker backed by Drupal Commerce completed orders.
  *
- * Grants when the account has a completed order containing a product variation
- * whose SKU matches the configured entitlement. Uses order-item / variation
- * queries scoped by SKU and order owner (GH #45) instead of loading every
- * completed order for the user.
- *
  * Duck-typed against Commerce entity APIs so the submodule loads without
  * Commerce PHP classes. Fail closed when Commerce is absent.
  */

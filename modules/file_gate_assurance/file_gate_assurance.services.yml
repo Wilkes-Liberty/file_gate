@@ -1,9 +1,5 @@
 services:
 
-  # Provider-agnostic OIDC assertion + DPoP verifier used by the "assurance"
-  # gate method. Discovers each configured issuer's JWKS, pins the signing
-  # algorithm to the published keys, and (opt-in) verifies an RFC 9449 DPoP
-  # proof bound to the token's cnf.jkt.
   file_gate_assurance.verifier:
     class: Drupal\file_gate_assurance\AssuranceVerifier
     arguments:
@@ -14,20 +10,17 @@ services:
       - '@logger.channel.file_gate'
       - '@config.factory'
 
-  # Plain-link primary path: short-lived HttpOnly cookie after OIDC step-up.
   file_gate_assurance.session_bridge:
     class: Drupal\file_gate_assurance\SessionBridge
     arguments:
       - '@file_gate.secret_registry'
       - '@datetime.time'
 
-  # Soft openid_connect session access token (GH #41).
   file_gate_assurance.session_oidc_token:
     class: Drupal\file_gate_assurance\SessionOidcToken
     arguments:
       - '@?openid_connect.session'
 
-  # IdP authorize URL builder (ACR + return_to, GH #42).
   file_gate_assurance.step_up_authorize_url:
     class: Drupal\file_gate_assurance\StepUpAuthorizeUrl
 

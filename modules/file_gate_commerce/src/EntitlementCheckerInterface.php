@@ -10,15 +10,7 @@ use Drupal\file\FileInterface;
 /**
  * Decides whether an account is currently entitled to a gated file.
  *
- * The `commerce` gate method delegates its decision here so the entitlement
- * source is swappable rather than hardcoded to one store. The bundled
- * implementation checks Drupal Commerce orders; a site with an external
- * entitlement API (a SaaS, a licence server) can override the
- * `file_gate_commerce.entitlement_checker` service with its own.
- *
- * The check runs live on every download, so an expired or revoked entitlement
- * stops delivery immediately (the gate never trusts a long-lived signed URL).
- * Implementations MUST fail closed.
+ * Implementations MUST fail closed. The check runs live on every download.
  */
 interface EntitlementCheckerInterface {
 

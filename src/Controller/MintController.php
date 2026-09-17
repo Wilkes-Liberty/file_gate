@@ -33,25 +33,9 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Mints short-lived signed download URLs for gated files.
  *
- * Called server-to-server by a trusted back end (typically a decoupled front
- * end, after it has run its own gate — a lead form, a login, …). The endpoint:
- * - refuses (503) when no secret is configured (fail closed);
- * - authenticates the caller with the shared secret (constant-time);
- * - resolves the requested file (by file UUID, or by media UUID when the Media
- *   module is installed; the media path additionally requires the host media
- *   entity to be published — the direct file path trusts the secret-holding
- *   caller, consistent with the mint trust model below);
- * - returns a relative, host-agnostic signed path the front end prepends its
- *   own public origin to.
- * - optionally, when the body includes an acting account (uuid or uid), fails
- *   closed unless that account may download the file (and view referencing
- *   entities when present) — defense in depth for authenticated mint paths.
- *
- * The gate the front end runs (email capture, form, login) is NOT re-verified
- * here — trust is delegated to the secret-holding caller. Keep the endpoint on
- * a trusted network and keep the secret secret. The secret doubles as the mint
- * credential and the HMAC signing key; it never reaches the browser (only the
- * derived signature does).
+ * Refuses (503) when no secret is configured (fail closed). The secret doubles
+ * as the mint credential and the HMAC signing key; it never reaches the
+ * browser.
  */
 final class MintController implements ContainerInjectionInterface {
 
@@ -136,9 +120,6 @@ final class MintController implements ContainerInjectionInterface {
    *   {path, expires, ttl} on success, or an error with the appropriate status.
    */
   public function mint(Request $request): JsonResponse {
-    // Authenticate the server-to-server caller: fails closed with no secret
-    // (503), rejects a bad/absent secret (401), and rate-limits per IP (429).
-    // Sets file_gate.secret_id on the request (NULL = legacy whole-corpus).
     $config = $this->configFactory->get('file_gate.settings');
     $this->activeSecret->clear();
     $denied = $this->authenticateSharedSecret(
@@ -292,8 +273,6 @@ final class MintController implements ContainerInjectionInterface {
     $query = ['f' => $file->uuid()] + $params;
     $path = Url::fromRoute('file_gate.download', [], ['query' => $query, 'absolute' => FALSE])->toString();
 
-    // Usage/stats event: a grant was minted (the gate on the caller's side
-    // passed). Redemption is logged separately by the download controller.
     $this->logger->info('Minted @method grant for file @uuid to @ip.', [
       '@method' => $gate['method'],
       '@uuid' => $file->uuid(),

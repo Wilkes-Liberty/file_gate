@@ -11,21 +11,10 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Renders a self-contained 403 for a denied gated download.
+ * Renders a themeless 403 for a denied gated download.
  *
- * The download controller throws AccessDeniedHttpException for a rejected
- * grant (expired, spent, or tampered signature). Left to Drupal's default
- * exception handling that renders in the ACTIVE theme — for a signed-in staff
- * member that is the admin theme, producing a full-chrome "You are not
- * authorized to access this page" that reads as a fault rather than an expired
- * link (#66). This subscriber replaces that response, on the download route
- * only, with a minimal themeless page that is identical for anonymous and
- * authenticated visitors.
- *
- * It stays a 403 and discloses no grant state: expired, spent and tampered are
- * deliberately indistinguishable to the visitor, and a dead link is never
- * offered step-up. The controller's own security logging and flood accounting
- * have already run by the time the exception reaches here.
+ * Avoids admin-theme chrome on an expired or spent link. Stays a 403 and
+ * discloses no grant state (expired, spent, and tampered are indistinguishable).
  */
 final class DownloadDeniedSubscriber implements EventSubscriberInterface {
 

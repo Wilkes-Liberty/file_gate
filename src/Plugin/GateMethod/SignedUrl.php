@@ -25,23 +25,8 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Grants access when the request carries a valid, unexpired signed grant.
  *
- * This is the fully decoupled method. A trusted back end mints a short-lived,
- * HMAC-signed URL (after running its own gate — a lead form, a login, …) and
- * the visitor's browser redeems it. Drupal never renders the gate; it only
- * verifies the signature. The signature binds the file's exact normalized URI
- * plus every claim, so a grant minted for one file cannot be replayed to fetch
- * another and its constraints cannot be altered.
- *
- * Per-field method settings (stored in the field's File Gate third-party
- * settings under "method_settings"):
- * - ttl: signed-URL lifetime in seconds (defaults to the global TTL);
- * - available_until: an absolute Unix timestamp that caps every grant's expiry
- *   (the "the download is available until <date>" window);
- * - max_uses: maximum number of times a single minted URL may be redeemed
- *   (1 = a one-time link). Enforced with an expirable redemption counter.
- *
- * Extended by the referrer_lock method, which reuses this mint/validate/usage
- * logic unchanged and layers an origin allowlist check on top of grants().
+ * The signature binds the file's exact normalized URI plus every claim, so a
+ * grant minted for one file cannot be replayed against another.
  */
 #[GateMethod(
   id: 'signed_url',

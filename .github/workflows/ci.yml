@@ -5,9 +5,6 @@ name: CI
 # Self-contained on purpose: it does not call the org reusable workflows, which
 # currently fail at load on every consumer PR (tracked internally as DEV-211).
 #
-# Drupal 12 is not released yet, so it cannot be built here; the ^12 half of the
-# support claim is exercised by the GitLab CI next-major opt-in once 12 ships.
-
 on:
   push:
     branches: ['1.x']
@@ -107,16 +104,7 @@ jobs:
             web/modules/contrib/file_gate/tests \
             web/modules/contrib/file_gate/modules
 
-  # Static analysis had no gate on either venue. The module shipped no
-  # phpstan.neon.dist, so the drupalcode job analysed it with the shared
-  # gitlab_templates default rather than the level and rules the sibling
-  # modules pin, and GitHub ran nothing at all. That is how ten `readonly`
-  # injected services stayed green through a stable release while being a
-  # fatal on PHP 8.3.
-  #
-  # PHP 8.3 deliberately, not the newest available: the rule that caught those
-  # only reports below 8.4, so analysing solely on the newest PHP would leave
-  # the supported floor the version least checked.
+  # PHP 8.3 is the supported floor; some rules only report below 8.4.
   phpstan:
     name: PHPStan (PHP 8.3)
     runs-on: ubuntu-latest

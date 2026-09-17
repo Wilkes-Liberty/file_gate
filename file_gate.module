@@ -3,10 +3,6 @@
 /**
  * @file
  * Gate access to private files with pluggable, decoupled-friendly methods.
- *
- * File Gate denies the raw /system/files path for gated private files and
- * delivers them instead through its own route after a gate method approves the
- * request. See README.md for the architecture and security model.
  */
 
 declare(strict_types=1);
@@ -57,18 +53,8 @@ function file_gate_mail(string $key, array &$message, array $params): void {
 /**
  * Implements hook_file_download().
  *
- * File Gate's role in this hook is narrow and defensive: DENY the raw
- * /system/files path for any private file that a gated field references, unless
- * the current user may bypass the gate (editors/operators holding the
- * "bypass file gate" permission). It never *grants* access here — authorized
- * delivery happens on the module's own /api/file-gate/download route, which
- * streams the file after validating the minted grant and does not invoke this
- * hook.
- *
- * Returning -1 vetoes core's permissive private-file access (any single -1 from
- * any module denies the download), which is exactly what closes the gap: core
- * would otherwise grant anonymous download whenever the referencing (published)
- * entity is viewable.
+ * Denies the raw /system/files path for gated private files; this hook never
+ * grants access. Returning -1 vetoes core's permissive private-file access.
  */
 function file_gate_file_download(string $uri): ?int {
   // Only private-scheme files are gateable. Anything else is never our concern.
@@ -98,13 +84,6 @@ function file_gate_file_download(string $uri): ?int {
 
 /**
  * Implements hook_form_FORM_ID_alter() for the field config edit form.
- *
- * Adds the per-field gating controls the module is built around: a "Gate access
- * to these files" toggle and a gate-method picker. Gating lives on the field
- * storage third-party settings (so it travels with exported configuration), and
- * because a public file cannot be gated, enabling it forces the field's storage
- * to the private file system. Only file-based fields (those exposing a
- * uri_scheme storage setting) are altered.
  */
 function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInterface $form_state): void {
   $form_object = $form_state->getFormObject();
@@ -158,11 +137,8 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
     ],
   ];
 
-  // Per-method settings. Render each method's own settings form, shown only
-  // when gating is on and that method is selected. On submit, only the selected
-  // method's values are read (see the submit handler). Fields are not marked
-  // #required, because #states-hidden elements still validate server-side —
-  // methods fail closed at runtime when misconfigured instead.
+  // Fields are not marked #required, because #states-hidden elements still
+  // validate server-side — methods fail closed at runtime when misconfigured.
   $method_manager = \Drupal::service('plugin.manager.file_gate.gate_method');
   $current_method = $field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url';
   $current_settings = (array) $field_storage->getThirdPartySetting('file_gate', 'method_settings', []);
@@ -199,20 +175,11 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
   }
 
   $form['#validate'][] = '_file_gate_field_config_edit_form_validate';
-  // Persist the gating settings onto the field storage after the field config
-  // is saved. Done as an explicit, decoupled storage save so the settings are
-  // reliably persisted regardless of core's storage-save path.
   $form['actions']['submit']['#submit'][] = '_file_gate_field_config_edit_form_submit';
 }
 
 /**
  * Validation handler for the gating controls on the field config edit form.
- *
- * Delegates the selected method's own settings validation to the plugin, then
- * enforces the storage constraint: enabling gating converts the field to
- * private storage; block that when the field already stores data in a
- * non-private scheme, because the storage scheme cannot be changed once a
- * field has data and the existing files would become unreachable.
  */
 function _file_gate_field_config_edit_form_validate(array &$form, FormStateInterface $form_state): void {
   if (!$form_state->getValue('file_gate_gated')) {
@@ -310,11 +277,6 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
 
 /**
  * Applies (or removes) File Gate settings on a field storage.
- *
- * Extracted from the submit handler so the gating logic is unit-testable in
- * isolation. When gating is enabled it forces private storage — a public file
- * cannot be gated — and records the gate method; when disabled it removes the
- * gating third-party settings and leaves the storage scheme untouched.
  *
  * @param \Drupal\field\FieldStorageConfigInterface $field_storage
  *   The field storage to mutate (not saved by this function).

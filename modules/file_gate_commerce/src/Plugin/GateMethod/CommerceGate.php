@@ -16,24 +16,8 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Grants delivery to a buyer / licensee (purchase or entitlement gate).
  *
- * Delivers the file only to an account that is currently entitled to it. The
- * decision is delegated to a swappable entitlement checker — the bundled one
- * queries Drupal Commerce completed orders by SKU, but a site can override the
- * `file_gate_commerce.entitlement_checker` service to check licences or an
- * external entitlement API instead of hardcoding one store.
- *
- * A live-decision method: mint() returns NULL, so the entitlement is re-checked
- * on every download. An expired or revoked entitlement stops delivery
- * immediately — the gate never trusts a long-lived signed URL.
- *
- * NOTE — this is access gating, not DRM. Once the bytes are delivered they are
- * out of File Gate's control; combine with a short-lived flow if you need to
- * limit re-download, and do not rely on it for hard licence enforcement. Since
- * orders are tied to an account, the visitor must be authenticated to Drupal at
- * download time (or a custom checker must resolve entitlement another way).
- *
- * Per-field method settings:
- * - sku: the product variation SKU whose purchase grants the file.
+ * Live-decision: mint() returns NULL so entitlement is re-checked every
+ * download. This is access gating, not DRM.
  */
 #[GateMethod(
   id: 'commerce',

@@ -25,43 +25,10 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Grants access when the request carries a valid token.
  *
- * Complements signed_url with the one thing a bare signature cannot do: revoke
- * a single live link without rotating the site secret (which would break every
- * other link). It supports two token shapes, distinguished at redemption by
- * whether a signature is present:
- *
- * - Minted, revocable (the primary shape). mint() self-issues a random
- *   per-grant token, records its SHA-256 hash in an expirable store, and binds
- *   that hash into the signature alongside the expiry. The browser redeems the
- *   signed URL with the plaintext token. Revoke by deleting the stored hash —
- *   the request then fails because no live row backs the token. Because mint()
- *   receives no caller input, the token is per-grant / independently revocable,
- *   not tied to a named recipient; a trusted back end records token → recipient
- *   on its side.
- *
- * - Pre-shared campaign (optional). A field may configure an allowlist of token
- *   hashes ("tokens"); a static link carrying only "?token=<plaintext>" (no
- *   signature) is granted when the token's hash is in that allowlist. Revoke by
- *   removing the hash from the field's configuration. These links are static —
- *   no per-request expiry or signature.
- *
- * The two paths do not cross: a minted token that is not in the allowlist,
- * presented without a signature, is denied; a pre-shared token presented with a
- * forged signature fails the signature check.
- *
- * Per-field method settings (under the field's File Gate "method_settings"):
- * - ttl: minted-link lifetime in seconds (defaults to the global TTL);
- * - available_until: an absolute Unix timestamp capping a minted link's expiry;
- * - max_uses: redemptions per minted token (0 = unlimited, 1 = one-time);
- * - tokens: an array of SHA-256 hashes of pre-shared tokens (never plaintext).
- *
- * Tokens are stored and configured only as hashes, so a store or config dump
- * yields no usable bearer credentials. The revocation store is a fast key/value
- * store, not itself atomic, so the redemption read-modify-write and the revoke
- * delete are serialized with a lock keyed on the token hash (see
- * GrantLockTrait): a redemption cannot resurrect a just-revoked row, and a
- * one-time token cannot be double-spent by a concurrent burst. A request that
- * cannot acquire the lock is denied (fail closed).
+ * Tokens are stored only as hashes. Redemption and revoke are serialized on a
+ * lock keyed on the token hash so a redemption cannot resurrect a just-revoked
+ * row and a one-time token cannot be double-spent. Lock failure denies (fail
+ * closed).
  */
 #[GateMethod(
   id: 'token',

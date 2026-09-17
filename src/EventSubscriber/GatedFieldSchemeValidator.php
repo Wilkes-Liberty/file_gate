@@ -12,27 +12,8 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 /**
  * Refuses a configuration import that would gate a public-scheme field.
  *
- * Gating only works on the private file system. Public files are served
- * straight off disk by the web server or a CDN and never reach Drupal, so
- * there is no request to gate — `FileGateResolver::getGateForFile()` returns
- * NULL for them.
- *
- * The field edit form already forces the private scheme when gating is turned
- * on, and says so ("forces and locks the private file system"). But that is a
- * *form* alter, and a config-import-authoritative deploy never runs it. So
- * `drush config:import` could install a field storage carrying
- * `third_party_settings.file_gate.gated: true` alongside
- * `settings.uri_scheme: public`, and the result is the worst kind of failure
- * this module can have: the configuration asserts the files are gated, the
- * admin UI shows them as gated, and they are world-readable at a predictable
- * path. Nothing errors, because nothing is broken — the gate simply never
- * engages.
- *
- * Rejected at import rather than repaired on the fly. Silently rewriting
- * `uri_scheme` would make the site disagree with its own exported
- * configuration, so the next export would flip it back and the two would
- * oscillate. The exported configuration is where the truth belongs, so the
- * import fails and names the field to fix.
+ * A public scheme is not a gate (bytes never reach Drupal). Rejected at import
+ * rather than rewritten, so exported config stays the source of truth.
  */
 final class GatedFieldSchemeValidator implements EventSubscriberInterface {
 

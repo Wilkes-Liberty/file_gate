@@ -1,12 +1,5 @@
 # PHPStan configuration for File Gate.
 # Run on Drupal CI via commit-code-check.sh; phpstan-drupal is provided there.
-#
-# This file exists because its absence was not neutral. Without it the
-# drupalcode phpstan job analysed the module with the shared gitlab_templates
-# default, which is a weaker configuration than every sibling module pins --
-# and that is how ten `readonly` injected services on the two settings forms
-# stayed green through a stable release while being a fatal on PHP 8.3.
-# See CHANGELOG [Unreleased] and issue #26.
 includes:
   - phar://phpstan.phar/conf/bleedingEdge.neon
 

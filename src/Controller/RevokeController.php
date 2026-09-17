@@ -22,24 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Revokes a minted token grant.
  *
- * Server-to-server companion to the mint endpoint: a trusted back end that
- * minted a "token"-method grant can invalidate it before its natural expiry by
- * deleting the token's stored hash — without rotating the site secret (which
- * would break every other live link). Authenticated with the same shared secret
- * as mint (constant-time), and fails closed when no secret is configured.
- *
- * The delete runs under a lock keyed on the token hash, the same lock a
- * redemption takes: this prevents a redemption that read the row just before
- * the delete from writing an incremented row back after it (which would
- * resurrect a revoked token). See GrantLockTrait.
- *
- * Only minted tokens live in the store; pre-shared campaign tokens are revoked
- * by removing their hash from the field's "tokens" configuration, not here.
- *
- * Signed-URL grants may be revoked by jti (marks the jti fully spent and
- * drops it from grant inventory). Token-method grants are deleted from the
- * token store when the revoking secret is allowed for the token's field
- * (when known).
+ * Fails closed when no secret is configured. Delete runs under the same token
+ * lock as redemption so a concurrent redeem cannot resurrect a revoked row.
  */
 final class RevokeController implements ContainerInjectionInterface {
 
@@ -112,8 +96,6 @@ final class RevokeController implements ContainerInjectionInterface {
    *   redemption — retry) otherwise.
    */
   public function revoke(Request $request): Response {
-    // Authenticate the server-to-server caller (fails closed, constant-time,
-    // flood-limited). Returns an error response to send as-is, or NULL.
     $config = $this->configFactory->get('file_gate.settings');
     $denied = $this->authenticateSharedSecret(
       $request,
@@ -181,7 +163,6 @@ final class RevokeController implements ContainerInjectionInterface {
       ], Response::HTTP_FORBIDDEN);
     }
 
-    // Usage event: a minted grant was revoked ahead of its expiry.
     $this->logger->info('Revoked a token grant from @ip.', [
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);
