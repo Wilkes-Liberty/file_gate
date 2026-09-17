@@ -15,22 +15,6 @@ use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Grants delivery after a visitor submits a native (coupled) capture form.
- *
- * For traditional Twig-themed or hybrid sites that want File Gate's fail-closed
- * delivery without building their own front-end gate. Drupal renders a
- * lightweight email / lead-capture form at /file-gate/form/{file}; a valid
- * submission records a per-session grant (in the private tempstore) for that
- * file and redirects to the download. grants() checks that grant, within its
- * TTL. A live-decision method — mint() returns NULL.
- *
- * The coupling is deliberately isolated in this optional submodule so the
- * headless path pulls in no form/session assumptions.
- *
- * Per-field method settings:
- * - ttl: how long a submission grants access, in seconds (default 3600);
- * - require_consent: whether the form shows a required consent checkbox;
- * - consent_text: the consent checkbox label;
- * - intro_text: text shown above the form.
  */
 #[GateMethod(
   id: 'form',

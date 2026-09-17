@@ -12,33 +12,9 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Signed URL plus an origin/referrer allowlist (defense in depth).
  *
- * This behaves exactly like signed_url — it mints and validates the same
- * short-lived HMAC grant, with the same TTL, availability window, and usage
- * limits — and additionally requires the redemption to arrive from an allowed
- * origin. The signed grant is the real authorization; the origin check is a
- * lightweight hardening layer that raises the bar against casual link-sharing
- * and hotlinking.
- *
- * IMPORTANT — hardening, NOT authorization. The `Origin` / `Referer` header is
- * trivially spoofable by any non-browser client, and privacy setups routinely
- * strip it. This method must never be relied on as an access boundary: its
- * value comes entirely from the inherited signature. Use it to discourage a
- * leaked link from working when embedded on someone else's site, not to protect
- * anything that the signature alone should not already protect.
- *
- * The origin is checked first, so a request from a disallowed origin is denied
- * before the signed grant is validated — and, crucially, before a usage-limited
- * grant would burn one of its uses.
- *
- * Per-field method settings (in addition to all of signed_url's — ttl,
- * available_until, max_uses):
- * - allowed_origins: a list of allowed origins, e.g. "https://app.example.com".
- *   Compared as scheme + host + (non-default) port against the request's Origin
- *   header, falling back to the origin of the Referer. An empty list denies
- *   every request (fail closed) — configure at least one origin.
- * - on_missing_referrer: what to do when neither header is present — "deny"
- *   (the default; the lock cannot be verified) or "allow" (tolerate privacy
- *   setups that strip the header, leaning on the signature alone).
+ * IMPORTANT — hardening, NOT authorization. Origin/Referer is spoofable; the
+ * inherited signature is the access boundary. Origin is checked first so a
+ * disallowed request never burns a usage-limited grant.
  */
 #[GateMethod(
   id: 'referrer_lock',

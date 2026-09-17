@@ -29,13 +29,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Issues a one-time passcode for an OTP-gated file.
  *
- * Server-to-server companion to the download route for the `otp` gate method:
- * a trusted back end (after capturing a self-identified email) requests a code
- * bound to (file, email); File Gate stores its hash and e-mails it. The visitor
- * then redeems the download with that email and code. Authenticated with the
- * same shared secret as mint (constant-time), rate-limited per IP and per
- * (file, email) to bound mailbombing and brute force, and failing closed when
- * no secret is configured.
+ * Fails closed when no secret is configured. Rate-limited per IP and per
+ * (file, email) to bound mailbombing and brute force.
  */
 final class OtpController implements ContainerInjectionInterface {
 
@@ -312,7 +307,7 @@ final class OtpController implements ContainerInjectionInterface {
       return FALSE;
     }
 
-    // Usage event: a code was issued (never log the code itself).
+    // Never log the code itself.
     $this->logger->info('Issued an OTP for file @uuid.', ['@uuid' => $file->uuid()]);
     $this->audit->log('otp_issue', [
       'entity_type' => 'file',

@@ -26,57 +26,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Signed URL gated on a hardware-backed, phishing-resistant OIDC assurance.
  *
- * A signed URL (all of signed_url's TTL / availability / usage machinery) whose
- * delivery additionally requires a NIST SP 800-63 assurance level proven at an
- * OIDC IdP through PIV/CAC (HSPD-12 / FIPS 201) or FIDO2/WebAuthn (e.g. a
- * YubiKey). File Gate is the Relying Party — it verifies the IdP's assertion,
- * never the hardware crypto. Provider-agnostic: any OIDC IdP works.
- *
- * This is federation (SP 800-63C) — an *asserted* level — not File Gate acting
- * as an AAL3 verifier under 800-63B; see docs/design/piv-cac-webauthn.md. Three
- * modes, chosen by `verify_at`:
- * - "redeem" (default, Model B): the browser presents a live OIDC token at the
- *   download endpoint (a JS fetch, not a plain navigation) and grants() checks
- *   its signature, issuer, audience, and `acr` — optionally sender-constrained
- *   with a DPoP proof (RFC 9449) so a stolen token is useless. Real, live,
- *   per-request enforcement.
- * - "mint" (Model A): the trusted mint caller already stepped the user up to
- *   the level; File Gate binds it as an audit claim and trusts the caller
- *   (consistent with the mint trust model). The delivery URL is a bearer
- *   capability — not itself AAL3-bound.
- * - "client_cert" (edge mTLS): an mTLS-terminating reverse proxy validates a
- *   PIV/CAC client certificate against the Federal PKI and passes the subject
- *   in a trusted header; File Gate accepts it against a required subject
- *   allowlist. Only safe when File Gate is reachable *solely* through the
- *   proxy (the header is otherwise spoofable) — see clientCertSatisfied().
- * - "webauthn" (native RP): File Gate runs the WebAuthn assertion ceremony for
- *   a registered authenticator, then sets the same session bridge cookie used
- *   by the plain-link path. Federation is not required for this mode.
- *
- * The assurance is checked BEFORE the inherited signature/usage check, so a
- * request that fails assurance never spends a usage-limited grant's use.
- *
- * Per-field method settings (beyond signed_url's ttl / available_until /
- * max_uses):
- * - verify_at: "redeem" (default), "mint", or "client_cert";
- * - aal: the assurance level to bind into the signed grant (audit + tamper
- *   binding), e.g. 3;
- * - trusted_issuers: the trusted OIDC issuers (required for "redeem"), a list
- *   of entries each with its own issuer URL, expected audience, and acceptable
- *   `acr` values (exactly as that IdP emits them; empty denies). A token is
- *   matched to exactly one entry by `iss` — no cross-matching. The legacy
- *   single keys issuer/audience/required_acr keep working as a one-entry list;
- * - required_amr: optional advisory `amr` values to also require (off by
- *   default);
- * - dpop: TRUE to require an RFC 9449 DPoP proof (opt-in hardening);
- * - introspect / introspection_endpoint / introspection_client_id: opt-in live
- *   revocation via RFC 7662 (the client secret is injected from the
- *   environment, never stored here);
- * - trusted_proxy_header: the header the mTLS proxy sets to the validated
- *   certificate subject (required for "client_cert");
- * - allowed_subjects: the accepted certificate subjects/DNs (required for
- *   "client_cert" — empty denies);
- * - leeway: clock-skew tolerance in seconds (default 60).
+ * Assurance is checked before the inherited signature/usage check so a failed
+ * check never spends a usage-limited grant. client_cert is only safe when File
+ * Gate is reachable solely through the mTLS proxy (the header is otherwise
+ * spoofable).
  */
 #[GateMethod(
   id: 'assurance',

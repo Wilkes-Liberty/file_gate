@@ -26,11 +26,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * Streams a gated file to a request that satisfies its gate.
  *
- * This is the module's own delivery channel — deliberately NOT /system/files.
- * Streaming here (a) removes any dependence on core's permissive private-file
- * access (which grants anonymous download whenever the referencing entity is
- * viewable), and (b) never exposes the private:// path. The gate is enforced by
- * delegating to the file's configured gate method.
+ * Deliberately not /system/files: never exposes the private:// path and does
+ * not rely on core's permissive private-file access.
  */
 final class DownloadController implements ContainerInjectionInterface {
 
@@ -162,8 +159,6 @@ final class DownloadController implements ContainerInjectionInterface {
       if ($deny_limit > 0) {
         $this->flood->register('file_gate.download_deny', $deny_window, $ip);
       }
-      // Security event: a request reached a gated file without a valid grant
-      // (missing/expired/tampered signature, or a spent one-time link).
       $this->logger->warning('Denied gated download of file @uuid (@method) from @ip: grant rejected.', [
         '@uuid' => $file->uuid(),
         '@method' => $gate['method'],
@@ -209,7 +204,6 @@ final class DownloadController implements ContainerInjectionInterface {
     $fallback = preg_replace('/[^A-Za-z0-9._-]+/', '_', $filename) ?: 'download';
     $response->headers->set('Content-Disposition', HeaderUtils::makeDisposition($disposition, $filename, $fallback));
 
-    // Usage/stats event: a gated file was successfully delivered.
     $this->logger->info('Delivered gated file @uuid (@method) to @ip.', [
       '@uuid' => $file->uuid(),
       '@method' => $gate['method'],

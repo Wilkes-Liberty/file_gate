@@ -1,29 +1,21 @@
-# Assurance step-up (plain-link primary path) and session bridge.
-
-# HTML step-up page: browser lands here when opening a signed download URL
-# without a live OIDC proof. Completes bridge then returns to download.
 file_gate_assurance.step_up:
   path: '/api/file-gate/assurance/step-up'
   defaults:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::stepUpPage'
   methods: [GET]
   requirements:
-    # Open by design: step-up is public; the controller validates the grant and
-    # later requires a live OIDC token before setting the bridge cookie.
+    # Open by design: controller validates the grant, then requires live OIDC.
     _access: 'TRUE'
   options:
     no_cache: TRUE
 
-# Establish HttpOnly bridge cookie after live OIDC (+ optional DPoP).
-# Does not stream the file and does not burn max_uses.
 file_gate_assurance.bridge:
   path: '/api/file-gate/assurance/bridge'
   defaults:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::establish'
   methods: [POST]
   requirements:
-    # Open by design: BridgeController authenticates via OIDC Bearer/DPoP and
-    # validates the signed grant; there is no Drupal session role for this.
+    # Open by design: BridgeController authenticates via OIDC Bearer/DPoP.
     _access: 'TRUE'
   options:
     # Restricts post-routing provider authentication to cookie. NOTE: this
@@ -33,7 +25,6 @@ file_gate_assurance.bridge:
     _auth: ['cookie']
     no_cache: TRUE
 
-# User-facing WebAuthn enrollment UI (native RP).
 file_gate_assurance.webauthn_enrollment:
   path: '/user/{user}/file-gate-webauthn'
   defaults:
@@ -47,8 +38,6 @@ file_gate_assurance.webauthn_enrollment:
       user:
         type: entity:user
     no_cache: TRUE
-
-# --- Native WebAuthn (Phase B) ------------------------------------------------
 
 file_gate_assurance.webauthn_register_options:
   path: '/api/file-gate/webauthn/register/options'
@@ -90,7 +79,6 @@ file_gate_assurance.webauthn_credential_delete:
   options:
     no_cache: TRUE
 
-# Grant-bound assertion (public; controller validates the signed grant).
 file_gate_assurance.webauthn_assert_options:
   path: '/api/file-gate/webauthn/assert/options'
   defaults:
@@ -100,8 +88,6 @@ file_gate_assurance.webauthn_assert_options:
     # Open by design: options only issued for a valid signed grant query.
     _access: 'TRUE'
   options:
-    # Same post-routing _auth pin as the bridge route (non-global providers
-    # only; these endpoints receive no Authorization from our clients).
     _auth: ['cookie']
     no_cache: TRUE
 
@@ -114,6 +100,5 @@ file_gate_assurance.webauthn_assert:
     # Open by design: assertion + grant validation establish the bridge cookie.
     _access: 'TRUE'
   options:
-    # Same post-routing _auth pin as the bridge route.
     _auth: ['cookie']
     no_cache: TRUE

@@ -19,32 +19,11 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Grants delivery after the requester proves control of an email address.
  *
- * A one-time passcode is e-mailed to a self-identified address (a trusted back
- * end requests it at POST /api/file-gate/otp) and bound to (file, email). The
- * visitor then redeems the download with that email and code; grants() verifies
- * the code against the stored hash, within its window, under an attempt cap,
- * and consumes it (single use). A step up from a bare token — proof of email
- * control — without standing up an account.
- *
- * A live-decision method: mint() returns NULL (there is no pre-issued signed
- * grant). Prefer POST /api/file-gate/otp/session then download with the FG_OTP
- * cookie (GH #43). Query email/otp remains supported for backward compatibility
- * but leaks secrets into logs and Referer. Codes are HMAC-SHA256 keyed by the
- * mint credential's secret material (named or legacy; dual-key rotation
- * accepted at redeem). Brute force is bounded by TTL, attempt cap, and send
- * rate limits.
+ * Prefer POST /api/file-gate/otp/session then download with the FG_OTP cookie.
+ * Query email/otp remains supported but leaks secrets into logs and Referer.
  *
  * SECURITY: the passcode is delivered by e-mail, which is not a confidential
  * channel — it proves *control* of the address, not that the message is secret.
- * Anyone able to read the recipient's mail (or intercept it without transport
- * encryption) can use the code within its window. Use this to gate lead-gen /
- * self-service documents, not to protect content that a real secret should
- * protect; short TTLs keep the exposure small.
- *
- * Per-field method settings:
- * - ttl: code lifetime in seconds (default 600);
- * - max_attempts: wrong-code tries before the code is locked out (default 5);
- * - code_length: number of digits in the code (default 6).
  */
 #[GateMethod(
   id: 'otp',

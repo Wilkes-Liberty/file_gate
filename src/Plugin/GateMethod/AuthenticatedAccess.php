@@ -14,14 +14,6 @@ use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Grants access to authenticated users (optionally restricted by role).
- *
- * A live-decision method (no minted URL): the file is delivered if the current
- * session belongs to a logged-in user. Optional role allowlist prevents the
- * common misconfiguration of treating "any account on the site" as
- * "member-only NDA" access.
- *
- * Per-field method settings:
- * - roles: list of role ids; when non-empty the user must have at least one.
  */
 #[GateMethod(
   id: 'authenticated',

@@ -1,6 +1,3 @@
-# Routes defined by File Gate.
-
-# Admin configuration form (global defaults + gated-field overview).
 file_gate.settings_form:
   path: '/admin/config/media/file-gate'
   defaults:
@@ -9,10 +6,6 @@ file_gate.settings_form:
   requirements:
     _permission: 'administer file gate'
 
-# Public delivery endpoint. Access is intentionally open ("_access: TRUE") —
-# the controller enforces the gate itself (it validates the minted grant via the
-# file's configured gate method). "no_cache" guarantees the streamed, per-grant
-# response is never served from the page cache.
 file_gate.download:
   path: '/api/file-gate/download'
   defaults:
@@ -24,10 +17,6 @@ file_gate.download:
   options:
     no_cache: TRUE
 
-# Server-to-server mint endpoint. Called by a trusted back end (e.g. a decoupled
-# front end after its own gate — a lead form, login, etc.). Access is open at the
-# routing layer; the controller authenticates the caller with the shared secret
-# using a constant-time comparison, and fails closed when no secret is configured.
 file_gate.mint:
   path: '/api/file-gate/mint'
   defaults:
@@ -39,10 +28,6 @@ file_gate.mint:
   options:
     no_cache: TRUE
 
-# Server-to-server revoke endpoint. Invalidates a minted `token`-method grant by
-# deleting its stored hash — without rotating the site secret (which would break
-# every other live link). Authenticated with the same shared secret as mint
-# (constant-time), and fails closed when no secret is configured.
 file_gate.revoke:
   path: '/api/file-gate/revoke'
   defaults:
@@ -54,10 +39,6 @@ file_gate.revoke:
   options:
     no_cache: TRUE
 
-# Server-to-server OTP-issue endpoint for the `otp` gate method. A trusted back
-# end requests a one-time passcode bound to (file, email); File Gate stores its
-# hash and e-mails it. Authenticated with the shared secret (constant-time), and
-# fails closed when no secret is configured.
 file_gate.otp:
   path: '/api/file-gate/otp'
   defaults:
@@ -69,8 +50,6 @@ file_gate.otp:
   options:
     no_cache: TRUE
 
-# Browser OTP exchange: validate email+otp, set HttpOnly cookie (GH #43).
-# No shared secret — the code itself is the proof. Rate-limited inside.
 file_gate.otp_session:
   path: '/api/file-gate/otp/session'
   defaults:
@@ -82,7 +61,6 @@ file_gate.otp_session:
   options:
     no_cache: TRUE
 
-# Signed_url grant inventory (list, GH #44). Shared-secret auth.
 file_gate.grants:
   path: '/api/file-gate/grants'
   defaults:
@@ -94,7 +72,6 @@ file_gate.grants:
   options:
     no_cache: TRUE
 
-# Bulk revoke signed_url jtis for a field (GH #44).
 file_gate.grants_revoke_bulk:
   path: '/api/file-gate/grants/revoke-bulk'
   defaults:

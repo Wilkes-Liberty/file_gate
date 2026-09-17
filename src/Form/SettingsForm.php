@@ -93,7 +93,6 @@ final class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state): array {
     $config = $this->config('file_gate.settings');
 
-    // --- Secret status (read-only) -------------------------------------------
     $form['status'] = [
       '#type' => 'details',
       '#title' => $this->t('Status'),
@@ -108,7 +107,6 @@ final class SettingsForm extends ConfigFormBase {
       '#description' => $this->t("Secrets are never stored in configuration. Legacy (whole corpus): <code>\$config['file_gate.settings']['download_secret'] = getenv('DRUPAL_FILE_GATE_SECRET');</code><br />Named (field-scoped): <code>\$settings['file_gate.secrets'] = ['s1' =&gt; getenv('…')];</code> with scopes below. Basic-auth username = secret id; password = value. Minted URLs carry <code>k=&lt;id&gt;</code> for named secrets."),
     ];
 
-    // --- Named secret scopes (exportable map; values stay in settings.php) --
     $scope_lines = [];
     $scopes = $config->get('secret_scopes');
     if (is_array($scopes)) {
@@ -152,7 +150,6 @@ final class SettingsForm extends ConfigFormBase {
       ];
     }
 
-    // --- Defaults ------------------------------------------------------------
     $form['ttl'] = [
       '#type' => 'number',
       '#title' => $this->t('Signed-URL lifetime (TTL)'),
@@ -222,7 +219,6 @@ final class SettingsForm extends ConfigFormBase {
       '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>. Can also be required per field via method settings. See docs/API.md.'),
     ];
 
-    // --- Available gate methods ----------------------------------------------
     $method_items = [];
     foreach ($this->gateMethodManager->getDefinitions() as $id => $definition) {
       $method_items[] = $this->t('<strong>@label</strong> (<code>@id</code>): @description', [
@@ -241,7 +237,6 @@ final class SettingsForm extends ConfigFormBase {
       '#items' => $method_items,
     ];
 
-    // --- Dashboard (dblog aggregates when available) -------------------------
     $summary = $this->metrics->summary(14);
     $form['dashboard'] = [
       '#type' => 'details',
@@ -321,7 +316,6 @@ final class SettingsForm extends ConfigFormBase {
       }
     }
 
-    // --- Gated-fields overview (read-only) -----------------------------------
     $gated = $this->gatedFieldsOverview();
     $form['gated_fields'] = [
       '#type' => 'details',

@@ -8,23 +8,8 @@
 /**
  * Implements hook_requirements().
  *
- * Reports fields marked as gated whose files are not on the private file
- * system. Gating only applies to private files: public ones are served straight
- * off disk by the web server or a CDN and never reach Drupal, so
- * FileGateResolver::getGateForFile() returns NULL and no gate runs.
- *
- * That combination is the module's worst failure mode, because nothing about it
- * looks wrong. The configuration says the files are gated, the field edit form
- * shows them as gated, and they are readable by anyone with the URL. No error
- * is raised, because nothing is broken — the gate simply never engages.
- *
- * The field edit form prevents it by forcing the private scheme, but that is a
- * form alter and a config-import-authoritative deploy never runs it. The import
- * validator now rejects the combination going forward; this reports sites that
- * already reached that state, which the validator cannot help with.
- *
- * Reported at ERROR: the module's single promise is that these files are not
- * publicly readable, and while this holds they are.
+ * Reports gated fields that are not on the private file system — a public
+ * scheme is not a gate, so those files stay world-readable.
  */
 function file_gate_requirements(string $phase): array {
   $requirements = [];
