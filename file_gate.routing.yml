@@ -12,6 +12,7 @@ file_gate.download:
     _controller: '\Drupal\file_gate\Controller\DownloadController::download'
   methods: [GET]
   requirements:
+    # Open by design: DownloadController validates the minted grant itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -22,6 +23,7 @@ file_gate.mint:
     _controller: '\Drupal\file_gate\Controller\MintController::mint'
   methods: [POST]
   requirements:
+    # Open by design: MintController authenticates the caller itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -32,6 +34,7 @@ file_gate.revoke:
     _controller: '\Drupal\file_gate\Controller\RevokeController::revoke'
   methods: [POST]
   requirements:
+    # Open by design: RevokeController authenticates the caller itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -42,6 +45,7 @@ file_gate.otp:
     _controller: '\Drupal\file_gate\Controller\OtpController::request'
   methods: [POST]
   requirements:
+    # Open by design: OtpController authenticates the caller itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -52,6 +56,7 @@ file_gate.otp_session:
     _controller: '\Drupal\file_gate\Controller\OtpController::establishSession'
   methods: [POST]
   requirements:
+    # Open by design: establishSession validates the OTP itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -62,6 +67,7 @@ file_gate.grants:
     _controller: '\Drupal\file_gate\Controller\GrantInventoryController::list'
   methods: [GET]
   requirements:
+    # Open by design: GrantInventoryController authenticates the caller itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -72,6 +78,7 @@ file_gate.grants_revoke_bulk:
     _controller: '\Drupal\file_gate\Controller\GrantInventoryController::revokeBulk'
   methods: [POST]
   requirements:
+    # Open by design: GrantInventoryController authenticates the caller itself.
     _access: 'TRUE'
   options:
     no_cache: TRUE

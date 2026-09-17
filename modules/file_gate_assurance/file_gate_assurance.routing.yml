@@ -4,6 +4,7 @@ file_gate_assurance.step_up:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::stepUpPage'
   methods: [GET]
   requirements:
+    # Open by design: controller validates the grant, then requires live OIDC.
     _access: 'TRUE'
   options:
     no_cache: TRUE
@@ -14,6 +15,7 @@ file_gate_assurance.bridge:
     _controller: '\Drupal\file_gate_assurance\Controller\BridgeController::establish'
   methods: [POST]
   requirements:
+    # Open by design: BridgeController authenticates via OIDC Bearer/DPoP.
     _access: 'TRUE'
   options:
     # Restricts post-routing provider authentication to cookie. NOTE: this
@@ -83,6 +85,7 @@ file_gate_assurance.webauthn_assert_options:
     _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::assertOptions'
   methods: [POST]
   requirements:
+    # Open by design: options only issued for a valid signed grant query.
     _access: 'TRUE'
   options:
     _auth: ['cookie']
@@ -94,6 +97,7 @@ file_gate_assurance.webauthn_assert:
     _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::assertComplete'
   methods: [POST]
   requirements:
+    # Open by design: assertion + grant validation establish the bridge cookie.
     _access: 'TRUE'
   options:
     _auth: ['cookie']

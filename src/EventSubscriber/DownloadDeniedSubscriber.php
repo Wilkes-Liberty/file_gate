@@ -14,7 +14,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * Renders a themeless 403 for a denied gated download.
  *
  * Avoids admin-theme chrome on an expired or spent link. Stays a 403 and
- * discloses no grant state (expired, spent, and tampered are indistinguishable).
+ * discloses no grant state: expired, spent, and tampered stay
+ * indistinguishable.
  */
 final class DownloadDeniedSubscriber implements EventSubscriberInterface {
 
