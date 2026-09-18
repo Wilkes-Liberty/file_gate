@@ -115,12 +115,32 @@ that field and secret scope.
 
 ### `POST /api/file-gate/revoke`
 
-Server-to-server. Body:
+Revokes one minted grant. **Server-to-server only** — same shared-secret
+authentication as mint (Basic-auth password or `X-File-Gate-Secret` header,
+constant-time). Does not rotate the site secret (which would break every other
+live link).
+
+Pre-shared campaign tokens are revoked by removing their hash from the field's
+`tokens` configuration, not through this endpoint.
+
+**Request body** (JSON) — exactly one of:
 
 | Body | Effect |
 |------|--------|
-| `{"token":"<plaintext>"}` | Deletes a minted `token`-method row (field-scoped when field known). |
-| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent and drops it from inventory (optional ttl seconds; default 30 days). |
+| `{"token":"<plaintext>"}` | Deletes a minted `token`-method row (field-scoped when the stored field is known). |
+| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent and drops it from inventory (optional ttl seconds; default 30 days). The authenticated secret must be allowed for the grant's stored `field`; a named secret must also match stored `k`. Missing inventory meta is `404` (the jti is not confirmed and is not spent). |
+
+**Responses:**
+
+| Status | Meaning |
+|---|---|
+| `204` | Revoked. |
+| `400` | Invalid JSON, or neither `token` nor a non-empty `jti` supplied. |
+| `401` | Missing or wrong secret. |
+| `403` | Credential is not allowed to revoke that grant (field / `k` scope). |
+| `404` | Unknown token or jti, already expired/revoked, or inventory meta gone. |
+| `429` | Rate limited (per client IP). |
+| `503` | No signing secret is configured — the module is failing closed. Token path also returns 503 when the row is momentarily locked by a concurrent redemption. |
 
 ### `POST /api/file-gate/otp`
 
@@ -140,33 +160,6 @@ site mail transport. Rate-limited per IP and per (file, email).
 file), `401` (bad/absent secret), `404` (unknown file/media), `409` (media
 unpublished), `422` (file is not OTP-gated), `429` (rate limited), `503` (no
 secret configured).
-
-### `POST /api/file-gate/revoke`
-
-Revokes a **minted** `token`-method grant. **Server-to-server only** — same
-shared-secret authentication as mint (Basic-auth password or `X-File-Gate-Secret`
-header, constant-time). Deletes the token's stored hash so later redemptions
-fail, without rotating the site secret (which would break every other live link).
-
-Pre-shared campaign tokens are revoked by removing their hash from the field's
-`tokens` configuration, not through this endpoint.
-
-**Request body** (JSON):
-
-| Field | Type | Notes |
-|---|---|---|
-| `token` | string | The plaintext token to revoke. |
-
-**Responses:**
-
-| Status | Meaning |
-|---|---|
-| `204` | Revoked (the token's stored hash was deleted). |
-| `400` | No `token` supplied, or invalid JSON. |
-| `401` | Missing or wrong secret. |
-| `404` | Unknown token, or already expired/revoked. |
-| `429` | Rate limited (per client IP). |
-| `503` | No signing secret is configured — the module is failing closed. |
 
 ## The grant signature
 

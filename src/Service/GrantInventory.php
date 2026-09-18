@@ -157,6 +157,25 @@ final class GrantInventory {
   }
 
   /**
+   * Returns inventory metadata for a jti, or NULL when unknown.
+   *
+   * Used by single-jti revoke to enforce field / k scope before spend.
+   *
+   * @param string $jti
+   *   Grant jti claim value.
+   *
+   * @return array<string, mixed>|null
+   *   Stored row (jti, f, field, exp, k, max, sh, created), or NULL.
+   */
+  public function meta(string $jti): ?array {
+    if ($jti === '') {
+      return NULL;
+    }
+    $meta = $this->metaStore()->get($jti);
+    return is_array($meta) ? $meta : NULL;
+  }
+
+  /**
    * Marks a jti fully spent and drops it from inventory.
    *
    * Writes PHP_INT_MAX to the redemption counter so any positive max_uses

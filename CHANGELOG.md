@@ -6,6 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Single-jti revoke is field-scoped.** `POST /api/file-gate/revoke` with
+  `{"jti":"…"}` now loads Grant Inventory meta and requires `allowsField()`
+  (plus matching `k` for a named secret) before spend/forget — the same
+  privilege model as token revoke, grant list, and bulk revoke. Out-of-scope
+  credentials receive `403`; missing meta is `404` so a foreign jti is not
+  confirmed and is not spent.
+
 ## [1.9.1] - 2026-09-16
 
 ### Fixed
