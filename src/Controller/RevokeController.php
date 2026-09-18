@@ -87,13 +87,15 @@ final class RevokeController implements ContainerInjectionInterface {
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The request. Basic-auth password (or X-File-Gate-Secret header) carries
-   *   the shared secret; the JSON body is {"token": "<plaintext>"}.
+   *   the shared secret; the JSON body is {"token": "<plaintext>"} or
+   *   {"jti": "<jti>"}.
    *
    * @return \Symfony\Component\HttpFoundation\Response
-   *   204 when the token was found and deleted; 400 (no token), 401 (bad
-   *   secret), 404 (unknown/already-gone token), 429 (rate limited), or 503 (no
-   *   secret configured, or the token is momentarily locked by a concurrent
-   *   redemption — retry) otherwise.
+   *   204 when the token or jti was revoked; 400 (no token/jti), 401 (bad
+   *   secret), 403 (credential not allowed for that grant's field / k), 404
+   *   (unknown/already-gone token or missing inventory meta), 429 (rate
+   *   limited), or 503 (no secret configured, or the token is momentarily
+   *   locked by a concurrent redemption — retry) otherwise.
    */
   public function revoke(Request $request): Response {
     $config = $this->configFactory->get('file_gate.settings');
@@ -177,26 +179,49 @@ final class RevokeController implements ContainerInjectionInterface {
   /**
    * Marks a signed_url jti fully spent and drops it from inventory.
    *
+   * Privilege matches list and bulk revoke: the secret must be allowed for
+   * the grant's stored field, and a named secret must match stored k.
+   * Missing inventory meta is 404 so a foreign or unknown jti is not
+   * confirmed and is not spent.
+   *
    * @param string $jti
    *   The grant jti claim.
    * @param string|null $secret_id
-   *   Authenticated secret id (logged only; jti store is not field-scoped).
+   *   Authenticated secret id (legacy NULL is whole-corpus).
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The request (for audit IP context via logger).
    *
    * @return \Symfony\Component\HttpFoundation\Response
-   *   204 on success; 400 when jti empty.
+   *   204 on success; 400 when jti empty; 403 when the secret is out of
+   *   scope for the grant's field or k; 404 when inventory meta is missing.
    */
   private function revokeSignedJti(string $jti, ?string $secret_id, Request $request): Response {
     $jti = trim($jti);
     if ($jti === '') {
       return new JsonResponse(['error' => 'Provide a non-empty "jti".'], Response::HTTP_BAD_REQUEST);
     }
+    $meta = $this->inventory->meta($jti);
+    $field = is_array($meta) && isset($meta['field']) && is_string($meta['field']) && $meta['field'] !== ''
+      ? $meta['field']
+      : NULL;
+    if ($meta === NULL || $field === NULL) {
+      return new JsonResponse(['error' => 'Grant not found.'], Response::HTTP_NOT_FOUND);
+    }
+    $row_k = $meta['k'] ?? NULL;
+    $row_k = (is_string($row_k) && $row_k !== '') ? $row_k : NULL;
+    // Named secrets must be allowed for the stored field and match k so one
+    // tenant cannot spend another field's grant (token revoke uses the same
+    // allowsField() check; list/bulk also require matching k).
+    if (!$this->secrets->allowsField($secret_id, $field) || ($secret_id !== NULL && $row_k !== $secret_id)) {
+      return new JsonResponse([
+        'error' => 'This credential is not allowed to revoke that grant.',
+      ], Response::HTTP_FORBIDDEN);
+    }
     $data = json_decode($request->getContent(), TRUE);
     $ttl = is_array($data) && array_key_exists('ttl', $data)
       ? (int) $data['ttl']
       : NULL;
-    $this->inventory->revokeJti($jti, '', $ttl);
+    $this->inventory->revokeJti($jti, $field, $ttl);
     $this->logger->info('Revoked signed_url jti from @ip.', [
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);

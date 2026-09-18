@@ -325,20 +325,26 @@ signature (`?f=…&email=…&otp=…`).
 
 ### Revoke — `POST /api/file-gate/revoke`
 
-Server-to-server, same shared-secret authentication as mint. Invalidates a
-**minted** `token`-method grant before its natural expiry by deleting its stored
-hash — without rotating the site secret. Pre-shared campaign tokens are revoked
-by removing their hash from the field's `tokens` configuration, not here.
+Server-to-server, same shared-secret authentication as mint. Invalidates one
+minted grant without rotating the site secret. Pre-shared campaign tokens are
+revoked by removing their hash from the field's `tokens` configuration, not
+here.
 
-Request body (JSON):
+Request body (JSON) — exactly one of:
 
 ```json
 { "token": "<plaintext-token>" }
+{ "jti": "<signed-url-jti>" }
 ```
 
-Responses: `204` (revoked), `400` (no token), `401` (bad/absent secret), `404`
-(unknown or already-gone token), `429` (rate limited), `503` (no secret
-configured).
+`token` deletes a minted `token`-method hash (field-scoped when the stored
+field is known). `jti` spends a usage-limited signed_url grant and drops it
+from inventory; the secret must be allowed for the grant's stored field, and a
+named secret must match stored `k`.
+
+Responses: `204` (revoked), `400` (no token/jti), `401` (bad/absent secret),
+`403` (credential not allowed for that grant's field / `k`), `404` (unknown or
+already-gone token or jti), `429` (rate limited), `503` (no secret configured).
 
 ### OTP — `POST /api/file-gate/otp`
 
