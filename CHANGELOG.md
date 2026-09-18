@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-09-18
+
 ### Fixed
 - **Single-jti revoke is field-scoped.** `POST /api/file-gate/revoke` with
   `{"jti":"…"}` now loads Grant Inventory meta and requires `allowsField()`
