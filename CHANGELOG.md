@@ -6,6 +6,15 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Revoke takes the same `file_gate_redemption:<jti>` lock that
+  `SignedUrl::consumeUse()` holds. Without it, a redemption that read the
+  counter before the kill mark was written could overwrite the mark and leave
+  uses. If the lock cannot be taken, revoke fails: the HTTP routes answer 503
+  with Retry-After, and the MCP revoke tool returns its fixed refusal.
+  Uninstall also deletes the kill-mark expiry collection.
+  [#3624474](https://www.drupal.org/project/file_gate/issues/3624474)
+
 ## [1.10.0] - 2026-09-19
 
 ### Added

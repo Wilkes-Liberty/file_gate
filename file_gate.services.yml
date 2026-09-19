@@ -37,6 +37,7 @@ services:
     arguments:
       - '@keyvalue.expirable'
       - '@datetime.time'
+      - '@lock'
 
   file_gate.otp_session:
     class: Drupal\file_gate\Service\OtpSession

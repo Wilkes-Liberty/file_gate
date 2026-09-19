@@ -6,6 +6,7 @@ namespace Drupal\Tests\file_gate\Kernel;
 
 use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
@@ -19,6 +20,7 @@ use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\GrantInventoryController;
 use Drupal\file_gate\Controller\MintController;
 use Drupal\file_gate\Controller\RevokeController;
+use Drupal\file_gate\GrantRevokeLockException;
 use Drupal\file_gate\Service\GrantInventory;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -216,6 +218,48 @@ final class GrantRevokeKillMarkTest extends KernelTestBase {
   }
 
   /**
+   * A lock that cannot be taken makes revoke fail instead of reporting success.
+   *
+   * ConsumeUse holds file_gate_redemption:<jti> for its read-modify-write.
+   * revokeJti takes the same lock. Same-process lock backends are re-entrant,
+   * so contention is injected with a lock that never acquires.
+   */
+  public function testRevokeFailsWhenTheRedemptionLockIsHeld(): void {
+    $query = $this->mintGrant('locked.pdf');
+    $this->installContendingInventory();
+    try {
+      $this->container->get('file_gate.grant_inventory')->revokeJti($query['jti'], self::FIELD);
+      $this->fail('Revoke must not succeed while a redemption holds the lock.');
+    }
+    catch (GrantRevokeLockException) {
+      // Expected.
+    }
+    $response = RevokeController::create($this->container)
+      ->revoke($this->secretRequest('POST', '/api/file-gate/revoke', json_encode(['jti' => $query['jti']])));
+    $this->assertSame(Response::HTTP_SERVICE_UNAVAILABLE, $response->getStatusCode());
+    $this->assertSame('5', $response->headers->get('Retry-After'));
+    $this->assertSame(Response::HTTP_OK, $this->download($query)->getStatusCode(), 'A failed revoke must not spend the grant.');
+  }
+
+  /**
+   * Bulk revoke takes the redemption lock per grant and fails closed.
+   */
+  public function testBulkRevokeFailsWhenRedemptionLockIsHeld(): void {
+    $held = $this->mintGrant('bulk-held.pdf');
+    $free = $this->mintGrant('bulk-free.pdf');
+    $this->installContendingInventory();
+    $response = GrantInventoryController::create($this->container)->revokeBulk(
+      $this->secretRequest('POST', '/api/file-gate/grants/revoke-bulk', json_encode([
+        'field' => self::FIELD,
+        'jtis' => [$held['jti'], $free['jti']],
+      ])),
+    );
+    $this->assertSame(Response::HTTP_SERVICE_UNAVAILABLE, $response->getStatusCode());
+    $this->assertSame('5', $response->headers->get('Retry-After'));
+    $this->assertSame(Response::HTTP_OK, $this->download($free)->getStatusCode(), 'A failed bulk revoke must not spend later grants.');
+  }
+
+  /**
    * With no inventory record the default mark is kept, and a ttl is honoured.
    */
   public function testUnknownGrantKeepsTheDefault(): void {
@@ -313,6 +357,21 @@ final class GrantRevokeKillMarkTest extends KernelTestBase {
       ->fetchField();
     $this->assertNotFalse($expire, 'The kill mark exists.');
     return (int) $expire;
+  }
+
+  /**
+   * Replaces grant inventory with one whose lock never acquires.
+   */
+  private function installContendingInventory(): void {
+    $lock = $this->createMock(LockBackendInterface::class);
+    $lock->method('acquire')->willReturn(FALSE);
+    $lock->method('wait');
+    $inventory = new GrantInventory(
+      $this->container->get('keyvalue.expirable'),
+      $this->container->get('datetime.time'),
+      $lock,
+    );
+    $this->container->set('file_gate.grant_inventory', $inventory);
   }
 
   /**
