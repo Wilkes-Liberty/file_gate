@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-19
+
 ### Added
 - Optional `file_gate_mcp` submodule: five Tool API plugins governed by MCP
   Sentinel. `file_gate_status`, `file_gate_file_gate`, `file_gate_grants_list`
