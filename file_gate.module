@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 use Drupal\Core\Entity\EntityFormInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Form\SubformStateInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\field\FieldConfigInterface;
@@ -108,6 +109,10 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
 
   $gated = (bool) $field_storage->getThirdPartySetting('file_gate', 'gated', FALSE);
 
+  // The entity builder below applies gating before core's own storage save,
+  // so the submit handler cannot tell from the storage whether gating changed.
+  $form['#file_gate_was_gated'] = $gated;
+
   $form['file_gate'] = [
     '#type' => 'details',
     '#title' => t('File Gate'),
@@ -174,8 +179,40 @@ function file_gate_form_field_config_edit_form_alter(array &$form, FormStateInte
     $form['field_storage']['subform']['settings']['uri_scheme']['#description'] = t('File Gate forces this to “Private” while gating is enabled for this field.');
   }
 
+  // Core saves the field storage from this subform before the submit handler
+  // below runs. Without this builder that save still carries the previous
+  // gated flag next to the newly chosen scheme, so ungating a field and moving
+  // it to public in one submit would be refused by the save guard.
+  if (isset($form['field_storage']['subform'])) {
+    $form['field_storage']['subform']['#entity_builders'][] = '_file_gate_field_storage_entity_builder';
+  }
+
   $form['#validate'][] = '_file_gate_field_config_edit_form_validate';
   $form['actions']['submit']['#submit'][] = '_file_gate_field_config_edit_form_submit';
+}
+
+/**
+ * Entity builder: applies the gating controls to the storage core saves.
+ *
+ * @param string $entity_type_id
+ *   The entity type id.
+ * @param \Drupal\field\FieldStorageConfigInterface $field_storage
+ *   The field storage being built from the subform.
+ * @param array $form
+ *   The storage subform.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The subform state.
+ */
+function _file_gate_field_storage_entity_builder(string $entity_type_id, FieldStorageConfigInterface $field_storage, array &$form, FormStateInterface $form_state): void {
+  $complete = $form_state instanceof SubformStateInterface ? $form_state->getCompleteFormState() : $form_state;
+  if (!$complete->hasValue('file_gate_gated')) {
+    return;
+  }
+  _file_gate_apply_field_gating(
+    $field_storage,
+    (bool) $complete->getValue('file_gate_gated'),
+    (string) ($complete->getValue('file_gate_method') ?: 'signed_url'),
+  );
 }
 
 /**
@@ -269,6 +306,8 @@ function _file_gate_field_config_edit_form_submit(array &$form, FormStateInterfa
 
   if ($changed) {
     $field_storage->save();
+  }
+  if ($changed || (bool) ($form['#file_gate_was_gated'] ?? $gated) !== $gated) {
     \Drupal::messenger()->addStatus($gated
       ? t('File Gate is now protecting %field; its files are stored privately and delivered only through the gated route.', ['%field' => $field_storage->getName()])
       : t('File Gate protection was removed from %field.', ['%field' => $field_storage->getName()]));

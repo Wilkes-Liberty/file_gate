@@ -23,6 +23,19 @@ All notable changes to **File Gate** are documented here. The format is based on
   now reads from it, so the form and the status tool describe the same set.
 
 ### Fixed
+- A field storage marked gated on a file scheme other than `private` is now
+  refused at save, on every write path. It was refused only by the field form
+  and at configuration import, so the entity API, a recipe, an update hook,
+  `drush config:set` or a configuration tool could write it, and the files
+  stayed public. An entity save throws `GatedPublicSchemeException` before
+  anything is written. A raw configuration write is put back and then throws,
+  because core has no event before it. The configuration schema carries the
+  same rule as the `FileGateGatedFieldScheme` constraint. A site already in
+  this state can still load, edit and re-save the field unchanged, and stays
+  an error on the status report; only a save that creates the combination or
+  moves it to another non-private scheme is refused. In the field form,
+  removing gating and choosing the public scheme in one submit still works.
+  [#3624449](https://www.drupal.org/project/file_gate/issues/3624449)
 - The two status report findings (gated fields on a public file system, and
   named secrets with no field scope) move from `hook_requirements()` to
   `hook_runtime_requirements()`. Drupal 13 stops calling the procedural hook,

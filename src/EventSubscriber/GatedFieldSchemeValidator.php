@@ -7,6 +7,7 @@ namespace Drupal\file_gate\EventSubscriber;
 use Drupal\Core\Config\ConfigImporterEvent;
 use Drupal\Core\Config\ConfigEvents;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Drupal\file_gate\GatedFieldSchemeRule;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
@@ -38,20 +39,20 @@ final class GatedFieldSchemeValidator implements EventSubscriberInterface {
         if (!is_array($data)) {
           continue;
         }
-        if (empty($data['third_party_settings']['file_gate']['gated'])) {
-          continue;
-        }
-        // Absent uri_scheme means the field type has no file system at all, so
-        // gating it is meaningless rather than unsafe; the form alter skips
-        // those fields for the same reason.
-        $scheme = $data['settings']['uri_scheme'] ?? NULL;
-        if ($scheme === NULL || $scheme === 'private') {
+        // The whole combination is refused here, changed or not: an import
+        // that lists this name is about to write it, and the exported file is
+        // what needs fixing. A site already in the state is not blocked from
+        // unrelated imports, because an unchanged name is not in the list.
+        $scheme = GatedFieldSchemeRule::offendingSchemeInData($data);
+        if ($scheme === NULL) {
           continue;
         }
 
         // logError() takes a plain string, so the translated message is cast
-        // rather than handed over as TranslatableMarkup.
-        $importer->logError((string) $this->t('File Gate: @name is marked as gated but stores files in the "@scheme" file system. Gating only applies to private files — public files are served directly by the web server and never reach Drupal, so the gate would silently not apply and the files would remain publicly readable. Set settings.uri_scheme to "private" in the exported configuration, or remove the file_gate.gated third-party setting.', [
+        // rather than handed over as TranslatableMarkup. The text is the
+        // rule's own, so import, save and validation say the same thing.
+        // phpcs:ignore Drupal.Semantics.FunctionT.NotLiteralString
+        $importer->logError((string) $this->t(GatedFieldSchemeRule::message(), [
           '@name' => $name,
           '@scheme' => $scheme,
         ]));

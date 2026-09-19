@@ -60,11 +60,31 @@ final class GatedFieldSchemeTest extends KernelTestBase {
       'type' => 'file',
       'settings' => ['uri_scheme' => $scheme],
     ]);
-    if ($gated) {
+    if ($gated && $scheme === 'private') {
       $storage->setThirdPartySetting('file_gate', 'gated', TRUE);
       $storage->setThirdPartySetting('file_gate', 'method', 'signed_url');
     }
     $storage->save();
+    if (!$gated || $scheme === 'private') {
+      return $storage;
+    }
+
+    // A save that gates a public scheme is refused, so a site that is already
+    // in that state is reproduced by writing the active storage directly: no
+    // entity hook and no config event runs.
+    $name = 'field.storage.user.' . $name;
+    $active = $this->container->get('config.storage');
+    $data = $active->read($name);
+    $data['third_party_settings']['file_gate'] = ['gated' => TRUE, 'method' => 'signed_url'];
+    // The entity save that really produced this state recorded the dependency.
+    $data['dependencies']['module'][] = 'file_gate';
+    sort($data['dependencies']['module']);
+    $active->write($name, $data);
+    $this->container->get('config.factory')->reset($name);
+    $entity_storage = $this->container->get('entity_type.manager')->getStorage('field_storage_config');
+    $entity_storage->resetCache();
+    $storage = $entity_storage->load($data['id']);
+    $this->assertInstanceOf(FieldStorageConfig::class, $storage);
     return $storage;
   }
 

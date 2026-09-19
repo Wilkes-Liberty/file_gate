@@ -8,6 +8,7 @@ use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Drupal\file_gate\GatedFieldSchemeRule;
 use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
@@ -58,19 +59,16 @@ final class FileGateRequirements {
       ->loadMultiple();
 
     foreach ($storages as $storage) {
-      if (!$storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
+      // Saves that create this state are refused; what is found here predates
+      // that guard, and an unchanged re-save of it is still allowed.
+      $scheme = GatedFieldSchemeRule::offendingScheme(
+        (bool) $storage->getThirdPartySetting('file_gate', 'gated', FALSE),
+        $storage->getSettings(),
+      );
+      if ($scheme === NULL) {
         continue;
       }
-      $settings = $storage->getSettings();
-      // No uri_scheme means the field type has no file system, so gating it
-      // is meaningless rather than unsafe.
-      if (!array_key_exists('uri_scheme', $settings)) {
-        continue;
-      }
-      if ($settings['uri_scheme'] === 'private') {
-        continue;
-      }
-      $offenders[] = $storage->id() . ' (' . (string) $settings['uri_scheme'] . ')';
+      $offenders[] = $storage->id() . ' (' . $scheme . ')';
     }
     if ($offenders === []) {
       return [];
