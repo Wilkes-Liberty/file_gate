@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\file_gate\Kernel;
 
+use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\Plugin\GateMethod\Token;
@@ -32,12 +33,11 @@ final class UninstallCleanupTest extends KernelTestBase {
    * A token, jti, and OTP row are gone after uninstall.
    */
   public function testUninstallDeletesOwnedCollections(): void {
-    $kv = $this->container->get('keyvalue.expirable');
-    $kv->get(Token::TOKEN_COLLECTION)->setWithExpire('token-row', ['v' => 1], 3600);
-    $kv->get(GrantInventory::META_COLLECTION)->setWithExpire('jti-row', ['jti' => 'jti-row'], 3600);
-    $kv->get(GrantInventory::FIELD_INDEX_COLLECTION)->setWithExpire('field-row', ['jti-row' => 1], 3600);
-    $kv->get(GrantInventory::REDEMPTION_COLLECTION)->setWithExpire('jti-row', 1, 3600);
-    $kv->get(Otp::STORE_COLLECTION)->setWithExpire('otp-row', ['attempts' => 0], 3600);
+    $this->expirable(Token::TOKEN_COLLECTION)->setWithExpire('token-row', ['v' => 1], 3600);
+    $this->expirable(GrantInventory::META_COLLECTION)->setWithExpire('jti-row', ['jti' => 'jti-row'], 3600);
+    $this->expirable(GrantInventory::FIELD_INDEX_COLLECTION)->setWithExpire('field-row', ['jti-row' => 1], 3600);
+    $this->expirable(GrantInventory::REDEMPTION_COLLECTION)->setWithExpire('jti-row', 1, 3600);
+    $this->expirable(Otp::STORE_COLLECTION)->setWithExpire('otp-row', ['attempts' => 0], 3600);
 
     // Snapshot names before uninstall: the module PSR-4 is unregistered.
     $collections = $this->ownedCollections();
@@ -46,11 +46,10 @@ final class UninstallCleanupTest extends KernelTestBase {
     }
 
     $this->container->get('module_installer')->uninstall(['file_gate']);
-    $this->container = \Drupal::getContainer();
 
     foreach ($collections as $collection) {
       $this->assertFalse($this->collectionHasRows($collection), $collection . ' survived uninstall.');
-      $this->assertSame([], $this->container->get('keyvalue.expirable')->get($collection)->getAll());
+      $this->assertSame([], $this->expirable($collection)->getAll());
     }
   }
 
@@ -71,6 +70,21 @@ final class UninstallCleanupTest extends KernelTestBase {
   }
 
   /**
+   * The expirable key/value store for a collection.
+   *
+   * @param string $collection
+   *   The collection name.
+   *
+   * @return \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface
+   *   The store.
+   */
+  private function expirable(string $collection): KeyValueStoreExpirableInterface {
+    /** @var \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface $store */
+    $store = \Drupal::service('keyvalue.expirable')->get($collection);
+    return $store;
+  }
+
+  /**
    * Whether key_value_expire still has rows for a collection.
    *
    * @param string $collection
@@ -80,7 +94,7 @@ final class UninstallCleanupTest extends KernelTestBase {
    *   TRUE when at least one row remains.
    */
   private function collectionHasRows(string $collection): bool {
-    $count = (int) $this->container->get('database')
+    $count = (int) \Drupal::database()
       ->select('key_value_expire', 'k')
       ->condition('collection', $collection)
       ->countQuery()
