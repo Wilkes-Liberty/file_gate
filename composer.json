@@ -37,9 +37,7 @@
         "drupal/core": "^11.4 || ^12"
     },
     "require-dev": {
-        "firebase/php-jwt": "^6.10 || ^7.0",
-        "drupal/mcp_sentinel": "^2.22",
-        "drupal/tool": "^1.0.0-beta8"
+        "firebase/php-jwt": "^6.10 || ^7.0"
     },
     "suggest": {
         "firebase/php-jwt": "Required only by the File Gate Assurance submodule (file_gate_assurance) for OIDC token verification: ^6.10 || ^7.0.",

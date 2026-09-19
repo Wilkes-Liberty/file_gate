@@ -18,7 +18,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 #[Tool(
   id: 'file_gate_grants_list',
   label: new TranslatableMarkup('File Gate grants for a field'),
-  description: new TranslatableMarkup('List grants that have not expired for one gated field: grant id, file UUID, expiry, maximum uses, subject hash and the id of the secret that minted it. At most 200 rows. A grant id identifies a grant for revocation; it is not a download token. Only usage-limited grants are recorded, so an empty list does not mean no link is live.'),
+  description: new TranslatableMarkup('List grants that have not expired for one gated field, across every secret that minted them: grant id, file UUID, expiry, maximum uses, whether the grant is bound to a subject, and the id of the minting secret. At most 200 rows. A grant id identifies a grant for revocation; it is not a download token. Only usage-limited grants are recorded, so an empty list does not mean no link is live.'),
   operation: ToolOperation::Read,
   input_definitions: [
     'field' => new InputDefinition(
@@ -57,13 +57,6 @@ final class GrantsListTool extends FileGateToolBase {
   /**
    * {@inheritdoc}
    */
-  protected function inputNames(): array {
-    return ['field'];
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function run(array $values): array {
     $field = $this->fieldKey($values['field'] ?? NULL);
     if (!in_array($field, array_column($this->gatedFields->fields(), 'storage'), TRUE)) {
@@ -76,7 +69,9 @@ final class GrantsListTool extends FileGateToolBase {
         'file' => (string) $row['f'],
         'expires' => (int) $row['exp'],
         'max_uses' => (int) $row['max'],
-        'subject_hash' => (string) $row['sh'],
+        // The stored value is an unkeyed hash of a caller-asserted subject,
+        // which a dictionary would reverse. Report only that one exists.
+        'subject_bound' => (string) $row['sh'] !== '',
         'secret_id' => $row['k'],
         'created' => (int) $row['created'],
       ];

@@ -12,6 +12,7 @@ use Drupal\file_gate\Service\GatedFieldOverview;
 use Drupal\tool\Attribute\Tool;
 use Drupal\tool\Tool\ToolOperation;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 
 /**
  * Reports whether the gate is real on this site.
@@ -28,7 +29,7 @@ final class StatusTool extends FileGateToolBase {
   /**
    * Runtime requirements.
    */
-  protected FileGateRequirements $requirements;
+  protected ?FileGateRequirements $requirements = NULL;
 
   /**
    * Secret registry.
@@ -50,7 +51,13 @@ final class StatusTool extends FileGateToolBase {
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
-    $instance->requirements = $container->get(FileGateRequirements::class);
+    // Another module can remove a hook implementation, and its service with it.
+    try {
+      $instance->requirements = $container->get(FileGateRequirements::class);
+    }
+    catch (ServiceNotFoundException) {
+      $instance->requirements = NULL;
+    }
     $instance->secrets = $container->get('file_gate.secret_registry');
     $instance->gatedFields = $container->get('file_gate.gated_field_overview');
     $instance->configFactory = $container->get('config.factory');
@@ -60,16 +67,9 @@ final class StatusTool extends FileGateToolBase {
   /**
    * {@inheritdoc}
    */
-  protected function inputNames(): array {
-    return [];
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function run(array $values): array {
     $findings = [];
-    foreach ($this->requirements->runtime() as $id => $requirement) {
+    foreach ($this->requirements?->runtime() ?? [] as $id => $requirement) {
       $severity = $requirement['severity'] ?? NULL;
       $findings[] = [
         'id' => (string) $id,
@@ -93,6 +93,7 @@ final class StatusTool extends FileGateToolBase {
     }
     $config = $this->configFactory->get('file_gate.settings');
     return [
+      'findings_available' => $this->requirements !== NULL,
       'findings' => $findings,
       'any_secret_configured' => $this->secrets->hasAnySecret(),
       'named_secrets' => $named,

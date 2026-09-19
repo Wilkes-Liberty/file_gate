@@ -49,13 +49,6 @@ final class MetricsTool extends FileGateToolBase {
   /**
    * {@inheritdoc}
    */
-  protected function inputNames(): array {
-    return ['days'];
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function run(array $values): array {
     $days = (int) ($values['days'] ?? 14);
     if ($days < 1 || $days > 90) {

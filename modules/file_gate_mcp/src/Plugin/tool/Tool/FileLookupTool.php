@@ -21,7 +21,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 #[Tool(
   id: 'file_gate_file_gate',
   label: new TranslatableMarkup('File Gate lookup for a file'),
-  description: new TranslatableMarkup('For one file UUID or media UUID, report whether the file is gated, which field and method apply, and whether the plain /system/files URL can serve it. A gated file is served only through a minted grant, so the URL an upload or entity read returns will answer 403. Returns no file path, no URL, no grant and no method settings. Provide exactly one of file or media.'),
+  description: new TranslatableMarkup('For one file UUID or media UUID, report whether the file is gated, which field and method apply, and whether the plain /system/files URL can serve it. A gated file is served only through a minted grant, so the URL an upload or entity read returns will answer 403. Returns no file path, no URL, no grant and no method settings. A media UUID resolves only when the acting account may view that media; a file UUID resolves for any holder of the permission this tool requires. Provide exactly one of file or media.'),
   operation: ToolOperation::Read,
   input_definitions: [
     'file' => new InputDefinition(
@@ -79,13 +79,6 @@ final class FileLookupTool extends FileGateToolBase {
   /**
    * {@inheritdoc}
    */
-  protected function inputNames(): array {
-    return ['file', 'media'];
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function run(array $values): array {
     $file_uuid = trim((string) ($values['file'] ?? ''));
     $media_uuid = trim((string) ($values['media'] ?? ''));
@@ -107,10 +100,14 @@ final class FileLookupTool extends FileGateToolBase {
       // on Media and a site with another media implementation does not fatal.
       /** @var object|null $media */
       $media = $this->entityRepository->loadEntityByUuid('media', $media_uuid);
-      if ($media !== NULL && method_exists($media, 'getSource')) {
+      // Media has real view access; honour it so the tool is not a way around
+      // it. File entities do not: core denies view on every gated file.
+      $viewable = $media !== NULL && method_exists($media, 'access') && $media->access('view', $this->currentUser);
+      if ($viewable && method_exists($media, 'getSource')) {
         $media_published = method_exists($media, 'isPublished') ? (bool) $media->isPublished() : NULL;
         $fid = $media->getSource()->getSourceFieldValue($media);
-        $file = $fid ? $this->entityTypeManager->getStorage('file')->load($fid) : NULL;
+        // A non-file source returns a string; never hand that to file storage.
+        $file = is_numeric($fid) ? $this->entityTypeManager->getStorage('file')->load((int) $fid) : NULL;
       }
     }
     if (!$file instanceof FileInterface) {

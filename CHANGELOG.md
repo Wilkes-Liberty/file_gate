@@ -12,7 +12,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   and `file_gate_metrics` are read-only; `file_gate_grant_revoke` revokes one
   grant and refuses a grant id recorded against another field. No tool returns
   secret material, a file path, a URL or a grant token. The base module's
-  dependencies are unchanged. The submodule requires Tool API and MCP Sentinel
+  dependencies are unchanged, and neither package is in `require-dev`: MCP
+  Sentinel cannot install on Drupal 12, so the submodule's tests skip when the
+  two are absent. The submodule requires Tool API and MCP Sentinel
   and declares Drupal `^11.4` only, because MCP Sentinel does not declare
   Drupal 12 yet.
   [#3624444](https://www.drupal.org/project/file_gate/issues/3624444)

@@ -416,12 +416,25 @@ trusted front end has to mint a grant.
 - No tool returns secret material, a file path, a URL, a grant token or a gate
   method's settings. Secrets appear by id only. A grant id identifies a grant
   for revocation; it cannot be redeemed.
-- Revoke applies the rule the HTTP revoke route applies: the field stored with
-  the grant decides scope, so a grant id from another field is refused. It
-  revokes one grant per call and writes the same `revoke` audit entry, with
-  `secret_id: mcp` and the acting uid.
-- Every refusal is the same fixed message. Input values and exception text are
-  not relayed or logged.
+- The grant tools act with site-operator reach. The HTTP routes bind a named
+  secret to the grants it minted; these tools list and revoke grants minted by
+  any secret. Grant the permissions with that in mind.
+- Revoke is scoped by field: the field stored with the grant must match, so a
+  grant id from another field is refused. It revokes one grant per call, keeps
+  the kill mark for at least as long as the grant would have lived, and writes
+  the same `revoke` audit entry as the HTTP route, with `secret_id: mcp` and
+  the acting uid.
+- The grants list says whether a grant is bound to a subject. It does not
+  return the stored subject hash, which is an unkeyed hash of a value the
+  minting front end supplied.
+- A media UUID resolves only when the acting account may view that media. A
+  file UUID resolves for any holder of the permission, because core denies
+  view on every gated file entity; the answer reveals that the file exists.
+- A refusal from this module is one fixed message. Tool API and MCP Sentinel
+  have their own messages for invalid input, denied access and rate limits.
+  None of them relays an input value, and exception text is not logged.
+- Results are capped at 128 KiB, or at the profile's response-size cap when
+  that is lower.
 - Installing the submodule publishes nothing by itself. Enable the tools in
   your site's MCP tool bridge configuration.
 

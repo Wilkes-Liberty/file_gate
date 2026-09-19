@@ -7,15 +7,18 @@ namespace Drupal\file_gate_mcp\Plugin\tool\Tool;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Session\AccountInterface;
+use Drupal\mcp_sentinel\McpPolicyProfileInterface;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpEntityToolTrait;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpGovernedToolBase;
+use Drupal\mcp_sentinel\Service\McpExfiltrationGuard;
 use Drupal\tool\ExecutableResult;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Shares access, rate limiting and refusal handling for File Gate tools.
  *
- * Every tool returns one fixed refusal message. Caller input, exception text,
- * secret material, file paths and download URLs never reach a result.
+ * This module's own refusals are one fixed message. Caller input, exception
+ * text, secret material, file paths and download URLs never reach a result.
  */
 abstract class FileGateToolBase extends McpGovernedToolBase {
 
@@ -33,16 +36,26 @@ abstract class FileGateToolBase extends McpGovernedToolBase {
 
   /**
    * Largest JSON result a tool returns, in bytes.
+   *
+   * The resolved profile's response-size cap applies when it is lower.
    */
   protected const MAX_RESULT_BYTES = 131072;
 
   /**
-   * Input names this tool accepts.
-   *
-   * @return string[]
-   *   Allowed input keys.
+   * Sentinel's response-size resolver, when the installed version has one.
    */
-  abstract protected function inputNames(): array;
+  protected ?McpExfiltrationGuard $exfiltrationGuard = NULL;
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
+    $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
+    $instance->exfiltrationGuard = $container->has('mcp_sentinel.exfiltration_guard')
+      ? $container->get('mcp_sentinel.exfiltration_guard')
+      : NULL;
+    return $instance;
+  }
 
   /**
    * Runs the operation against the module's own services.
@@ -94,9 +107,6 @@ abstract class FileGateToolBase extends McpGovernedToolBase {
       if (!$this->checkAccess($values, $this->currentUser)) {
         return $this->refused();
       }
-      if (array_diff(array_keys($values), $this->inputNames())) {
-        return $this->refused();
-      }
       $profile = $this->governancePolicyResolver?->resolve($this->currentUser);
       if ($profile === NULL) {
         return $this->refused();
@@ -105,7 +115,7 @@ abstract class FileGateToolBase extends McpGovernedToolBase {
         return $limited;
       }
       $result = $this->run($values);
-      if (strlen(json_encode($result, JSON_THROW_ON_ERROR)) > static::MAX_RESULT_BYTES) {
+      if (strlen(json_encode($result, JSON_THROW_ON_ERROR)) > $this->resultLimit($profile)) {
         return $this->refused();
       }
       return ExecutableResult::success($this->t('File Gate operation completed.'), $result);
@@ -123,7 +133,17 @@ abstract class FileGateToolBase extends McpGovernedToolBase {
   }
 
   /**
-   * The single refusal every tool returns.
+   * The smaller of this module's ceiling and the profile's response-size cap.
+   */
+  protected function resultLimit(McpPolicyProfileInterface $profile): int {
+    $cap = $this->exfiltrationGuard === NULL
+      ? 0
+      : (int) $this->exfiltrationGuard->effectiveResponseSizeCap($profile);
+    return $cap > 0 ? min(static::MAX_RESULT_BYTES, $cap) : static::MAX_RESULT_BYTES;
+  }
+
+  /**
+   * The refusal this module's own code returns.
    */
   protected function refused(): ExecutableResult {
     return ExecutableResult::failure($this->t('File Gate operation refused. Check permissions, inputs and limits.'));

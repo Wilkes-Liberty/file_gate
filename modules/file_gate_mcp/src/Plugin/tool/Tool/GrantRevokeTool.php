@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate_mcp\Plugin\tool\Tool;
 
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file_gate\Service\FileGateAudit;
 use Drupal\file_gate\Service\GatedFieldOverview;
@@ -19,7 +20,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 #[Tool(
   id: 'file_gate_grant_revoke',
   label: new TranslatableMarkup('Revoke one File Gate grant'),
-  description: new TranslatableMarkup('Revoke one grant by field and grant id so it can no longer be redeemed. The grant must be recorded against that exact field; a grant id from another field is refused. Cannot be undone: the holder needs a new grant. Revokes one grant per call; there is no bulk form. Written to the audit log when Audit Chain is installed.'),
+  description: new TranslatableMarkup('Revoke one grant by field and grant id so it can no longer be redeemed. Acts with site-operator reach: the grant may have been minted by any secret. The grant must be recorded against that exact field; a grant id from another field is refused. Cannot be undone: the holder needs a new grant. Revokes one grant per call; there is no bulk form. Written to the audit log when Audit Chain is installed.'),
   operation: ToolOperation::Write,
   input_definitions: [
     'field' => new InputDefinition(
@@ -56,6 +57,11 @@ final class GrantRevokeTool extends FileGateToolBase {
   protected FileGateAudit $audit;
 
   /**
+   * Clock.
+   */
+  protected TimeInterface $time;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
@@ -63,14 +69,8 @@ final class GrantRevokeTool extends FileGateToolBase {
     $instance->inventory = $container->get('file_gate.grant_inventory');
     $instance->gatedFields = $container->get('file_gate.gated_field_overview');
     $instance->audit = $container->get('file_gate.audit');
+    $instance->time = $container->get('datetime.time');
     return $instance;
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  protected function inputNames(): array {
-    return ['field', 'grant_id'];
   }
 
   /**
@@ -92,13 +92,17 @@ final class GrantRevokeTool extends FileGateToolBase {
     if (!in_array($field, array_column($this->gatedFields->fields(), 'storage'), TRUE)) {
       throw new \InvalidArgumentException('Not a gated field.');
     }
-    // Same rule as the HTTP revoke route: the stored field decides scope, so a
-    // guessed or copied id from another field cannot be spent here.
+    // The stored field decides scope, so a guessed or copied id from another
+    // field cannot be spent here. The HTTP route also binds a named secret to
+    // its own grants; this tool acts for the site operator and does not.
     $meta = $this->inventory->meta($jti);
     if ($meta === NULL || ($meta['field'] ?? NULL) !== $field) {
       throw new \InvalidArgumentException('Unknown grant for this field.');
     }
-    $this->inventory->revokeJti($jti, $field);
+    // The kill mark must outlive the grant, or a long-lived grant becomes
+    // redeemable again once the default 30-day mark expires.
+    $remaining = (int) ($meta['exp'] ?? 0) - $this->time->getRequestTime();
+    $this->inventory->revokeJti($jti, $field, max(GrantInventory::DEFAULT_KILL_TTL, $remaining + 3600));
     $this->logger->info('Revoked one File Gate grant through MCP for uid @uid.', [
       '@uid' => (int) $this->currentUser->id(),
     ]);

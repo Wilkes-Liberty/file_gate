@@ -15,6 +15,8 @@ use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\file\Entity\File;
 use Drupal\file\FileInterface;
+use Drupal\mcp_sentinel\Plugin\tool\Tool\McpGovernedToolBase;
+use Drupal\tool\Tool\ToolBase;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -38,6 +40,8 @@ final class FileGateToolsKernelTest extends KernelTestBase {
 
   private const READ_TOOLS = ['file_gate_status', 'file_gate_metrics'];
 
+  private const SUBJECT_HASH = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
+
   /**
    * {@inheritdoc}
    */
@@ -52,6 +56,12 @@ final class FileGateToolsKernelTest extends KernelTestBase {
    * {@inheritdoc}
    */
   protected function setUp(): void {
+    // Tool API and MCP Sentinel are optional. A pipeline that does not install
+    // them skips here; the GitHub workflow installs both and fails unless
+    // these tests ran.
+    if (!class_exists(ToolBase::class) || !class_exists(McpGovernedToolBase::class)) {
+      $this->markTestSkipped('Tool API and MCP Sentinel are not installed.');
+    }
     parent::setUp();
     $this->installSchema('audit_chain', ['audit_chain_log', 'audit_chain_mutex']);
     $this->container->get('database')->insert('audit_chain_mutex')
@@ -153,6 +163,7 @@ final class FileGateToolsKernelTest extends KernelTestBase {
     self::assertFalse($by_storage['entity_test.field_leaky']['protected']);
     self::assertArrayNotHasKey('entity_test.field_plain', $by_storage);
     self::assertArrayNotHasKey('config_id', $by_storage[self::FIELD]);
+    self::assertTrue($values['findings_available']);
     self::assertContains('file_gate_public_gated_fields', array_column($values['findings'], 'id'));
     self::assertStringNotContainsString(self::SECRET_VALUE, json_encode($values));
   }
@@ -238,6 +249,9 @@ final class FileGateToolsKernelTest extends KernelTestBase {
     self::assertFalse($values['truncated']);
     self::assertSame('aaaaaaaaaaaaaaaaaaaaaaaa', $values['grants'][0]['grant_id']);
     self::assertSame(self::SECRET_ID, $values['grants'][0]['secret_id']);
+    self::assertTrue($values['grants'][0]['subject_bound']);
+    self::assertArrayNotHasKey('subject_hash', $values['grants'][0]);
+    self::assertStringNotContainsString(self::SUBJECT_HASH, json_encode($values));
     self::assertStringNotContainsString(self::SECRET_VALUE, json_encode($values));
 
     $tool = $this->tool('file_gate_grants_list');
@@ -284,6 +298,40 @@ final class FileGateToolsKernelTest extends KernelTestBase {
   }
 
   /**
+   * The kill mark outlives a grant that expires after the default 30 days.
+   */
+  public function testRevokeKillMarkOutlivesLongGrant(): void {
+    Role::load('mcp_api')->grantPermission('revoke file gate grants via mcp')->save();
+    $jti = 'eeeeeeeeeeeeeeeeeeeeeeee';
+    $lifetime = 86400 * 90;
+    $this->recordGrant($jti, self::FIELD, $lifetime);
+    $tool = $this->revokeTool(self::FIELD, $jti);
+    $tool->execute();
+    self::assertTrue($tool->getResultStatus(), (string) $tool->getResultMessage());
+
+    // The redemption store is the only expirable collection holding the id
+    // after revoke: revoke forgets the inventory row.
+    $row = $this->container->get('database')->select('key_value_expire', 'k')
+      ->fields('k', ['expire'])
+      ->condition('name', $jti)
+      ->execute()->fetchField();
+    self::assertNotFalse($row, 'The kill mark is stored.');
+    $now = $this->container->get('datetime.time')->getRequestTime();
+    self::assertGreaterThanOrEqual($now + $lifetime, (int) $row);
+  }
+
+  /**
+   * A media UUID on a site without Media is simply not found.
+   */
+  public function testLookupByMediaUuidNeedsNoMediaModule(): void {
+    $tool = $this->tool('file_gate_file_gate');
+    $tool->setInputValue('media', '00000000-0000-4000-8000-000000000001');
+    $tool->execute();
+    self::assertTrue($tool->getResultStatus(), (string) $tool->getResultMessage());
+    self::assertSame(['found' => FALSE], $tool->getResult()->getContextValues());
+  }
+
+  /**
    * Creates a fresh tool instance.
    */
   private function tool(string $id): object {
@@ -303,14 +351,15 @@ final class FileGateToolsKernelTest extends KernelTestBase {
   /**
    * Records one live usage-limited grant.
    */
-  private function recordGrant(string $jti, string $field): void {
+  private function recordGrant(string $jti, string $field, int $lifetime = 3600): void {
     $this->container->get('file_gate.grant_inventory')->record(
       $jti,
       '11111111-1111-4111-8111-111111111111',
       $field,
-      $this->container->get('datetime.time')->getRequestTime() + 3600,
+      $this->container->get('datetime.time')->getRequestTime() + $lifetime,
       self::SECRET_ID,
       2,
+      self::SUBJECT_HASH,
     );
   }
 

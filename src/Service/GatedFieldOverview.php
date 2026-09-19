@@ -23,7 +23,7 @@ final class GatedFieldOverview {
    * Every field instance whose storage is gated.
    *
    * @return list<array{config_id: string, field_name: string, storage: string, entity_type: string, bundle: string, method: string, scheme: string}>
-   *   One row per field instance, ordered by storage id then bundle. "scheme"
+   *   One row per field instance, ordered by field config id. "scheme"
    *   is the storage's uri_scheme, or an empty string when the field type has
    *   none. Anything other than "private" means the gate never runs.
    */
@@ -50,7 +50,7 @@ final class GatedFieldOverview {
         'scheme' => (string) ($storage->getSetting('uri_scheme') ?? ''),
       ];
     }
-    usort($rows, static fn (array $a, array $b): int => [$a['storage'], $a['bundle']] <=> [$b['storage'], $b['bundle']]);
+    usort($rows, static fn (array $a, array $b): int => $a['config_id'] <=> $b['config_id']);
     return $rows;
   }
 
