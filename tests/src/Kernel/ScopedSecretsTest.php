@@ -256,8 +256,12 @@ final class ScopedSecretsTest extends KernelTestBase {
     $registry = $this->container->get('file_gate.secret_registry');
     $this->assertTrue($registry->isNamedSecretUnscoped(self::NDA_ID));
 
-    // Through the module handler, the way the status report asks.
-    $requirements = $this->container->get('module_handler')->invoke('file_gate', 'runtime_requirements') ?? [];
+    // Through the module handler, the way the status report asks. With no
+    // implementation invoke() returns NULL, so assert there is one.
+    $moduleHandler = $this->container->get('module_handler');
+    $this->assertTrue($moduleHandler->hasImplementations('runtime_requirements', 'file_gate'));
+    $requirements = $moduleHandler->invoke('file_gate', 'runtime_requirements');
+    $this->assertIsArray($requirements);
     $this->assertArrayHasKey('file_gate_unscoped_named_secrets', $requirements);
     $this->assertSame(RequirementSeverity::Error, $requirements['file_gate_unscoped_named_secrets']['severity']);
   }

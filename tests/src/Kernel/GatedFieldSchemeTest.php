@@ -77,11 +77,21 @@ final class GatedFieldSchemeTest extends KernelTestBase {
    * Only this module's implementation is asked for; the System module's needs
    * install-time functions a kernel test does not load.
    *
+   * The implementation is asserted first. With none, invoke() returns NULL,
+   * and "no finding" would be indistinguishable from "no check".
+   *
    * @return array<string, array<string, mixed>>
    *   Requirements keyed by id.
    */
   private function runtimeRequirements(): array {
-    return $this->container->get('module_handler')->invoke('file_gate', 'runtime_requirements') ?? [];
+    $moduleHandler = $this->container->get('module_handler');
+    $this->assertTrue(
+      $moduleHandler->hasImplementations('runtime_requirements', 'file_gate'),
+      'file_gate must implement hook_runtime_requirements(), or its findings are gone.',
+    );
+    $requirements = $moduleHandler->invoke('file_gate', 'runtime_requirements');
+    $this->assertIsArray($requirements);
+    return $requirements;
   }
 
   /**
@@ -123,6 +133,8 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   public function testTheLegacyProceduralHookIsRemoved(): void {
     $this->container->get('module_handler')->loadInclude('file_gate', 'install');
 
+    // The include really loaded, so the absence below means something.
+    $this->assertTrue(function_exists('file_gate_update_10001'));
     $this->assertFalse(function_exists('file_gate_requirements'));
   }
 
