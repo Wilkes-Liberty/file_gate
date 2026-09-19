@@ -8,6 +8,8 @@
 declare(strict_types=1);
 
 use Drupal\Core\Extension\Requirement\RequirementSeverity;
+use Drupal\file_gate_assurance\AssuranceVerifier;
+use Drupal\file_gate_assurance\WebAuthn\WebAuthnCeremony;
 
 /**
  * Implements hook_schema().
@@ -86,6 +88,23 @@ function file_gate_assurance_schema(): array {
     ],
   ];
   return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ *
+ * Core does not drop expirable key-value collections. Spent DPoP jtis and
+ * WebAuthn ceremony challenges would otherwise remain. The credential table
+ * is already removed with the module schema.
+ */
+function file_gate_assurance_uninstall(): void {
+  $factory = \Drupal::service('keyvalue.expirable');
+  foreach ([
+    AssuranceVerifier::DPOP_COLLECTION,
+    WebAuthnCeremony::CHALLENGE_COLLECTION,
+  ] as $collection) {
+    $factory->get($collection)->deleteAll();
+  }
 }
 
 /**

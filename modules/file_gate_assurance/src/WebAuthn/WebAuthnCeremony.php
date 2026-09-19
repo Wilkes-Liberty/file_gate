@@ -44,7 +44,7 @@ final class WebAuthnCeremony {
   /**
    * Challenge store collection.
    */
-  private const CHALLENGE_COLLECTION = 'file_gate_webauthn_challenges';
+  public const CHALLENGE_COLLECTION = 'file_gate_webauthn_challenges';
 
   /**
    * Challenge TTL (seconds).

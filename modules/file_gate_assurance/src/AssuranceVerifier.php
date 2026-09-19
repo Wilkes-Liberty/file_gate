@@ -68,7 +68,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   /**
    * The replay store for spent DPoP proof identifiers.
    */
-  private const DPOP_COLLECTION = 'file_gate_assurance_dpop_jti';
+  public const DPOP_COLLECTION = 'file_gate_assurance_dpop_jti';
 
   /**
    * Constructs the verifier.

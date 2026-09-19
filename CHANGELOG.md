@@ -25,6 +25,12 @@ All notable changes to **File Gate** are documented here. The format is based on
   now reads from it, so the form and the status tool describe the same set.
 
 ### Fixed
+- **Uninstall drops leftover grant stores.** `hook_uninstall()` on
+  `file_gate`, `file_gate_assurance`, and `file_gate_form` deletes the named
+  expirable key-value and private-tempstore collections (token hashes, grant
+  inventory, redemption kill-marks, OTP rows, DPoP jtis, WebAuthn challenges,
+  form grants). Drupal core does not drop those collections, so they used to
+  remain after the module was removed.
 - A field storage marked gated on a file scheme other than `private` is now
   refused at save, on every write path. It was refused only by the field form
   and at configuration import, so the entity API, a recipe, an update hook,
@@ -66,6 +72,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   API; code that called it should invoke `runtime_requirements` through the
   module handler. The tests now do, and assert the implementation exists,
   so they fail if the hook stops running.
+- `GrantInventory::forget()` is private. The only caller was `revokeJti()`.
+- Revoke and the token kernel tests read `Token::TOKEN_COLLECTION` instead of
+  a third copy of `'file_gate_tokens'`.
 
 ## [1.9.2] - 2026-09-18
 

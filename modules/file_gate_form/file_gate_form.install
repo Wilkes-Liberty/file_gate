@@ -1,0 +1,22 @@
+<?php
+
+/**
+ * @file
+ * Install and uninstall functions for the File Gate Form submodule.
+ */
+
+declare(strict_types=1);
+
+use Drupal\file_gate_form\Plugin\GateMethod\FormGate;
+
+/**
+ * Implements hook_uninstall().
+ *
+ * Private tempstore persists as an expirable key-value collection named
+ * tempstore.private.{id}. Core does not drop it when the module is removed.
+ */
+function file_gate_form_uninstall(): void {
+  \Drupal::service('keyvalue.expirable')
+    ->get('tempstore.private.' . FormGate::GRANT_COLLECTION)
+    ->deleteAll();
+}

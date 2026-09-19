@@ -19,6 +19,7 @@ use Drupal\file\FileInterface;
 use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\MintController;
 use Drupal\file_gate\Controller\RevokeController;
+use Drupal\file_gate\Plugin\GateMethod\Token;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -50,11 +51,6 @@ final class TokenGateTest extends KernelTestBase {
    * The signing / mint secret used in the tests.
    */
   private const SECRET = 'file-gate-test-secret';
-
-  /**
-   * The token store collection name.
-   */
-  private const TOKEN_COLLECTION = 'file_gate_tokens';
 
   /**
    * {@inheritdoc}
@@ -516,7 +512,7 @@ final class TokenGateTest extends KernelTestBase {
    */
   private function tokenStore(): KeyValueStoreExpirableInterface {
     /** @var \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface $store */
-    $store = $this->container->get('keyvalue.expirable')->get(self::TOKEN_COLLECTION);
+    $store = $this->container->get('keyvalue.expirable')->get(Token::TOKEN_COLLECTION);
     return $store;
   }
 

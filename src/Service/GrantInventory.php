@@ -258,7 +258,7 @@ final class GrantInventory {
   /**
    * Removes inventory metadata for a jti (after revoke).
    */
-  public function forget(string $jti, string $field = ''): void {
+  private function forget(string $jti, string $field = ''): void {
     if ($jti === '') {
       return;
     }
