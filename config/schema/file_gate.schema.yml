@@ -56,6 +56,13 @@ file_gate.settings:
 field.storage.*.*.third_party.file_gate:
   type: mapping
   label: 'File Gate field settings'
+  # gated: true is valid only while the storage's settings.uri_scheme is
+  # "private". The rule spans two parts of the config object, so the validator
+  # reads the scheme from the root. Saves are refused by the same rule in
+  # GatedFieldSchemeGuard and GatedFieldSchemeSaveSubscriber; this gives
+  # validating callers a violation with a property path before they save.
+  constraints:
+    FileGateGatedFieldScheme: []
   mapping:
     gated:
       type: boolean

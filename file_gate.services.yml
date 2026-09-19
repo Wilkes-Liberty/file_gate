@@ -87,6 +87,13 @@ services:
     tags:
       - { name: event_subscriber }
 
+  file_gate.gated_field_scheme_save_subscriber:
+    class: Drupal\file_gate\EventSubscriber\GatedFieldSchemeSaveSubscriber
+    arguments:
+      - '@file_gate.audit'
+    tags:
+      - { name: event_subscriber }
+
   http_middleware.file_gate_authorization_shield:
     class: Drupal\file_gate\StackMiddleware\AuthorizationShield
     tags:
