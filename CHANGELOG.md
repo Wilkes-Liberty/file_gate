@@ -12,13 +12,16 @@ All notable changes to **File Gate** are documented here. The format is based on
   `hook_runtime_requirements()`. Drupal 13 stops calling the procedural hook,
   and nothing fails when it does: both findings would have left the status
   report without an error. Same keys, titles, severity and text. Removes the
-  Drupal 11.3 deprecation notice for `file_gate_requirements`.
+  Drupal 11.3 deprecation notice for `file_gate_requirements`. Rebuild
+  caches after updating (`drush updatedb` or `drush cr`): the compiled
+  container still lists the removed function until it is rebuilt.
   [#3624429](https://www.drupal.org/project/file_gate/issues/3624429)
 
 ### Changed
 - `file_gate_requirements()` is removed. It was a hook implementation, not an
   API; code that called it should invoke `runtime_requirements` through the
-  module handler. The tests now do, so they fail if the hook stops running.
+  module handler. The tests now do, and assert the implementation exists,
+  so they fail if the hook stops running.
 
 ## [1.9.2] - 2026-09-18
 

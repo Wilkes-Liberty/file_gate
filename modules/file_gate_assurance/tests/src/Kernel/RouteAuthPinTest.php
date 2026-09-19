@@ -6,6 +6,7 @@ namespace Drupal\Tests\file_gate_assurance\Kernel;
 
 use Drupal\KernelTests\KernelTestBase;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Guards the _auth pin on open-by-design token endpoints (GH #54).
@@ -16,6 +17,7 @@ use PHPUnit\Framework\Attributes\Group;
  * rejects the request during authentication and the controllers never run.
  */
 #[Group('file_gate')]
+#[RunTestsInSeparateProcesses]
 final class RouteAuthPinTest extends KernelTestBase {
 
   /**
