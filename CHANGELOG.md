@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-19
+
 ### Fixed
 - Revoke takes the same `file_gate_redemption:<jti>` lock that
   `SignedUrl::consumeUse()` holds. Without it, a redemption that read the
