@@ -25,6 +25,7 @@ function file_gate_uninstall(): void {
     GrantInventory::META_COLLECTION,
     GrantInventory::FIELD_INDEX_COLLECTION,
     GrantInventory::REDEMPTION_COLLECTION,
+    GrantInventory::KILL_EXPIRY_COLLECTION,
   ] as $collection) {
     $factory->get($collection)->deleteAll();
   }

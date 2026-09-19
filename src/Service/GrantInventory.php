@@ -7,6 +7,9 @@ namespace Drupal\file_gate\Service;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
+use Drupal\Core\Lock\LockBackendInterface;
+use Drupal\file_gate\GrantLockTrait;
+use Drupal\file_gate\GrantRevokeLockException;
 
 /**
  * Secondary index of usage-limited signed_url grants (jti inventory, GH #44).
@@ -16,6 +19,8 @@ use Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface;
  */
 final class GrantInventory {
 
+  use GrantLockTrait;
+
   public const META_COLLECTION = 'file_gate_grant_meta';
 
   public const FIELD_INDEX_COLLECTION = 'file_gate_grant_field_index';
@@ -24,6 +29,11 @@ final class GrantInventory {
    * Usage-counter / revoke kill-mark collection (same store SignedUrl reads).
    */
   public const REDEMPTION_COLLECTION = 'file_gate_redemptions';
+
+  /**
+   * Lock name prefix shared with SignedUrl::consumeUse().
+   */
+  public const REDEMPTION_LOCK_PREFIX = 'file_gate_redemption:';
 
   /**
    * When each kill mark ends, keyed by jti.
@@ -63,7 +73,15 @@ final class GrantInventory {
   public function __construct(
     private readonly KeyValueExpirableFactoryInterface $keyValueExpirableFactory,
     private readonly TimeInterface $time,
+    protected readonly LockBackendInterface $lock,
   ) {}
+
+  /**
+   * The lock name consumeUse and revokeJti must share for one jti.
+   */
+  public static function redemptionLockName(string $jti): string {
+    return self::REDEMPTION_LOCK_PREFIX . $jti;
+  }
 
   /**
    * Records a newly minted usage-limited grant.
@@ -216,11 +234,17 @@ final class GrantInventory {
     if ($jti === '') {
       return;
     }
-    // Read the expiry before forget() deletes the row that holds it.
-    $ttl = $this->killTtl($jti, $ttl);
-    $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
-    $this->killExpiryStore()->setWithExpire($jti, $this->time->getRequestTime() + $ttl, $ttl);
-    $this->forget($jti, $field);
+    $ok = $this->runLocked(self::redemptionLockName($jti), function () use ($jti, $field, $ttl): bool {
+      // Read the expiry before forget() deletes the row that holds it.
+      $ttl = $this->killTtl($jti, $ttl);
+      $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
+      $this->killExpiryStore()->setWithExpire($jti, $this->time->getRequestTime() + $ttl, $ttl);
+      $this->forget($jti, $field);
+      return TRUE;
+    }, FALSE);
+    if ($ok !== TRUE) {
+      throw new GrantRevokeLockException('Revoke could not take the redemption lock.');
+    }
   }
 
   /**

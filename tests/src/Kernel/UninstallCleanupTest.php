@@ -49,6 +49,7 @@ final class UninstallCleanupTest extends KernelTestBase {
     $this->expirable(GrantInventory::META_COLLECTION)->setWithExpire('jti-row', ['jti' => 'jti-row'], 3600);
     $this->expirable(GrantInventory::FIELD_INDEX_COLLECTION)->setWithExpire('field-row', ['jti-row' => 1], 3600);
     $this->expirable(GrantInventory::REDEMPTION_COLLECTION)->setWithExpire('jti-row', 1, 3600);
+    $this->expirable(GrantInventory::KILL_EXPIRY_COLLECTION)->setWithExpire('jti-row', 1, 3600);
     $this->expirable(Otp::STORE_COLLECTION)->setWithExpire('otp-row', ['attempts' => 0], 3600);
 
     // Snapshot names before uninstall: the module PSR-4 is unregistered.
@@ -77,6 +78,7 @@ final class UninstallCleanupTest extends KernelTestBase {
       GrantInventory::META_COLLECTION,
       GrantInventory::FIELD_INDEX_COLLECTION,
       GrantInventory::REDEMPTION_COLLECTION,
+      GrantInventory::KILL_EXPIRY_COLLECTION,
       Otp::STORE_COLLECTION,
     ];
   }

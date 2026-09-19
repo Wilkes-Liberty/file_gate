@@ -10,6 +10,7 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\file_gate\GrantLockTrait;
+use Drupal\file_gate\GrantRevokeLockException;
 use Drupal\file_gate\Plugin\GateMethod\Token;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
@@ -217,7 +218,14 @@ final class RevokeController implements ContainerInjectionInterface {
     $ttl = is_array($data) && array_key_exists('ttl', $data)
       ? (int) $data['ttl']
       : NULL;
-    $this->inventory->revokeJti($jti, $field, $ttl);
+    try {
+      $this->inventory->revokeJti($jti, $field, $ttl);
+    }
+    catch (GrantRevokeLockException) {
+      $response = new JsonResponse(['error' => 'Grant is momentarily locked; retry.'], Response::HTTP_SERVICE_UNAVAILABLE);
+      $response->headers->set('Retry-After', '5');
+      return $response;
+    }
     $this->logger->info('Revoked signed_url jti from @ip.', [
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);

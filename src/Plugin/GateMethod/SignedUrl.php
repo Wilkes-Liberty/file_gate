@@ -396,7 +396,7 @@ class SignedUrl extends GateMethodBase {
     if ($token === '' || $max <= 0) {
       return FALSE;
     }
-    return (bool) $this->runLocked('file_gate_redemption:' . $token, function () use ($token, $max, $exp): bool {
+    return (bool) $this->runLocked(GrantInventory::redemptionLockName($token), function () use ($token, $max, $exp): bool {
       $store = $this->keyValueExpirableFactory->get(GrantInventory::REDEMPTION_COLLECTION);
       $count = (int) $store->get($token, 0);
       if ($count >= $max) {
