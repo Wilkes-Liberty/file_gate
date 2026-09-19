@@ -10,6 +10,7 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\file_gate\GrantLockTrait;
+use Drupal\file_gate\Plugin\GateMethod\Token;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
 use Drupal\file_gate\Service\GrantInventory;
@@ -29,11 +30,6 @@ final class RevokeController implements ContainerInjectionInterface {
 
   use SharedSecretAuthTrait;
   use GrantLockTrait;
-
-  /**
-   * The token store collection name (keyed by the SHA-256 hash of the token).
-   */
-  private const TOKEN_COLLECTION = 'file_gate_tokens';
 
   /**
    * Constructs the revoke controller.
@@ -137,7 +133,7 @@ final class RevokeController implements ContainerInjectionInterface {
     // 503 (retryable) rather than delete outside the lock — deleting outside it
     // would reopen the resurrection race for that one interleaving.
     $result = $this->runLocked($this->tokenLockName($token_hash), function () use ($token_hash, $secret_id): string {
-      $store = $this->keyValueExpirableFactory->get(self::TOKEN_COLLECTION);
+      $store = $this->keyValueExpirableFactory->get(Token::TOKEN_COLLECTION);
       if (!$store->has($token_hash)) {
         return 'missing';
       }

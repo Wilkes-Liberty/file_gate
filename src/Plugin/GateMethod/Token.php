@@ -43,7 +43,7 @@ final class Token extends GateMethodBase {
   /**
    * The token store collection name (keyed by the SHA-256 hash of the token).
    */
-  private const TOKEN_COLLECTION = 'file_gate_tokens';
+  public const TOKEN_COLLECTION = 'file_gate_tokens';
 
   /**
    * The signed-payload claim key binding a grant to its token hash.
