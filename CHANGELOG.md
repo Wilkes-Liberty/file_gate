@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-19
+
 ### Added
 - Optional `file_gate_mcp` submodule: five Tool API plugins governed by MCP
   Sentinel. `file_gate_status`, `file_gate_file_gate`, `file_gate_grants_list`
@@ -29,6 +31,22 @@ All notable changes to **File Gate** are documented here. The format is based on
   inventory, redemption kill-marks, OTP rows, DPoP jtis, WebAuthn challenges,
   form grants). Drupal core does not drop those collections, so they used to
   remain after the module was removed.
+- A field storage marked gated on a file scheme other than `private` is now
+  refused at save, on every write path. It was refused only by the field form
+  and at configuration import, so the entity API, a recipe, an update hook,
+  `drush config:set` or a configuration tool could write it, and the files
+  stayed public. An entity save throws `GatedPublicSchemeException` before
+  anything is written. A raw configuration write is put back and then throws,
+  because core has no event before it. The configuration schema carries the
+  same rule as the `FileGateGatedFieldScheme` constraint. A site already in
+  this state can still load, edit and re-save the field unchanged, and stays
+  an error on the status report; only a save that creates the combination or
+  moves it to another non-private scheme is refused. In the field form,
+  removing gating and choosing the public scheme in one submit still works,
+  and a public field that already holds files still cannot be gated. Each
+  refusal is recorded as a `field_gating_refused` audit event when
+  `audit_chain` is installed.
+  [#3624449](https://www.drupal.org/project/file_gate/issues/3624449)
 - The two status report findings (gated fields on a public file system, and
   named secrets with no field scope) move from `hook_requirements()` to
   `hook_runtime_requirements()`. Drupal 13 stops calling the procedural hook,
@@ -38,6 +56,16 @@ All notable changes to **File Gate** are documented here. The format is based on
   caches after updating (`drush updatedb` or `drush cr`): the compiled
   container still lists the removed function until it is rebuilt.
   [#3624429](https://www.drupal.org/project/file_gate/issues/3624429)
+- A revoked signed_url grant could be redeemed again when it outlived its kill
+  mark. Revoke wrote the mark for 30 days, or for the caller's `ttl`, and
+  removed the grant from the inventory list. A grant with a longer life became
+  redeemable once the mark lapsed, with nothing left to show it. The mark now
+  lasts until the grant's stored expiry plus one hour. A caller `ttl` can
+  lengthen it and cannot shorten it below that. A revoke for a grant with no
+  inventory record keeps the 30-day default. Revoking the same grant again
+  never shortens the mark the first revoke left. Single and bulk revoke share
+  the rule. No API change.
+  [#3624450](https://www.drupal.org/project/file_gate/issues/3624450)
 
 ### Changed
 - `file_gate_requirements()` is removed. It was a hook implementation, not an

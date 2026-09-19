@@ -111,7 +111,9 @@ Server-to-server. Body examples:
 ```
 
 Marks listed jtis spent (same as single jti revoke) for grants in inventory for
-that field and secret scope.
+that field and secret scope. An optional `"ttl"` (seconds) follows the same rule
+as single jti revoke: each mark lasts until that grant's own expiry plus one
+hour, so a shorter `ttl` is raised and a longer one is kept.
 
 ### `POST /api/file-gate/revoke`
 
@@ -128,7 +130,7 @@ Pre-shared campaign tokens are revoked by removing their hash from the field's
 | Body | Effect |
 |------|--------|
 | `{"token":"<plaintext>"}` | Deletes a minted `token`-method row (field-scoped when the stored field is known). |
-| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent and drops it from inventory (optional ttl seconds; default 30 days). The authenticated secret must be allowed for the grant's stored `field`; a named secret must also match stored `k`. Missing inventory meta is `404` (the jti is not confirmed and is not spent). |
+| `{"jti":"<jti>","ttl":86400}` | Marks a signed_url usage jti fully spent and drops it from inventory (optional ttl seconds; default 30 days). The mark always lasts until the grant's own expiry plus one hour: a shorter `ttl` is raised, a longer one is kept. The authenticated secret must be allowed for the grant's stored `field`; a named secret must also match stored `k`. Missing inventory meta is `404` (the jti is not confirmed and is not spent). |
 
 **Responses:**
 

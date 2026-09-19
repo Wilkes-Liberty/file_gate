@@ -373,12 +373,31 @@ final class FileGateToolsKernelTest extends KernelTestBase {
       'type' => 'file',
       'settings' => ['uri_scheme' => $scheme],
     ]);
-    if ($gated) {
-      $storage->setThirdPartySetting('file_gate', 'gated', TRUE)
-        ->setThirdPartySetting('file_gate', 'method', 'signed_url')
-        ->setThirdPartySetting('file_gate', 'method_settings', ['max_uses' => 2]);
+    $gate = [
+      'gated' => TRUE,
+      'method' => 'signed_url',
+      'method_settings' => ['max_uses' => 2],
+    ];
+    if ($gated && $scheme === 'private') {
+      foreach ($gate as $key => $value) {
+        $storage->setThirdPartySetting('file_gate', $key, $value);
+      }
     }
     $storage->save();
+    if ($gated && $scheme !== 'private') {
+      // A save that gates a non-private scheme is refused. A site that was
+      // already in that state is reproduced by writing the active storage
+      // directly, which runs no entity hook and no config event.
+      $name = 'field.storage.entity_test.' . $field_name;
+      $active = $this->container->get('config.storage');
+      $data = $active->read($name);
+      $data['third_party_settings']['file_gate'] = $gate;
+      $data['dependencies']['module'][] = 'file_gate';
+      sort($data['dependencies']['module']);
+      $active->write($name, $data);
+      $this->container->get('config.factory')->reset($name);
+      $this->container->get('entity_type.manager')->getStorage('field_storage_config')->resetCache();
+    }
     FieldConfig::create([
       'entity_type' => 'entity_test',
       'field_name' => $field_name,

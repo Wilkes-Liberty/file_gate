@@ -342,6 +342,14 @@ field is known). `jti` spends a usage-limited signed_url grant and drops it
 from inventory; the secret must be allowed for the grant's stored field, and a
 named secret must match stored `k`.
 
+A `jti` revoke is a kill mark: a redemption counter set to its maximum, stored
+with an expiry. The mark lasts until the grant's own expiry plus one hour, and
+never less than 30 days. An optional `"ttl"` (seconds) can lengthen it. A `ttl`
+shorter than the grant's remaining life is raised to it, because a mark that
+lapses first would make the revoked URL work again. Revoking the same grant
+again never shortens its mark. Bulk revoke
+(`POST /api/file-gate/grants/revoke-bulk`) follows the same rule.
+
 Responses: `204` (revoked), `400` (no token/jti), `401` (bad/absent secret),
 `403` (credential not allowed for that grant's field / `k`), `404` (unknown or
 already-gone token or jti), `429` (rate limited), `503` (no secret configured).
@@ -498,13 +506,32 @@ Gating only applies to files on the private file system. Public files are served
 straight off disk by the web server or a CDN and never reach Drupal, so there is
 no request to gate.
 
-The field edit form enforces this by forcing the private scheme when you enable
-gating. A configuration import does **not** run that form, so an exported
-`field.storage.*.yml` carrying `file_gate.gated: true` alongside
-`uri_scheme: public` would install a field that claims to be gated and is not.
-The module rejects that import and reports any site already in that state on the
-status report — but if you hand-edit exported configuration, this is the pairing
-to keep intact.
+A field storage with `file_gate.gated: true` and a `uri_scheme` other than
+`private` claims to be gated and is not. The module refuses every write that
+would produce it:
+
+- **The field edit form** forces the private scheme when you enable gating.
+- **An entity save** (the entity API, a recipe, an update hook, a module's
+  default configuration) throws `GatedPublicSchemeException` before anything is
+  written. The message names the storage and says how to fix it.
+- **A raw configuration write** (`drush config:set`, a configuration tool that
+  saves through the config factory) never loads the entity. Core has no event
+  before such a write, so the module puts the previous value back and the
+  command fails with the same exception.
+- **A configuration import** is rejected at validation, before any change.
+- **The configuration schema** carries the rule as the
+  `FileGateGatedFieldScheme` constraint, so code that validates configuration
+  gets a violation at `third_party_settings.file_gate.gated`.
+
+All five use one rule, `GatedFieldSchemeRule`. A field type with no `uri_scheme`
+setting is not affected.
+
+A site that is already in this state keeps working. The field loads, the edit
+form opens, and a save that leaves `gated` and `uri_scheme` as they were is
+allowed, so a core update, an unrelated configuration import or a module
+uninstall does not start failing. The status report shows the field as an error
+until it is fixed. Fix it by saving the field with the private scheme or by
+removing the gating. Moving it to another non-private scheme is refused.
 
 Changing an existing field to the private scheme does not move files that are
 already stored publicly. They stay where they are, and stay readable, until they

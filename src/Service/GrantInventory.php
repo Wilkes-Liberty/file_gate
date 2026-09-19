@@ -26,13 +26,34 @@ final class GrantInventory {
   public const REDEMPTION_COLLECTION = 'file_gate_redemptions';
 
   /**
+   * When each kill mark ends, keyed by jti.
+   *
+   * The expirable store cannot be asked when a row expires, and revoke deletes
+   * the inventory row that held the grant's expiry. Without this record a
+   * second revoke of the same jti would have nothing to measure against and
+   * could replace a long mark with a short one.
+   */
+  public const KILL_EXPIRY_COLLECTION = 'file_gate_kill_expiry';
+
+  /**
    * Default TTL for a revoke kill mark, in seconds.
    *
    * Single-jti revoke used 86400; bulk used 86400 * 30. The longer window is
    * the safer pin: a kill mark that expires while the HMAC is still valid
-   * would resurrect the grant.
+   * would resurrect the grant. It is a default, not a ceiling: killTtl() keeps
+   * the mark of a recorded grant past that grant's own expiry.
    */
   public const DEFAULT_KILL_TTL = 86400 * 30;
+
+  /**
+   * Seconds a kill mark is kept past the grant's own expiry.
+   *
+   * The mark and the signature are judged against the request time of whichever
+   * request is in flight, on whichever web head serves it. The margin covers
+   * clock differences between heads and a request that started before the
+   * expiry and redeems after it.
+   */
+  public const KILL_MARGIN = 3600;
 
   /**
    * Floor applied to an explicit kill-mark TTL.
@@ -187,15 +208,51 @@ final class GrantInventory {
    * @param string $field
    *   Field storage key when known; empty lets forget() read it from meta.
    * @param int|null $ttl
-   *   Kill-mark TTL in seconds, or NULL for DEFAULT_KILL_TTL.
+   *   Kill-mark TTL in seconds, or NULL for DEFAULT_KILL_TTL. It can lengthen
+   *   the mark. It cannot shorten it below the recorded grant's remaining life
+   *   plus KILL_MARGIN; see killTtl().
    */
   public function revokeJti(string $jti, string $field = '', ?int $ttl = NULL): void {
     if ($jti === '') {
       return;
     }
-    $ttl = max(self::MIN_KILL_TTL, $ttl ?? self::DEFAULT_KILL_TTL);
+    // Read the expiry before forget() deletes the row that holds it.
+    $ttl = $this->killTtl($jti, $ttl);
     $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
+    $this->killExpiryStore()->setWithExpire($jti, $this->time->getRequestTime() + $ttl, $ttl);
     $this->forget($jti, $field);
+  }
+
+  /**
+   * How long a kill mark for a jti must last, in seconds.
+   *
+   * The mark is an expiring redemption counter. If it lapses while the grant's
+   * signature is still valid, the counter restarts from zero and the revoked
+   * URL works again, with the grant already gone from the operator's list. So
+   * the mark of a recorded grant always outlives the grant. With no record
+   * there is no expiry to read, and the requested or default TTL stands. A
+   * mark that already exists is never shortened: the first revoke removed the
+   * record, so a repeat revoke is measured against the mark it left.
+   *
+   * @param string $jti
+   *   Grant jti claim value.
+   * @param int|null $requested
+   *   Caller TTL in seconds, or NULL for DEFAULT_KILL_TTL.
+   *
+   * @return int
+   *   The TTL to store.
+   */
+  private function killTtl(string $jti, ?int $requested): int {
+    $now = $this->time->getRequestTime();
+    $ttl = max(self::MIN_KILL_TTL, $requested ?? self::DEFAULT_KILL_TTL);
+    $ttl = max($ttl, (int) $this->killExpiryStore()->get($jti, 0) - $now);
+    $meta = $this->meta($jti);
+    $exp = is_array($meta) ? (int) ($meta['exp'] ?? 0) : 0;
+    $remaining = $exp - $now;
+    if ($remaining <= 0) {
+      return $ttl;
+    }
+    return max($ttl, $remaining + self::KILL_MARGIN);
   }
 
   /**
@@ -223,6 +280,13 @@ final class GrantInventory {
    */
   private function redemptionStore(): KeyValueStoreExpirableInterface {
     return $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+  }
+
+  /**
+   * Kill-mark expiry store.
+   */
+  private function killExpiryStore(): KeyValueStoreExpirableInterface {
+    return $this->keyValueExpirableFactory->get(self::KILL_EXPIRY_COLLECTION);
   }
 
   /**
