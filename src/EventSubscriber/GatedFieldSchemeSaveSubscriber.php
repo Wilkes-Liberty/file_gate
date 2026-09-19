@@ -9,6 +9,7 @@ use Drupal\Core\Config\ConfigCrudEvent;
 use Drupal\Core\Config\ConfigEvents;
 use Drupal\file_gate\Exception\GatedPublicSchemeException;
 use Drupal\file_gate\GatedFieldSchemeRule;
+use Drupal\file_gate\Service\FileGateAudit;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
@@ -26,6 +27,10 @@ final class GatedFieldSchemeSaveSubscriber implements EventSubscriberInterface {
    * TRUE while this subscriber is putting a refused write back.
    */
   private bool $restoring = FALSE;
+
+  public function __construct(
+    private readonly FileGateAudit $audit,
+  ) {}
 
   /**
    * Restores the previous data and throws when a write breaks the rule.
@@ -58,6 +63,14 @@ final class GatedFieldSchemeSaveSubscriber implements EventSubscriberInterface {
     finally {
       $this->restoring = FALSE;
     }
+    // Logged after the restore, so the record is of a write that was undone.
+    // If the restore itself throws, that exception leaves instead and the
+    // status report still names the field.
+    $this->audit->log('field_gating_refused', [
+      'storage' => $config->getName(),
+      'scheme' => (string) $new,
+      'write' => 'config',
+    ]);
     throw GatedPublicSchemeException::forStorage($config->getName(), (string) $new);
   }
 

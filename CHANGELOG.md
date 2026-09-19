@@ -35,7 +35,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   an error on the status report; only a save that creates the combination or
   moves it to another non-private scheme is refused. In the field form,
   removing gating and choosing the public scheme in one submit still works,
-  and a public field that already holds files still cannot be gated.
+  and a public field that already holds files still cannot be gated. Each
+  refusal is recorded as a `field_gating_refused` audit event when
+  `audit_chain` is installed.
   [#3624449](https://www.drupal.org/project/file_gate/issues/3624449)
 - The two status report findings (gated fields on a public file system, and
   named secrets with no field scope) move from `hook_requirements()` to

@@ -89,6 +89,8 @@ services:
 
   file_gate.gated_field_scheme_save_subscriber:
     class: Drupal\file_gate\EventSubscriber\GatedFieldSchemeSaveSubscriber
+    arguments:
+      - '@file_gate.audit'
     tags:
       - { name: event_subscriber }
 

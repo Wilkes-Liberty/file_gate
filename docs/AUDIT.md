@@ -40,6 +40,7 @@ drush audit-chain:verify
 | `download_denied` | Hard grant reject (not soft step-up challenges) |
 | `otp_issue` | OTP code issued (never the code itself) |
 | `revoke` | Token or jti revoke |
+| `field_gating_refused` | A save that would gate a field on a non-private file scheme was refused. Metadata: `storage` (config name), `scheme`, `write` (`entity` or `config`) |
 
 Metadata promotes `entity_type` / `id` / `label` when present; free keys
 (`uuid`, `gate_method`, `field`, `reason`, `secret_id`) stay in JSON. **Never**

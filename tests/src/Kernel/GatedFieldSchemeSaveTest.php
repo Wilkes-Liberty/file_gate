@@ -9,10 +9,12 @@ use Drupal\Core\Config\ConfigEvents;
 use Drupal\Core\Config\ConfigImporter;
 use Drupal\Core\Config\ConfigImporterException;
 use Drupal\Core\Config\StorageComparer;
+use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\file_gate\Exception\GatedPublicSchemeException;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\Tests\file_gate\RecordingAuditChain;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -34,8 +36,18 @@ final class GatedFieldSchemeSaveTest extends KernelTestBase {
   /**
    * {@inheritdoc}
    */
+  public function register(ContainerBuilder $container): void {
+    parent::register($container);
+    // file_gate.audit takes audit_chain.logger when it exists.
+    $container->register('audit_chain.logger', RecordingAuditChain::class)->setPublic(TRUE);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp(): void {
     parent::setUp();
+    RecordingAuditChain::$events = [];
     $this->installEntitySchema('user');
     $this->installEntitySchema('file');
     $this->installSchema('user', ['users_data']);
@@ -134,6 +146,42 @@ final class GatedFieldSchemeSaveTest extends KernelTestBase {
     catch (GatedPublicSchemeException) {
     }
     $this->assertSame(0, $writes, 'The refusal came before any config write.');
+  }
+
+  /**
+   * Both refusal paths leave an audit event; an allowed save leaves none.
+   */
+  public function testRefusalsAreAudited(): void {
+    $this->makeStorage('field_ok', 'private', TRUE);
+    $this->assertSame([], RecordingAuditChain::$events);
+
+    try {
+      $this->makeStorage('field_leaky', 'public', TRUE);
+    }
+    catch (GatedPublicSchemeException) {
+    }
+    $this->makeStorage('field_doc', 'public', FALSE);
+    try {
+      $this->container->get('config.factory')->getEditable('field.storage.user.field_doc')
+        ->set('third_party_settings.file_gate.gated', TRUE)->save();
+    }
+    catch (GatedPublicSchemeException) {
+    }
+
+    $this->assertSame([
+      ['file_gate', 'field_gating_refused', [
+        'storage' => 'field.storage.user.field_leaky',
+        'scheme' => 'public',
+        'write' => 'entity',
+      ],
+      ],
+      ['file_gate', 'field_gating_refused', [
+        'storage' => 'field.storage.user.field_doc',
+        'scheme' => 'public',
+        'write' => 'config',
+      ],
+      ],
+    ], RecordingAuditChain::$events);
   }
 
   /**

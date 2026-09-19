@@ -8,6 +8,8 @@ use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\field\FieldStorageConfigInterface;
 use Drupal\file_gate\Exception\GatedPublicSchemeException;
 use Drupal\file_gate\GatedFieldSchemeRule;
+use Drupal\file_gate\Service\FileGateAudit;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Refuses an entity save that gates a field stored outside private.
@@ -19,6 +21,14 @@ use Drupal\file_gate\GatedFieldSchemeRule;
 final class GatedFieldSchemeGuard {
 
   /**
+   * Constructs the hook class.
+   */
+  public function __construct(
+    #[Autowire(service: 'file_gate.audit')]
+    private readonly FileGateAudit $audit,
+  ) {}
+
+  /**
    * Implements hook_ENTITY_TYPE_presave() for field_storage_config.
    */
   #[Hook('field_storage_config_presave')]
@@ -28,7 +38,14 @@ final class GatedFieldSchemeGuard {
     $before = $original instanceof FieldStorageConfigInterface ? self::offendingScheme($original) : NULL;
 
     if (GatedFieldSchemeRule::isRefused($new, $before)) {
-      throw GatedPublicSchemeException::forStorage('field.storage.' . $storage->id(), (string) $new);
+      $name = 'field.storage.' . $storage->id();
+      // A refused attempt to mark public files as protected is worth a record.
+      $this->audit->log('field_gating_refused', [
+        'storage' => $name,
+        'scheme' => (string) $new,
+        'write' => 'entity',
+      ]);
+      throw GatedPublicSchemeException::forStorage($name, (string) $new);
     }
   }
 
