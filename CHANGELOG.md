@@ -6,6 +6,20 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- The two status report findings (gated fields on a public file system, and
+  named secrets with no field scope) move from `hook_requirements()` to
+  `hook_runtime_requirements()`. Drupal 13 stops calling the procedural hook,
+  and nothing fails when it does: both findings would have left the status
+  report without an error. Same keys, titles, severity and text. Removes the
+  Drupal 11.3 deprecation notice for `file_gate_requirements`.
+  [#3624429](https://www.drupal.org/project/file_gate/issues/3624429)
+
+### Changed
+- `file_gate_requirements()` is removed. It was a hook implementation, not an
+  API; code that called it should invoke `runtime_requirements` through the
+  module handler. The tests now do, so they fail if the hook stops running.
+
 ## [1.9.2] - 2026-09-18
 
 ### Fixed

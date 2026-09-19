@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\file_gate\Kernel;
 
+use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\KernelTests\KernelTestBase;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * A field cannot claim to be gated while storing files publicly.
@@ -21,6 +23,7 @@ use PHPUnit\Framework\Attributes\Group;
  * form alter and a config-import-authoritative deploy never runs it.
  */
 #[Group('file_gate')]
+#[RunTestsInSeparateProcesses]
 final class GatedFieldSchemeTest extends KernelTestBase {
 
   /**
@@ -66,14 +69,29 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   }
 
   /**
+   * The runtime requirements, asked for the way the status report asks.
+   *
+   * Through the module handler, not by calling an implementation: a direct
+   * call passes whether or not core still invokes the hook, which is how a
+   * security finding could leave the status report with every test green.
+   * Only this module's implementation is asked for; the System module's needs
+   * install-time functions a kernel test does not load.
+   *
+   * @return array<string, array<string, mixed>>
+   *   Requirements keyed by id.
+   */
+  private function runtimeRequirements(): array {
+    return $this->container->get('module_handler')->invoke('file_gate', 'runtime_requirements') ?? [];
+  }
+
+  /**
    * A healthy site reports nothing.
    */
   public function testNoFindingWhenGatedFieldsArePrivate(): void {
     $this->makeStorage('field_ok_private', 'private', TRUE);
     $this->makeStorage('field_ok_public', 'public', FALSE);
 
-    $this->container->get('module_handler')->loadInclude('file_gate', 'install');
-    $this->assertArrayNotHasKey('file_gate_public_gated_fields', file_gate_requirements('runtime'));
+    $this->assertArrayNotHasKey('file_gate_public_gated_fields', $this->runtimeRequirements());
   }
 
   /**
@@ -85,12 +103,11 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   public function testGatedPublicFieldIsReportedAsAnError(): void {
     $this->makeStorage('field_leaky', 'public', TRUE);
 
-    $this->container->get('module_handler')->loadInclude('file_gate', 'install');
-    $requirements = file_gate_requirements('runtime');
+    $requirements = $this->runtimeRequirements();
 
     $this->assertArrayHasKey('file_gate_public_gated_fields', $requirements);
     $this->assertSame(
-      REQUIREMENT_ERROR,
+      RequirementSeverity::Error,
       $requirements['file_gate_public_gated_fields']['severity'],
     );
     $this->assertStringContainsString(
@@ -98,6 +115,15 @@ final class GatedFieldSchemeTest extends KernelTestBase {
       (string) $requirements['file_gate_public_gated_fields']['value'],
       'The finding must name the field so an operator can act on it.',
     );
+  }
+
+  /**
+   * The procedural hook is gone, so nothing depends on core still calling it.
+   */
+  public function testTheLegacyProceduralHookIsRemoved(): void {
+    $this->container->get('module_handler')->loadInclude('file_gate', 'install');
+
+    $this->assertFalse(function_exists('file_gate_requirements'));
   }
 
   /**
@@ -109,8 +135,7 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   public function testUngatedPublicFieldIsNotReported(): void {
     $this->makeStorage('field_plain', 'public', FALSE);
 
-    $this->container->get('module_handler')->loadInclude('file_gate', 'install');
-    $this->assertArrayNotHasKey('file_gate_public_gated_fields', file_gate_requirements('runtime'));
+    $this->assertArrayNotHasKey('file_gate_public_gated_fields', $this->runtimeRequirements());
   }
 
   /**

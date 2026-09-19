@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\file_gate\Kernel;
 
+use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
-use Drupal\KernelTests\KernelTestBase;
 use Drupal\entity_test\Entity\EntityTest;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
@@ -17,6 +17,7 @@ use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\MintController;
 use Drupal\file_gate\GrantSigner;
 use Drupal\file_gate\SecretRegistry;
+use Drupal\KernelTests\KernelTestBase;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
@@ -255,10 +256,10 @@ final class ScopedSecretsTest extends KernelTestBase {
     $registry = $this->container->get('file_gate.secret_registry');
     $this->assertTrue($registry->isNamedSecretUnscoped(self::NDA_ID));
 
-    $this->container->get('module_handler')->loadInclude('file_gate', 'install');
-    $requirements = file_gate_requirements('runtime');
+    // Through the module handler, the way the status report asks.
+    $requirements = $this->container->get('module_handler')->invoke('file_gate', 'runtime_requirements') ?? [];
     $this->assertArrayHasKey('file_gate_unscoped_named_secrets', $requirements);
-    $this->assertSame(REQUIREMENT_ERROR, $requirements['file_gate_unscoped_named_secrets']['severity']);
+    $this->assertSame(RequirementSeverity::Error, $requirements['file_gate_unscoped_named_secrets']['severity']);
   }
 
   /**

@@ -81,7 +81,7 @@ final class FileGateResolver {
     // gated whose files are public is the module's worst state: the config
     // claims protection that does not exist. Detecting it is deliberately not
     // done on this hot path — GatedFieldSchemeValidator rejects the
-    // combination at config import, and file_gate_requirements() reports any
+    // combination at config import, and FileGateRequirements reports any
     // site already in it. Both look at field storages directly, so neither
     // costs a per-request query.
     if ($this->streamWrapperManager->getScheme((string) $file->getFileUri()) !== 'private') {
