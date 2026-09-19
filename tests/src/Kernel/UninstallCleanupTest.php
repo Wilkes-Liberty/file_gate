@@ -30,6 +30,18 @@ final class UninstallCleanupTest extends KernelTestBase {
   ];
 
   /**
+   * {@inheritdoc}
+   */
+  protected function setUp(): void {
+    parent::setUp();
+    // Core module-uninstall hooks delete from these tables.
+    $this->installEntitySchema('user');
+    $this->installEntitySchema('file');
+    $this->installSchema('user', ['users_data']);
+    $this->installSchema('file', ['file_usage']);
+  }
+
+  /**
    * A token, jti, and OTP row are gone after uninstall.
    */
   public function testUninstallDeletesOwnedCollections(): void {
