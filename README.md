@@ -346,7 +346,8 @@ A `jti` revoke is a kill mark: a redemption counter set to its maximum, stored
 with an expiry. The mark lasts until the grant's own expiry plus one hour, and
 never less than 30 days. An optional `"ttl"` (seconds) can lengthen it. A `ttl`
 shorter than the grant's remaining life is raised to it, because a mark that
-lapses first would make the revoked URL work again. Bulk revoke
+lapses first would make the revoked URL work again. Revoking the same grant
+again never shortens its mark. Bulk revoke
 (`POST /api/file-gate/grants/revoke-bulk`) follows the same rule.
 
 Responses: `204` (revoked), `400` (no token/jti), `401` (bad/absent secret),

@@ -38,8 +38,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   redeemable once the mark lapsed, with nothing left to show it. The mark now
   lasts until the grant's stored expiry plus one hour. A caller `ttl` can
   lengthen it and cannot shorten it below that. A revoke for a grant with no
-  inventory record keeps the 30-day default. Single and bulk revoke share the
-  rule. No API change.
+  inventory record keeps the 30-day default. Revoking the same grant again
+  never shortens the mark the first revoke left. Single and bulk revoke share
+  the rule. No API change.
   [#3624450](https://www.drupal.org/project/file_gate/issues/3624450)
 
 ### Changed

@@ -26,6 +26,16 @@ final class GrantInventory {
   public const REDEMPTION_COLLECTION = 'file_gate_redemptions';
 
   /**
+   * When each kill mark ends, keyed by jti.
+   *
+   * The expirable store cannot be asked when a row expires, and revoke deletes
+   * the inventory row that held the grant's expiry. Without this record a
+   * second revoke of the same jti would have nothing to measure against and
+   * could replace a long mark with a short one.
+   */
+  public const KILL_EXPIRY_COLLECTION = 'file_gate_kill_expiry';
+
+  /**
    * Default TTL for a revoke kill mark, in seconds.
    *
    * Single-jti revoke used 86400; bulk used 86400 * 30. The longer window is
@@ -207,7 +217,9 @@ final class GrantInventory {
       return;
     }
     // Read the expiry before forget() deletes the row that holds it.
-    $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $this->killTtl($jti, $ttl));
+    $ttl = $this->killTtl($jti, $ttl);
+    $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
+    $this->killExpiryStore()->setWithExpire($jti, $this->time->getRequestTime() + $ttl, $ttl);
     $this->forget($jti, $field);
   }
 
@@ -218,7 +230,9 @@ final class GrantInventory {
    * signature is still valid, the counter restarts from zero and the revoked
    * URL works again, with the grant already gone from the operator's list. So
    * the mark of a recorded grant always outlives the grant. With no record
-   * there is no expiry to read, and the requested or default TTL stands.
+   * there is no expiry to read, and the requested or default TTL stands. A
+   * mark that already exists is never shortened: the first revoke removed the
+   * record, so a repeat revoke is measured against the mark it left.
    *
    * @param string $jti
    *   Grant jti claim value.
@@ -229,10 +243,12 @@ final class GrantInventory {
    *   The TTL to store.
    */
   private function killTtl(string $jti, ?int $requested): int {
+    $now = $this->time->getRequestTime();
     $ttl = max(self::MIN_KILL_TTL, $requested ?? self::DEFAULT_KILL_TTL);
+    $ttl = max($ttl, (int) $this->killExpiryStore()->get($jti, 0) - $now);
     $meta = $this->meta($jti);
     $exp = is_array($meta) ? (int) ($meta['exp'] ?? 0) : 0;
-    $remaining = $exp - $this->time->getRequestTime();
+    $remaining = $exp - $now;
     if ($remaining <= 0) {
       return $ttl;
     }
@@ -264,6 +280,13 @@ final class GrantInventory {
    */
   private function redemptionStore(): KeyValueStoreExpirableInterface {
     return $this->keyValueExpirableFactory->get(self::REDEMPTION_COLLECTION);
+  }
+
+  /**
+   * Kill-mark expiry store.
+   */
+  private function killExpiryStore(): KeyValueStoreExpirableInterface {
+    return $this->keyValueExpirableFactory->get(self::KILL_EXPIRY_COLLECTION);
   }
 
   /**

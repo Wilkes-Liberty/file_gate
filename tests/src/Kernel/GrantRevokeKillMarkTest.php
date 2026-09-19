@@ -196,6 +196,26 @@ final class GrantRevokeKillMarkTest extends KernelTestBase {
   }
 
   /**
+   * A second revoke with a short ttl cannot shorten the first mark.
+   *
+   * The first revoke forgets the inventory row, so the second finds no expiry
+   * to read. It must not replace the long mark with a short one.
+   */
+  public function testSecondRevokeCannotShortenTheMark(): void {
+    $query = $this->mintGrant('twice.pdf');
+    $inventory = $this->container->get('file_gate.grant_inventory');
+    $inventory->revokeJti($query['jti']);
+    $first = $this->killMarkExpiry($query['jti']);
+
+    $inventory->revokeJti($query['jti'], '', 60);
+
+    AdvanceableTime::$offset = 31 * self::DAY;
+    $this->assertDownloadRefused($query);
+    AdvanceableTime::$offset = 0;
+    $this->assertGreaterThanOrEqual($first, $this->killMarkExpiry($query['jti']));
+  }
+
+  /**
    * With no inventory record the default mark is kept, and a ttl is honoured.
    */
   public function testUnknownGrantKeepsTheDefault(): void {
