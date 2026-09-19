@@ -91,6 +91,8 @@ jobs:
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
             'web-auth/webauthn-lib:^5.0' \
+            'drupal/mcp_sentinel:^2.22' \
+            'drupal/tool:^1.0.0-beta8' \
             --no-interaction --with-all-dependencies
 
       - name: Run the File Gate suite
@@ -102,6 +104,20 @@ jobs:
           php vendor/bin/phpunit -c web/core/phpunit.xml.dist \
             web/modules/contrib/file_gate/tests \
             web/modules/contrib/file_gate/modules
+
+      # The MCP tests skip themselves when Tool API and MCP Sentinel are
+      # absent, so a green run alone does not prove they ran.
+      - name: Prove the optional MCP tools tests ran
+        env:
+          SIMPLETEST_DB: 'sqlite://localhost/:memory:'
+          SYMFONY_DEPRECATIONS_HELPER: disabled
+        run: |
+          cd drupal
+          php vendor/bin/phpunit -c web/core/phpunit.xml.dist \
+            --log-junit /tmp/junit-mcp.xml \
+            web/modules/contrib/file_gate/modules/file_gate_mcp/tests
+          ran="$(python3 -c "import xml.etree.ElementTree as ET; print(sum(1 for c in ET.parse('/tmp/junit-mcp.xml').getroot().iter('testcase') if c.find('skipped') is None))")"
+          test "$ran" -ge 10 || { echo "::error::Expected at least 10 MCP tool tests to run, got ${ran}"; exit 1; }
 
   # PHP 8.3 is the supported floor; some rules only report below 8.4.
   phpstan:
@@ -150,11 +166,14 @@ jobs:
           composer config --no-plugins allow-plugins true
           composer config repositories.file_gate path ../file_gate_src
           # Assurance deps: JWT for OIDC; webauthn-lib for native WebAuthn mode.
+          # MCP deps: Tool API and MCP Sentinel for file_gate_mcp.
           retry composer require \
             drupal/core-dev:^11.4 \
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
             'web-auth/webauthn-lib:^5.0' \
+            'drupal/mcp_sentinel:^2.22' \
+            'drupal/tool:^1.0.0-beta8' \
             phpstan/phpstan:^2 \
             phpstan/extension-installer:^1.4 \
             mglaman/phpstan-drupal:^2 \

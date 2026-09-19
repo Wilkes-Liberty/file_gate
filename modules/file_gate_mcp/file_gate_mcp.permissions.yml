@@ -1,0 +1,9 @@
+'use file gate mcp tools':
+  title: 'Use File Gate MCP read tools'
+  description: 'Read gate status, which gate applies to a file, active grants and metrics through governed MCP tools. Never returns secret material, file paths or download URLs.'
+  restrict access: true
+
+'revoke file gate grants via mcp':
+  title: 'Revoke a File Gate grant through MCP'
+  description: 'Revoke one grant by field and grant id through a governed MCP tool. Also requires the read permission.'
+  restrict access: true

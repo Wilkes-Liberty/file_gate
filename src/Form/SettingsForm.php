@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Drupal\file_gate\Form;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
-use Drupal\Core\Config\Entity\ThirdPartySettingsInterface;
 use Drupal\Core\Config\TypedConfigManagerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\ConfigFormBase;
@@ -15,6 +14,7 @@ use Drupal\file_gate\GateMethodManager;
 use Drupal\file_gate\GrantSignerInterface;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateMetrics;
+use Drupal\file_gate\Service\GatedFieldOverview;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -45,6 +45,8 @@ final class SettingsForm extends ConfigFormBase {
    *   Secret registry (named secret status).
    * @param \Drupal\file_gate\Service\FileGateMetrics $metrics
    *   Dashboard metrics.
+   * @param \Drupal\file_gate\Service\GatedFieldOverview $gatedFields
+   *   Gated field overview, shared with status reporting.
    */
   public function __construct(
     ConfigFactoryInterface $config_factory,
@@ -54,6 +56,7 @@ final class SettingsForm extends ConfigFormBase {
     protected EntityTypeManagerInterface $entityTypeManager,
     protected SecretRegistryInterface $secrets,
     protected FileGateMetrics $metrics,
+    protected GatedFieldOverview $gatedFields,
   ) {
     parent::__construct($config_factory, $typedConfigManager);
   }
@@ -70,6 +73,7 @@ final class SettingsForm extends ConfigFormBase {
       $container->get('entity_type.manager'),
       $container->get('file_gate.secret_registry'),
       $container->get('file_gate.metrics'),
+      $container->get('file_gate.gated_field_overview'),
     );
   }
 
@@ -407,33 +411,22 @@ final class SettingsForm extends ConfigFormBase {
    */
   private function gatedFieldsOverview(): array {
     $rows = [];
-    if (!$this->entityTypeManager->hasDefinition('field_config')) {
+    $fields = $this->gatedFields->fields();
+    if ($fields === []) {
       return $rows;
     }
-    /** @var \Drupal\field\FieldConfigInterface $field_config */
-    foreach ($this->entityTypeManager->getStorage('field_config')->loadMultiple() as $field_config) {
-      $storage = $field_config->getFieldStorageDefinition();
-      // Gating lives on the field storage; skip fields whose storage is not
-      // gated (and base fields, which are not third-party-settings-aware).
-      if (!$storage instanceof ThirdPartySettingsInterface || !$storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
-        continue;
-      }
-
+    $storage = $this->entityTypeManager->getStorage('field_config');
+    foreach ($fields as $field) {
       // Link the field to its settings page when Field UI exposes one; fall
       // back to plain text otherwise (e.g. Field UI disabled).
       try {
-        $field_cell = ['data' => Link::fromTextAndUrl($field_config->getName(), $field_config->toUrl('edit-form'))->toRenderable()];
+        $field_config = $storage->load($field['config_id']);
+        $field_cell = ['data' => Link::fromTextAndUrl($field['field_name'], $field_config->toUrl('edit-form'))->toRenderable()];
       }
-      catch (\Exception) {
-        $field_cell = $field_config->getName();
+      catch (\Throwable) {
+        $field_cell = $field['field_name'];
       }
-
-      $rows[] = [
-        $field_cell,
-        $field_config->getTargetEntityTypeId(),
-        $field_config->getTargetBundle(),
-        $storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url',
-      ];
+      $rows[] = [$field_cell, $field['entity_type'], $field['bundle'], $field['method']];
     }
     return $rows;
   }

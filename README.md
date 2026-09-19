@@ -387,6 +387,62 @@ The metadata the front end needs (that a gated document exists, its name, type,
 size) should be exposed via your API (JSON:API/GraphQL) **without** a directly
 resolvable file URL — the bytes are delivered only through the gated endpoint.
 
+## Optional MCP tools
+
+`file_gate_mcp` exposes [Tool API](https://www.drupal.org/project/tool) plugins
+so an operator or a governed agent can ask about the gate over MCP. It depends
+on Tool API and [MCP Sentinel](https://www.drupal.org/project/mcp_sentinel).
+The base module depends on neither. The submodule declares Drupal `^11.4` only:
+MCP Sentinel does not declare Drupal 12 yet.
+
+| Tool | Operation | Returns |
+| --- | --- | --- |
+| `file_gate_status` | read | Status report findings, whether a signing secret is configured, named secret ids and whether each has a field scope, every gated field with its method, scheme and a `protected` flag |
+| `file_gate_file_gate` | read | For one file or media UUID: whether it is gated, by which field and method, and that the plain `/system/files` URL will not serve it |
+| `file_gate_grants_list` | read | Live usage-limited grants for one gated field, newest first, at most 200 |
+| `file_gate_metrics` | read | Mints, deliveries, denials and authentication failures for 1 to 90 days |
+| `file_gate_grant_revoke` | write | Revokes one grant by field and grant id |
+
+The lookup tool answers a question API clients hit often: an upload or an entity
+read returns a `/system/files/…` URL, and for a gated file that URL answers 403
+for every account without `bypass file gate`. The tool says so, and says that a
+trusted front end has to mint a grant.
+
+- Grant `use file gate mcp tools` to the role your MCP credential uses. Revoke
+  also needs `revoke file gate grants via mcp`. Both are restricted
+  permissions.
+- MCP Sentinel's gates apply first: permission, source readiness, scope, IP
+  policy and rate limit. A tool is listed only for an account that can run it.
+- No tool returns secret material, a file path, a URL, a grant token or a gate
+  method's settings. Secrets appear by id only. A grant id identifies a grant
+  for revocation; it cannot be redeemed.
+- The grant tools act with site-operator reach. The HTTP routes bind a named
+  secret to the grants it minted; these tools list and revoke grants minted by
+  any secret. Grant the permissions with that in mind.
+- Revoke is scoped by field: the field stored with the grant must match, so a
+  grant id from another field is refused. It revokes one grant per call, keeps
+  the kill mark for at least as long as the grant would have lived, and writes
+  the same `revoke` audit entry as the HTTP route, with `secret_id: mcp` and
+  the acting uid.
+- The grants list says whether a grant is bound to a subject. It does not
+  return the stored subject hash, which is an unkeyed hash of a value the
+  minting front end supplied.
+- A media UUID resolves only when the acting account may view that media. A
+  file UUID resolves for any holder of the permission, because core denies
+  view on every gated file entity; the answer reveals that the file exists.
+- A refusal from this module is one fixed message. Tool API and MCP Sentinel
+  have their own messages for invalid input, denied access and rate limits.
+  None of them relays an input value, and exception text is not logged.
+- Results are capped at 128 KiB, or at the profile's response-size cap when
+  that is lower.
+- Installing the submodule publishes nothing by itself. Enable the tools in
+  your site's MCP tool bridge configuration.
+
+Not available as tools, by design: minting a download URL, serving bytes,
+issuing an OTP, bulk revoke, editing secrets or scopes, and switching gating on
+or off. A mint hands out a bearer URL and belongs to a trusted front end that
+knows who is asking.
+
 ## Security model
 
 - **Deny by default.** The `hook_file_download()` implementation returns `-1`
