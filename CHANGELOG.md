@@ -48,6 +48,16 @@ All notable changes to **File Gate** are documented here. The format is based on
   caches after updating (`drush updatedb` or `drush cr`): the compiled
   container still lists the removed function until it is rebuilt.
   [#3624429](https://www.drupal.org/project/file_gate/issues/3624429)
+- A revoked signed_url grant could be redeemed again when it outlived its kill
+  mark. Revoke wrote the mark for 30 days, or for the caller's `ttl`, and
+  removed the grant from the inventory list. A grant with a longer life became
+  redeemable once the mark lapsed, with nothing left to show it. The mark now
+  lasts until the grant's stored expiry plus one hour. A caller `ttl` can
+  lengthen it and cannot shorten it below that. A revoke for a grant with no
+  inventory record keeps the 30-day default. Revoking the same grant again
+  never shortens the mark the first revoke left. Single and bulk revoke share
+  the rule. No API change.
+  [#3624450](https://www.drupal.org/project/file_gate/issues/3624450)
 
 ### Changed
 - `file_gate_requirements()` is removed. It was a hook implementation, not an

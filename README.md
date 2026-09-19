@@ -342,6 +342,14 @@ field is known). `jti` spends a usage-limited signed_url grant and drops it
 from inventory; the secret must be allowed for the grant's stored field, and a
 named secret must match stored `k`.
 
+A `jti` revoke is a kill mark: a redemption counter set to its maximum, stored
+with an expiry. The mark lasts until the grant's own expiry plus one hour, and
+never less than 30 days. An optional `"ttl"` (seconds) can lengthen it. A `ttl`
+shorter than the grant's remaining life is raised to it, because a mark that
+lapses first would make the revoked URL work again. Revoking the same grant
+again never shortens its mark. Bulk revoke
+(`POST /api/file-gate/grants/revoke-bulk`) follows the same rule.
+
 Responses: `204` (revoked), `400` (no token/jti), `401` (bad/absent secret),
 `403` (credential not allowed for that grant's field / `k`), `404` (unknown or
 already-gone token or jti), `429` (rate limited), `503` (no secret configured).
