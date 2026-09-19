@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate;
 
+use Drupal\Core\StringTranslation\TranslatableMarkup;
+
 /**
  * The one statement of "a gated field must store files privately".
  *
@@ -87,10 +89,28 @@ final class GatedFieldSchemeRule {
   }
 
   /**
+   * The one wording of the refusal, as translatable markup.
+   *
+   * A literal here, so the string is extracted for translation. Exceptions
+   * and the constraint use its untranslated source through message().
+   *
+   * @param string $name
+   *   The field storage config name.
+   * @param string $scheme
+   *   The offending scheme.
+   */
+  public static function markup(string $name, string $scheme): TranslatableMarkup {
+    return new TranslatableMarkup('File Gate: @name is marked as gated but stores files in the "@scheme" file system. Gating only applies to private files — public files are served directly by the web server and never reach Drupal, so the gate would silently not apply and the files would remain publicly readable. Set settings.uri_scheme to "private", or remove the file_gate.gated third-party setting.', [
+      '@name' => $name,
+      '@scheme' => $scheme,
+    ]);
+  }
+
+  /**
    * The untranslated message, with @name and @scheme placeholders.
    */
   public static function message(): string {
-    return 'File Gate: @name is marked as gated but stores files in the "@scheme" file system. Gating only applies to private files — public files are served directly by the web server and never reach Drupal, so the gate would silently not apply and the files would remain publicly readable. Set settings.uri_scheme to "private", or remove the file_gate.gated third-party setting.';
+    return self::markup('', '')->getUntranslatedString();
   }
 
 }

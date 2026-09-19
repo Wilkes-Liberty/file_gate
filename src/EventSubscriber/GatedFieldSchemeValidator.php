@@ -6,7 +6,6 @@ namespace Drupal\file_gate\EventSubscriber;
 
 use Drupal\Core\Config\ConfigImporterEvent;
 use Drupal\Core\Config\ConfigEvents;
-use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\file_gate\GatedFieldSchemeRule;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
@@ -17,8 +16,6 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * rather than rewritten, so exported config stays the source of truth.
  */
 final class GatedFieldSchemeValidator implements EventSubscriberInterface {
-
-  use StringTranslationTrait;
 
   /**
    * Validates the incoming field storage configuration.
@@ -51,11 +48,7 @@ final class GatedFieldSchemeValidator implements EventSubscriberInterface {
         // logError() takes a plain string, so the translated message is cast
         // rather than handed over as TranslatableMarkup. The text is the
         // rule's own, so import, save and validation say the same thing.
-        // phpcs:ignore Drupal.Semantics.FunctionT.NotLiteralString
-        $importer->logError((string) $this->t(GatedFieldSchemeRule::message(), [
-          '@name' => $name,
-          '@scheme' => $scheme,
-        ]));
+        $importer->logError((string) GatedFieldSchemeRule::markup($name, $scheme));
       }
     }
   }

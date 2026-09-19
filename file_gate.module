@@ -256,9 +256,17 @@ function _file_gate_field_config_edit_form_validate(array &$form, FormStateInter
   if (!$field_storage instanceof FieldStorageConfig) {
     return;
   }
-  if ($field_storage->hasData() && $field_storage->getSetting('uri_scheme') !== 'private') {
+  // Judge the stored scheme, not the one on the entity being built: the
+  // entity builder has already forced that one to private, and the question
+  // here is where the field's existing files are. A new field has no stored
+  // storage and no data.
+  $stored = \Drupal::entityTypeManager()->getStorage('field_storage_config')->loadUnchanged($field_storage->id());
+  if (!$stored instanceof FieldStorageConfig) {
+    return;
+  }
+  if ($stored->hasData() && $stored->getSetting('uri_scheme') !== 'private') {
     $form_state->setErrorByName('file_gate_gated', t('This field already stores files in the %scheme file system. Gating requires private storage, which cannot be changed once a field has data. Create a new private field to gate.', [
-      '%scheme' => $field_storage->getSetting('uri_scheme'),
+      '%scheme' => $stored->getSetting('uri_scheme'),
     ]));
   }
 }

@@ -8,7 +8,9 @@ use Drupal\Core\Form\FormState;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\file\Entity\File;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\user\Entity\User;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -42,6 +44,7 @@ final class FieldGatingFormSubmitTest extends KernelTestBase {
     parent::setUp();
     $this->installEntitySchema('user');
     $this->installEntitySchema('file');
+    $this->installSchema('file', ['file_usage']);
     $this->installConfig(['system', 'field', 'file']);
   }
 
@@ -131,6 +134,29 @@ final class FieldGatingFormSubmitTest extends KernelTestBase {
     $this->assertSame([], $form_state->getErrors());
     $this->assertSame([FALSE, 'public'], $this->saved());
     $this->assertSame([], $this->container->get('messenger')->messagesByType('error'));
+  }
+
+  /**
+   * A public field that already holds files still cannot be gated.
+   *
+   * Gating it would mark the field protected while its existing files stay
+   * public. The entity builder forces the private scheme on the storage being
+   * built, so this proves the validator still sees the stored scheme.
+   */
+  public function testPublicFieldWithDataStillCannotBeGated(): void {
+    $field = $this->makeField('public', FALSE);
+    $file = File::create(['uri' => 'public://existing.pdf', 'filename' => 'existing.pdf']);
+    $file->save();
+    $account = User::create(['name' => 'holder', 'field_doc' => ['target_id' => $file->id()]]);
+    $account->save();
+    $stored = FieldStorageConfig::loadByName('user', 'field_doc');
+    $this->assertInstanceOf(FieldStorageConfig::class, $stored);
+    $this->assertTrue($stored->hasData());
+
+    $form_state = $this->submit($field, TRUE, 'public');
+
+    $this->assertArrayHasKey('file_gate_gated', $form_state->getErrors());
+    $this->assertSame([FALSE, 'public'], $this->saved());
   }
 
   /**
