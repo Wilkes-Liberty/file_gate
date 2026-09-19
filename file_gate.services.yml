@@ -21,6 +21,11 @@ services:
       - '@module_handler'
       - '@datetime.time'
 
+  file_gate.gated_field_overview:
+    class: Drupal\file_gate\Service\GatedFieldOverview
+    arguments:
+      - '@entity_type.manager'
+
   file_gate.audit:
     class: Drupal\file_gate\Service\FileGateAudit
     arguments:

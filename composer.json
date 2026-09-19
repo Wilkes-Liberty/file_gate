@@ -37,11 +37,15 @@
         "drupal/core": "^11.4 || ^12"
     },
     "require-dev": {
-        "firebase/php-jwt": "^6.10 || ^7.0"
+        "firebase/php-jwt": "^6.10 || ^7.0",
+        "drupal/mcp_sentinel": "^2.22",
+        "drupal/tool": "^1.0.0-beta8"
     },
     "suggest": {
         "firebase/php-jwt": "Required only by the File Gate Assurance submodule (file_gate_assurance) for OIDC token verification: ^6.10 || ^7.0.",
         "web-auth/webauthn-lib": "Required for native WebAuthn mode in file_gate_assurance: ^5.0.",
-        "drupal/audit_chain": "Optional durable, hash-chained audit log for mint/download/deny/revoke events (soft dependency)."
+        "drupal/audit_chain": "Optional durable, hash-chained audit log for mint/download/deny/revoke events (soft dependency).",
+        "drupal/mcp_sentinel": "Required only by the File Gate MCP submodule (file_gate_mcp): ^2.22.",
+        "drupal/tool": "Required only by the File Gate MCP submodule (file_gate_mcp): ^1.0.0-beta8."
     }
 }

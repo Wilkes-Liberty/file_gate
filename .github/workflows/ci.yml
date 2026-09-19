@@ -91,6 +91,8 @@ jobs:
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
             'web-auth/webauthn-lib:^5.0' \
+            'drupal/mcp_sentinel:^2.22' \
+            'drupal/tool:^1.0.0-beta8' \
             --no-interaction --with-all-dependencies
 
       - name: Run the File Gate suite
@@ -150,11 +152,14 @@ jobs:
           composer config --no-plugins allow-plugins true
           composer config repositories.file_gate path ../file_gate_src
           # Assurance deps: JWT for OIDC; webauthn-lib for native WebAuthn mode.
+          # MCP deps: Tool API and MCP Sentinel for file_gate_mcp.
           retry composer require \
             drupal/core-dev:^11.4 \
             'drupal/file_gate:*@dev' \
             'firebase/php-jwt:^6.10 || ^7.0' \
             'web-auth/webauthn-lib:^5.0' \
+            'drupal/mcp_sentinel:^2.22' \
+            'drupal/tool:^1.0.0-beta8' \
             phpstan/phpstan:^2 \
             phpstan/extension-installer:^1.4 \
             mglaman/phpstan-drupal:^2 \

@@ -6,6 +6,20 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Optional `file_gate_mcp` submodule: five Tool API plugins governed by MCP
+  Sentinel. `file_gate_status`, `file_gate_file_gate`, `file_gate_grants_list`
+  and `file_gate_metrics` are read-only; `file_gate_grant_revoke` revokes one
+  grant and refuses a grant id recorded against another field. No tool returns
+  secret material, a file path, a URL or a grant token. The base module's
+  dependencies are unchanged. The submodule requires Tool API and MCP Sentinel
+  and declares Drupal `^11.4` only, because MCP Sentinel does not declare
+  Drupal 12 yet.
+  [#3624444](https://www.drupal.org/project/file_gate/issues/3624444)
+- `file_gate.gated_field_overview` service (`GatedFieldOverview::fields()`)
+  lists gated fields with their method and storage scheme. The settings form
+  now reads from it, so the form and the status tool describe the same set.
+
 ### Fixed
 - The two status report findings (gated fields on a public file system, and
   named secrets with no field scope) move from `hook_requirements()` to
