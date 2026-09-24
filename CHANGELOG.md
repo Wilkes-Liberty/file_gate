@@ -6,6 +6,13 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-09-24
+
+### Fixed
+- MCP grant revoke lets `GrantInventory::revokeJti()` size the kill mark.
+  The tool had passed its own `max(DEFAULT_KILL_TTL, remaining + 3600)`,
+  which ignored a kill mark already stored for that grant.
+
 ## [1.10.1] - 2026-09-19
 
 ### Fixed
