@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\file_gate_mcp\Plugin\tool\Tool;
 
-use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file_gate\Service\FileGateAudit;
 use Drupal\file_gate\Service\GatedFieldOverview;
@@ -57,11 +56,6 @@ final class GrantRevokeTool extends FileGateToolBase {
   protected FileGateAudit $audit;
 
   /**
-   * Clock.
-   */
-  protected TimeInterface $time;
-
-  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
@@ -69,7 +63,6 @@ final class GrantRevokeTool extends FileGateToolBase {
     $instance->inventory = $container->get('file_gate.grant_inventory');
     $instance->gatedFields = $container->get('file_gate.gated_field_overview');
     $instance->audit = $container->get('file_gate.audit');
-    $instance->time = $container->get('datetime.time');
     return $instance;
   }
 
@@ -99,10 +92,7 @@ final class GrantRevokeTool extends FileGateToolBase {
     if ($meta === NULL || ($meta['field'] ?? NULL) !== $field) {
       throw new \InvalidArgumentException('Unknown grant for this field.');
     }
-    // The kill mark must outlive the grant, or a long-lived grant becomes
-    // redeemable again once the default 30-day mark expires.
-    $remaining = (int) ($meta['exp'] ?? 0) - $this->time->getRequestTime();
-    $this->inventory->revokeJti($jti, $field, max(GrantInventory::DEFAULT_KILL_TTL, $remaining + 3600));
+    $this->inventory->revokeJti($jti, $field, NULL);
     $this->logger->info('Revoked one File Gate grant through MCP for uid @uid.', [
       '@uid' => (int) $this->currentUser->id(),
     ]);
