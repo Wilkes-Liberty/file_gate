@@ -17,6 +17,7 @@ use Drupal\file_gate\Controller\DownloadController;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
@@ -210,7 +211,7 @@ final class DownloadFloodConfigTest extends KernelTestBase {
   /**
    * Hits the download route with a valid grant from the pinned IP.
    */
-  private function downloadValid(FileInterface $file) {
+  private function downloadValid(FileInterface $file): Response {
     $params = $this->container
       ->get('plugin.manager.file_gate.gate_method')
       ->createInstance('signed_url', [])
