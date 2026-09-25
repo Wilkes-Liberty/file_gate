@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Drupal\Tests\file_gate\Kernel;
 
 use Drupal\Core\File\FileSystemInterface;
-use Drupal\Core\Flood\MemoryBackend;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
 use Drupal\KernelTests\KernelTestBase;
@@ -68,9 +67,6 @@ final class DownloadFloodConfigTest extends KernelTestBase {
     $this->container->get('stream_wrapper_manager')
       ->registerWrapper('private', PrivateStream::class, StreamWrapperInterface::WRITE_VISIBLE);
 
-    // Memory flood so the pin can ask isAllowed() without a {flood} table.
-    $this->container->set('flood', new MemoryBackend($this->container->get('request_stack')));
-
     $this->config('file_gate.settings')->set('download_secret', self::SECRET)->save();
 
     FieldStorageConfig::create([
@@ -108,11 +104,11 @@ final class DownloadFloodConfigTest extends KernelTestBase {
       $flood->register('file_gate.download_deny', 60, self::IP);
     }
     $this->denyDownload($file);
-    $this->assertFalse(
-      $this->isDenyAllowed(120),
-      'The pre-filled bucket is unchanged: stored 0 must not register.',
+    $this->assertFalse($this->isDenyAllowed(120));
+    $this->assertTrue(
+      $this->isDenyAllowed(121),
+      'Stored 0 must not register even when the bucket is already full.',
     );
-    $this->assertTrue($this->isDenyAllowed(121));
   }
 
   /**
