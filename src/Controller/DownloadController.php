@@ -140,7 +140,7 @@ final class DownloadController implements ContainerInjectionInterface {
     // Per-IP flood on failed grants (abuse / token guessing / log noise).
     $ip = $request->getClientIp() ?? '0.0.0.0';
     $config = $this->configFactory->get('file_gate.settings');
-    $deny_limit = (int) ($config->get('download_flood_limit') ?: 120);
+    $deny_limit = (int) ($config->get('download_flood_limit') ?? 120);
     $deny_window = (int) ($config->get('download_flood_window') ?: 60);
     if ($deny_limit > 0 && !$this->flood->isAllowed('file_gate.download_deny', $deny_limit, $deny_window, $ip)) {
       $this->logger->warning('Download flood limit for @ip.', ['@ip' => $ip]);
