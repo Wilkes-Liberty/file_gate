@@ -6,6 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-09-28
+
+### Fixed
+- A stored `download_flood_limit` of 0 now disables the per-IP deny flood.
+  The controller had read the limit with `?:`, so 0 fell back to 120 even
+  though the settings form and schema already treat 0 as off. A missing
+  limit still defaults to 120.
+
 ## [1.10.2] - 2026-09-24
 
 ### Fixed
