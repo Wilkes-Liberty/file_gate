@@ -170,15 +170,14 @@ final class Token extends GateMethodBase {
     // revocable.
     $max_uses = (int) ($this->configuration['max_uses'] ?? 0);
     $secret_id = $this->activeSecret->isAuthenticated() ? $this->activeSecret->get() : NULL;
-    // Store field + secret id so revoke can enforce field scope (cross-tenant
-    // revoke defense in multi-secret installs).
-    $gate = $this->resolver->getGateForFile($file);
+    // Store the mint-resolved field + secret id so revoke can enforce field
+    // scope (cross-tenant revoke defense in multi-secret installs).
     $this->tokenStore()->setWithExpire(
       $token_hash,
       [
         'uses' => 0,
         'max' => $max_uses,
-        'field' => $gate['field'] ?? NULL,
+        'field' => $this->configuration['field'] ?? NULL,
         'k' => $secret_id,
       ],
       max(1, $exp - $this->time->getRequestTime()),

@@ -243,9 +243,10 @@ class SignedUrl extends GateMethodBase {
     $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
 
     // Index usage-limited grants for inventory / bulk-revoke (GH #44).
+    // Persist the mint-resolved field; re-calling getGateForFile() would pick
+    // another same-method field when this file sits on two signed_url fields.
     if ($max_uses > 0 && !empty($claims['jti'])) {
-      $gate = $this->resolver->getGateForFile($file);
-      $field = is_array($gate) ? (string) $gate['field'] : '';
+      $field = (string) ($this->configuration['field'] ?? '');
       $this->grantInventory->record(
         (string) $claims['jti'],
         $file->uuid(),
