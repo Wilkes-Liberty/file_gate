@@ -6,6 +6,15 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-09-29
+
+### Fixed
+- Mint stores the field resolved for that request. Signed URL and token
+  grants had called the resolver again while recording the grant, which
+  can select a different field of the same method when one file sits on
+  two gated fields. Revoke scope now follows the field that minted the
+  grant.
+
 ## [1.10.3] - 2026-09-28
 
 ### Fixed
