@@ -233,7 +233,11 @@ final class MintController implements ContainerInjectionInterface {
       return $identity_denied;
     }
 
-    $method = $this->gateMethodManager->createInstance($gate['method'], $gate['settings']);
+    // Thread the resolved field so mint() can persist it without re-resolving.
+    $method = $this->gateMethodManager->createInstance(
+      $gate['method'],
+      ['field' => $gate['field']] + $gate['settings'],
+    );
 
     // A2: mint-time OIDC verification when the field enables it (assurance).
     if ($method instanceof MintTimeOidcInterface) {
