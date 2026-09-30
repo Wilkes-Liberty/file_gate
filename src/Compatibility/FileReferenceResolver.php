@@ -42,6 +42,9 @@ class FileReferenceResolver {
    * @return \Generator<int, \Drupal\file_gate\Compatibility\FileReferenceUsage>
    *   This yields FileReferenceUsage objects.
    *
+   * @phpstan-impure
+   *   References change after entity saves within the same request.
+   *
    * @ingroup file
    */
   public function getReferences(FileInterface $file): \Generator {

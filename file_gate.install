@@ -7,6 +7,7 @@
  * Status report findings live in \Drupal\file_gate\Hook\FileGateRequirements.
  */
 
+use Drupal\file_gate\Hook\FileGateRequirements;
 use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\Plugin\GateMethod\Token;
@@ -57,5 +58,5 @@ function file_gate_requirements(string $phase): array {
   if ($phase !== 'runtime' || version_compare(\Drupal::VERSION, '11.2', '>=')) {
     return [];
   }
-  return \Drupal::service(\Drupal\file_gate\Hook\FileGateRequirements::class)->runtime();
+  return \Drupal::service(FileGateRequirements::class)->runtime();
 }

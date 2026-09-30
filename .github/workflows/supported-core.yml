@@ -66,13 +66,13 @@ jobs:
           mkdir -p web/sites/default web/sites/simpletest/browser_output web/profiles web/themes
           cp web/core/assets/scaffold/files/default.settings.php web/sites/default/
           cp web/core/assets/scaffold/files/default.services.yml web/sites/default/
-          printf '%s\n' '<?php return require dirname(__DIR__) . "/vendor/autoload.php";' > web/autoload.php
+          cp ../file_gate_src/tests/fixtures/drupal-autoload.php web/autoload.php
       - name: Run base-module security and behavior suite
         env:
           SIMPLETEST_DB: 'sqlite://localhost/:memory:'
         run: |
           cd drupal
-          php vendor/bin/phpunit -c web/core/phpunit.xml.dist --process-isolation \
+          php vendor/bin/phpunit -c "$PWD/web/core/phpunit.xml.dist" --process-isolation \
             --log-junit junit.xml web/modules/contrib/file_gate/tests
       - uses: actions/upload-artifact@v4
         if: always()

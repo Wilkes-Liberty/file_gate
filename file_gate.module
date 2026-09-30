@@ -7,6 +7,7 @@
 
 declare(strict_types=1);
 
+use Drupal\file_gate\Hook\GatedFieldSchemeGuard;
 use Drupal\Core\Entity\EntityFormInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Form\SubformStateInterface;
@@ -368,5 +369,5 @@ function _file_gate_apply_field_gating(FieldStorageConfigInterface $field_storag
  */
 #[\Drupal\Core\Hook\Attribute\LegacyHook]
 function file_gate_field_storage_config_presave(FieldStorageConfigInterface $storage): void {
-  \Drupal::service(\Drupal\file_gate\Hook\GatedFieldSchemeGuard::class)->presave($storage);
+  \Drupal::service(GatedFieldSchemeGuard::class)->presave($storage);
 }
