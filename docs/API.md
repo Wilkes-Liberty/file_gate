@@ -85,6 +85,13 @@ Browser-facing OTP exchange (no mint secret). Body:
 {"file":"<uuid>","email":"user@example.com","otp":"123456"}
 ```
 
+Optional `"field"` (`entity_type.field_name`) pins the OTP gate when the
+file is referenced by more than one gated field.
+
+```json
+{"file":"<uuid>","email":"user@example.com","otp":"123456","field":"node.field_whitepaper"}
+```
+
 On success: sets `FG_OTP` (HttpOnly, path `/api/file-gate`) and returns
 `{"ok":true,"path":"/api/file-gate/download?f=…"}`. Then `GET` the download URL
 **without** `email`/`otp` query parameters.
@@ -157,6 +164,7 @@ site mail transport. Rate-limited per IP and per (file, email).
 |---|---|---|
 | `file` / `media` | string | The file or media UUID (exactly one). |
 | `email` | string | The recipient address the code is bound to. |
+| `field` | string | Optional. Field storage id (`entity_type.field_name`). Pins the OTP gate when the file sits on more than one gated field. |
 
 **Responses:** `204` (a code was sent), `400` (bad JSON / invalid email / no
 file), `401` (bad/absent secret), `404` (unknown file/media), `409` (media

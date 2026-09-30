@@ -12,6 +12,7 @@ use Drupal\Core\Url;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
 use Drupal\file_gate_assurance\SessionBridge;
 use Drupal\file_gate_assurance\WebAuthn\WebAuthnCeremony;
@@ -40,6 +41,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
     private readonly AccountProxyInterface $currentUser,
     private readonly Settings $settings,
     private readonly LoggerInterface $logger,
+    private readonly MintStoredField $mintStoredField,
   ) {}
 
   /**
@@ -56,6 +58,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
       $container->get('current_user'),
       $container->get('settings'),
       $container->get('logger.channel.file_gate'),
+      $container->get('file_gate.mint_stored_field'),
     );
   }
 
@@ -129,7 +132,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
     if ($file instanceof JsonResponse) {
       return $file;
     }
-    [$method, $settings] = $this->assuranceMethod($file);
+    [$method, $settings] = $this->assuranceMethod($file, $request);
     if ($method === NULL) {
       return new JsonResponse(['error' => 'Not assurance-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
@@ -164,7 +167,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
     if ($file instanceof JsonResponse) {
       return $file;
     }
-    [$method, $settings] = $this->assuranceMethod($file);
+    [$method, $settings] = $this->assuranceMethod($file, $request);
     if ($method === NULL || !$method->signatureValid($file, $request)) {
       return new JsonResponse(['error' => 'Invalid grant.'], Response::HTTP_FORBIDDEN);
     }
@@ -272,11 +275,19 @@ final class WebAuthnController implements ContainerInjectionInterface {
   /**
    * Loads the assurance gate method for a file.
    *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The grant request (pins the mint-stored field when present).
+   *
    * @return array{0: ?\Drupal\file_gate_assurance\Plugin\GateMethod\Assurance, 1: array}
    *   Method instance and settings.
    */
-  private function assuranceMethod(FileInterface $file): array {
-    $gate = $this->resolver->getGateForFile($file);
+  private function assuranceMethod(FileInterface $file, Request $request): array {
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return [NULL, []];
     }

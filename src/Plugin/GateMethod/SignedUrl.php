@@ -17,6 +17,7 @@ use Drupal\file_gate\FileResourceIdTrait;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\GrantInventory;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -89,6 +90,11 @@ class SignedUrl extends GateMethodBase {
   protected GrantInventory $grantInventory;
 
   /**
+   * Mint-stored field reader (pin allowsField at redeem).
+   */
+  protected MintStoredField $mintStoredField;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -102,6 +108,7 @@ class SignedUrl extends GateMethodBase {
     $instance->secrets = $container->get('file_gate.secret_registry');
     $instance->resolver = $container->get('file_gate.resolver');
     $instance->grantInventory = $container->get('file_gate.grant_inventory');
+    $instance->mintStoredField = $container->get('file_gate.mint_stored_field');
     return $instance;
   }
 
@@ -152,8 +159,13 @@ class SignedUrl extends GateMethodBase {
       return FALSE;
     }
     // Enforce field scope at redemption so narrowing a secret revokes
-    // outstanding grants (not only future mints).
-    $gate = $this->resolver->getGateForFile($file);
+    // outstanding grants (not only future mints). Pin to the mint-stored
+    // field: unpinned resolve picks the lexicographic winner among two
+    // signed_url fields, which can fall outside this secret's scope.
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
       return FALSE;
     }

@@ -6,6 +6,14 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Redeem pins the mint-stored field. Download, signed-url and token
+  `allowsField()` checks, OTP, and the assurance bridge / WebAuthn
+  controllers called unpinned `getGateForFile()`, which picks the
+  lexicographic winner among two `signed_url` fields. A named secret
+  scoped to `field_whitepaper` then failed scope against `field_nda`.
+  Scope now follows the field stored on the grant row.
+
 ## [1.10.4] - 2026-09-29
 
 ### Fixed
