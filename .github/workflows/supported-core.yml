@@ -1,0 +1,84 @@
+name: Supported core
+
+on:
+  push:
+    branches: ['1.x']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  base-module:
+    name: File Gate core ${{ matrix.core }} / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { core: '~10.6.0', php: '8.2' }
+          - { core: '~11.3.0', php: '8.3' }
+          - { core: '11.4.7', php: '8.4' }
+          - { core: '~11.4.0', php: '8.4' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: file_gate_src
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: gd, pdo_sqlite, sqlite3
+          tools: composer:v2
+          coverage: none
+      - name: Install candidate and exact dependency lock
+        env:
+          CORE_CONSTRAINT: ${{ matrix.core }}
+        run: |
+          mkdir drupal
+          cd drupal
+          python3 - <<'PY'
+          import json, os
+          core = os.environ['CORE_CONSTRAINT']
+          package = {
+              'name': 'file-gate/core-qualification', 'type': 'project',
+              'repositories': [
+                  {'type': 'path', 'url': '../file_gate_src',
+                   'options': {'symlink': False, 'versions': {'drupal/file_gate': '1.10.5'}}},
+                  {'type': 'composer', 'url': 'https://packages.drupal.org/8'},
+              ],
+              'require': {'composer/installers': '^2.3',
+                          'drupal/core-recommended': core, 'drupal/core-dev': core,
+                          'drupal/file_gate': '1.10.5'},
+              'config': {'allow-plugins': {'composer/installers': True,
+                  'phpstan/extension-installer': True,
+                  'dealerdirect/phpcodesniffer-composer-installer': True,
+                  'php-http/discovery': True, 'drupal/core-composer-scaffold': False,
+                  'tbachert/spi': True, 'symfony/runtime': True}},
+              'extra': {'installer-paths': {'web/core': ['type:drupal-core'],
+                  'web/modules/contrib/{$name}': ['type:drupal-module']}},
+          }
+          if core == '11.4.7':
+              package['require']['twig/twig'] = '3.29.0'
+          with open('composer.json', 'w') as out:
+              json.dump(package, out, indent=2)
+          PY
+          composer update --no-interaction --no-scripts --prefer-dist --no-progress
+          mkdir -p web/sites/default web/sites/simpletest/browser_output web/profiles web/themes
+          cp web/core/assets/scaffold/files/default.settings.php web/sites/default/
+          cp web/core/assets/scaffold/files/default.services.yml web/sites/default/
+          printf '%s\n' '<?php return require dirname(__DIR__) . "/vendor/autoload.php";' > web/autoload.php
+      - name: Run base-module security and behavior suite
+        env:
+          SIMPLETEST_DB: 'sqlite://localhost/:memory:'
+        run: |
+          cd drupal
+          php vendor/bin/phpunit -c web/core/phpunit.xml.dist --process-isolation \
+            --log-junit junit.xml web/modules/contrib/file_gate/tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: file-gate-${{ strategy.job-index }}
+          path: |
+            drupal/composer.json
+            drupal/composer.lock
+            drupal/junit.xml

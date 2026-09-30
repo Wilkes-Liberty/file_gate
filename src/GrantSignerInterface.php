@@ -27,12 +27,12 @@ interface GrantSignerInterface {
   /**
    * The "expiry timestamp" claim key (Unix time; required on every grant).
    */
-  public const string CLAIM_EXPIRES = 'exp';
+  public const CLAIM_EXPIRES = 'exp';
 
   /**
    * The "not before" claim key (optional; Unix time the grant becomes valid).
    */
-  public const string CLAIM_NOT_BEFORE = 'nbf';
+  public const CLAIM_NOT_BEFORE = 'nbf';
 
   /**
    * Whether a signing secret is configured.

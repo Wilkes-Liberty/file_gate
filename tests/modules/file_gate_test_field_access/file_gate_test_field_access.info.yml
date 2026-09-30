@@ -2,5 +2,5 @@ name: 'File Gate test field access'
 type: module
 description: 'Test-only field access hook for identity-aware mint.'
 package: Testing
-core_version_requirement: '^11'
+core_version_requirement: '^10.6 || ^11.3 || ^12'
 hidden: true

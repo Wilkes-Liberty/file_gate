@@ -22,7 +22,7 @@ interface SecretRegistryInterface {
    *
    * Value is NULL for the legacy single secret, or the opaque named secret id.
    */
-  public const string REQUEST_ATTR_SECRET_ID = 'file_gate.secret_id';
+  public const REQUEST_ATTR_SECRET_ID = 'file_gate.secret_id';
 
   /**
    * Whether any usable signing material is configured (legacy or named).

@@ -28,6 +28,8 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class GatedFieldSchemeSaveTest extends KernelTestBase {
 
+  use RuntimeRequirementsTrait;
+
   /**
    * {@inheritdoc}
    */
@@ -330,8 +332,8 @@ final class GatedFieldSchemeSaveTest extends KernelTestBase {
     $this->assertSame([TRUE, 'public'], $this->activeState('field_legacy'));
 
     // It stays on the status report: allowed to save is not the same as fine.
-    $requirements = $this->container->get('module_handler')->invoke('file_gate', 'runtime_requirements');
-    $this->assertSame(RequirementSeverity::Error, $requirements['file_gate_public_gated_fields']['severity']);
+    $requirements = $this->runtimeRequirements();
+    $this->assertSame((enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2), $requirements['file_gate_public_gated_fields']['severity']);
     $this->assertStringContainsString('field_legacy', (string) $requirements['file_gate_public_gated_fields']['value']);
 
     $storage = FieldStorageConfig::loadByName('user', 'field_legacy');

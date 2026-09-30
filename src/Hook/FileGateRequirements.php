@@ -77,7 +77,7 @@ final class FileGateRequirements {
       'file_gate_public_gated_fields' => [
         'title' => $this->t('File Gate: gated fields are not on the private file system'),
         'value' => $this->t('@list', ['@list' => implode(', ', $offenders)]),
-        'severity' => RequirementSeverity::Error,
+        'severity' => (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2),
         'description' => $this->t('These fields are marked as gated but store files publicly, so the gate never runs and the files are readable by anyone with the URL. The configuration says they are protected and they are not. Change the field to the private file system — note that existing files are not moved by that change, so they must be re-uploaded or migrated before the gate covers them.'),
       ],
     ];
@@ -106,7 +106,7 @@ final class FileGateRequirements {
       'file_gate_unscoped_named_secrets' => [
         'title' => $this->t('File Gate: named secrets with no field scope'),
         'value' => $this->t('@list', ['@list' => implode(', ', $unscoped)]),
-        'severity' => RequirementSeverity::Error,
+        'severity' => (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2),
         'description' => $this->t('These secret ids have values in <code>$settings["file_gate.secrets"]</code> but no (or empty) entry under <code>secret_scopes</code>. A named secret with no scope can mint nothing (fail closed). Add field storage keys (entity_type.field_name) for each id, or remove the unused secret. The legacy <code>download_secret</code> without a key id remains whole-corpus for older installs.'),
       ],
     ];

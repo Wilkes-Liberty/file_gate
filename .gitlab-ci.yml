@@ -16,14 +16,14 @@ include:
 variables:
   _GITLAB_TEMPLATES_REPO: project/gitlab_templates
   _GITLAB_TEMPLATES_REF: main
-  # This module declares `^11.4 || ^12`. 11.4 is the current core, so the default
-  # phpunit job already exercises the floor — there is no previous major or minor
-  # inside the constraint to opt into.
+  # The base module also supports 10.6/11.3; the supported-core GitHub workflow
+  # covers those base-module floors. Optional submodules retain 11.4, which
+  # the default full-integration phpunit job exercises.
   #
   # The `^12` half is deliberately MANUAL rather than autorun: the next major is
   # a moving dev target, and a pipeline that goes red on upstream churn teaches
   # nothing and trains people to ignore the badge. Run it before tagging, and
-  # drop `^12` from the constraint if it stops passing.
+  # resolve any compatibility failures before claiming next-major readiness.
   OPT_IN_TEST_NEXT_MAJOR: '1'
   # Forward-compat signal on the upcoming minor, available on demand.
   OPT_IN_TEST_NEXT_MINOR: '1'

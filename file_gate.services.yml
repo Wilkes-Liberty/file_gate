@@ -1,5 +1,16 @@
 services:
 
+  file_gate.file_references:
+    class: Drupal\file_gate\Compatibility\FileReferenceResolver
+    factory: ['Drupal\file_gate\Compatibility\FileReferenceResolverFactory', create]
+    arguments: ['@service_container']
+
+  Drupal\file_gate\Hook\GatedFieldSchemeGuard:
+    arguments: ['@file_gate.audit']
+
+  Drupal\file_gate\Hook\FileGateRequirements:
+    arguments: ['@entity_type.manager', '@file_gate.secret_registry']
+
   file_gate.download_denied_subscriber:
     class: Drupal\file_gate\EventSubscriber\DownloadDeniedSubscriber
     tags:
@@ -62,13 +73,13 @@ services:
   file_gate.host_access:
     class: Drupal\file_gate\HostAccess
     arguments:
-      - '@Drupal\file\FileReferenceResolver'
+      - '@file_gate.file_references'
       - '@file_gate.parent_walker'
 
   file_gate.resolver:
     class: Drupal\file_gate\FileGateResolver
     arguments:
-      - '@Drupal\file\FileReferenceResolver'
+      - '@file_gate.file_references'
       - '@entity_type.manager'
       - '@stream_wrapper_manager'
 

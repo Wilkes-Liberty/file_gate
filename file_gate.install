@@ -7,6 +7,7 @@
  * Status report findings live in \Drupal\file_gate\Hook\FileGateRequirements.
  */
 
+use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\Plugin\GateMethod\Token;
 use Drupal\file_gate\Service\GrantInventory;
@@ -46,4 +47,15 @@ function file_gate_update_10001(): void {
     $config->set('require_acting_account', FALSE);
   }
   $config->save();
+}
+
+/**
+ * Implements hook_requirements() for Drupal 10.
+ */
+#[LegacyRequirementsHook]
+function file_gate_requirements(string $phase): array {
+  if ($phase !== 'runtime' || version_compare(\Drupal::VERSION, '11.2', '>=')) {
+    return [];
+  }
+  return \Drupal::service(\Drupal\file_gate\Hook\FileGateRequirements::class)->runtime();
 }
