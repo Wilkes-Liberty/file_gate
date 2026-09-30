@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-09-30
+
 ### Fixed
 - Redeem pins the mint-stored field. Download, signed-url and token
   `allowsField()` checks, OTP, and the assurance bridge / WebAuthn
