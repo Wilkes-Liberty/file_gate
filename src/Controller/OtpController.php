@@ -16,6 +16,7 @@ use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\FileTargetResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate\Plugin\GateMethod\Otp;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
@@ -77,6 +78,8 @@ final class OtpController implements ContainerInjectionInterface {
    *   OTP redeem session cookie helper.
    * @param \Drupal\file_gate\GateMethodManager $gateMethodManager
    *   Gate method plugin manager.
+   * @param \Drupal\file_gate\MintStoredField $mintStoredField
+   *   Pins the OTP field from the request body when the file is multi-field.
    */
   public function __construct(
     private readonly FileTargetResolver $fileTargetResolver,
@@ -93,6 +96,7 @@ final class OtpController implements ContainerInjectionInterface {
     private readonly FileGateAudit $audit,
     private readonly OtpSession $otpSession,
     private readonly GateMethodManager $gateMethodManager,
+    private readonly MintStoredField $mintStoredField,
   ) {}
 
   /**
@@ -114,6 +118,7 @@ final class OtpController implements ContainerInjectionInterface {
       $container->get('file_gate.audit'),
       $container->get('file_gate.otp_session'),
       $container->get('plugin.manager.file_gate.gate_method'),
+      $container->get('file_gate.mint_stored_field'),
     );
   }
 
@@ -143,7 +148,10 @@ final class OtpController implements ContainerInjectionInterface {
     if ($file instanceof JsonResponse) {
       return $file;
     }
-    $gate = $this->resolver->getGateForFile($file);
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || $gate['method'] !== 'otp') {
       return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
@@ -212,8 +220,12 @@ final class OtpController implements ContainerInjectionInterface {
       return $file;
     }
 
-    // The file must be gated with the OTP method.
-    $gate = $this->resolver->getGateForFile($file);
+    // The file must be gated with the OTP method. Pin to the request field
+    // when the same file sits on more than one gated field.
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || $gate['method'] !== 'otp') {
       return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }

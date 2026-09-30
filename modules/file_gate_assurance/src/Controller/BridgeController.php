@@ -10,6 +10,7 @@ use Drupal\Core\Url;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate\StackMiddleware\AuthorizationShield;
 use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
 use Drupal\file_gate_assurance\SessionBridge;
@@ -46,6 +47,7 @@ final class BridgeController implements ContainerInjectionInterface {
     private readonly LoggerInterface $logger,
     private readonly SessionOidcToken $sessionOidcToken,
     private readonly StepUpAuthorizeUrl $stepUpAuthorizeUrl,
+    private readonly MintStoredField $mintStoredField,
   ) {}
 
   /**
@@ -60,6 +62,7 @@ final class BridgeController implements ContainerInjectionInterface {
       $container->get('logger.channel.file_gate'),
       $container->get('file_gate_assurance.session_oidc_token'),
       $container->get('file_gate_assurance.step_up_authorize_url'),
+      $container->get('file_gate.mint_stored_field'),
     );
   }
 
@@ -75,7 +78,10 @@ final class BridgeController implements ContainerInjectionInterface {
     if (!$file instanceof FileInterface) {
       return $this->error('Unknown file.', Response::HTTP_NOT_FOUND);
     }
-    $gate = $this->resolver->getGateForFile($file);
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return $this->error('File is not assurance-gated.', Response::HTTP_UNPROCESSABLE_ENTITY);
     }
@@ -169,7 +175,7 @@ final class BridgeController implements ContainerInjectionInterface {
     // window.fileGateAccessToken). login_url is loaded ONLY from the field's
     // step_up_login_url setting — never from the query string (open-redirect
     // defense; GH #40 / d.o #3614254). mode=webauthn uses the WebAuthn API.
-    $login = $this->trustedStepUpLoginUrl($uuid);
+    $login = $this->trustedStepUpLoginUrl($uuid, $request);
     $mode = (string) $request->query->get('mode', 'oidc');
     $assert_options = Url::fromRoute('file_gate_assurance.webauthn_assert_options', [], [
       'query' => $safe_query,
@@ -424,11 +430,13 @@ HTML;
    *
    * @param string $uuid
    *   File UUID from the step-up query.
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The step-up request (grant query carries the mint-stored field).
    *
    * @return string
    *   Trusted login URL or ''.
    */
-  private function trustedStepUpLoginUrl(string $uuid): string {
+  private function trustedStepUpLoginUrl(string $uuid, Request $request): string {
     if ($uuid === '') {
       return '';
     }
@@ -436,7 +444,10 @@ HTML;
     if (!$file instanceof FileInterface) {
       return '';
     }
-    $gate = $this->resolver->getGateForFile($file);
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return '';
     }

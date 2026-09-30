@@ -12,6 +12,7 @@ use Drupal\file\FileInterface;
 use Drupal\file_gate\ChallengeAwareGateMethodInterface;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\GateMethodManager;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate\Service\FileGateAudit;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -70,6 +71,8 @@ final class DownloadController implements ContainerInjectionInterface {
    *   Flood control for denied download attempts.
    * @param \Drupal\file_gate\Service\FileGateAudit $audit
    *   Durable audit logger.
+   * @param \Drupal\file_gate\MintStoredField $mintStoredField
+   *   Reads the field persisted at mint so redeem does not re-resolve.
    */
   public function __construct(
     private readonly EntityRepositoryInterface $entityRepository,
@@ -79,6 +82,7 @@ final class DownloadController implements ContainerInjectionInterface {
     private readonly LoggerInterface $logger,
     private readonly FloodInterface $flood,
     private readonly FileGateAudit $audit,
+    private readonly MintStoredField $mintStoredField,
   ) {}
 
   /**
@@ -93,6 +97,7 @@ final class DownloadController implements ContainerInjectionInterface {
       $container->get('logger.channel.file_gate'),
       $container->get('flood'),
       $container->get('file_gate.audit'),
+      $container->get('file_gate.mint_stored_field'),
     );
   }
 
@@ -123,8 +128,13 @@ final class DownloadController implements ContainerInjectionInterface {
     }
 
     // Only files that are actually gated may be delivered through this route;
-    // it must never become an open proxy for arbitrary private files.
-    $gate = $this->resolver->getGateForFile($file);
+    // it must never become an open proxy for arbitrary private files. Pin to
+    // the mint-stored field when the grant row has one; unpinned resolve
+    // picks the lexicographic winner among two same-method fields.
+    $gate = $this->resolver->getGateForFile(
+      $file,
+      $this->mintStoredField->fromRequest($request),
+    );
     if ($gate === NULL) {
       throw new NotFoundHttpException();
     }

@@ -72,6 +72,12 @@ services:
       - '@entity_type.manager'
       - '@stream_wrapper_manager'
 
+  file_gate.mint_stored_field:
+    class: Drupal\file_gate\MintStoredField
+    arguments:
+      - '@file_gate.grant_inventory'
+      - '@keyvalue.expirable'
+
   file_gate.file_target_resolver:
     class: Drupal\file_gate\FileTargetResolver
     arguments:

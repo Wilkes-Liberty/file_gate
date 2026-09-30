@@ -139,7 +139,8 @@ $config['file_gate.settings']['secret_scopes'] = [
 
 Mint with Basic auth **username = secret id**, **password = value**. Minted URLs
 include `k=<id>` so redemption uses the same key. Scope is checked at mint and
-again at download (narrowing a secret revokes outstanding grants). A named
+again at download against the field stored on the grant (narrowing a secret
+revokes outstanding grants). A named
 secret with a value but no scope can mint nothing and is reported on the status
 report. Keep secrets off the public network; only signatures reach the browser.
 

@@ -18,6 +18,7 @@ use Drupal\file_gate\FileResourceIdTrait;
 use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
+use Drupal\file_gate\MintStoredField;
 use Drupal\file_gate\SecretRegistryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -86,6 +87,11 @@ final class Token extends GateMethodBase {
   protected FileGateResolver $resolver;
 
   /**
+   * Mint-stored field reader (pin allowsField at redeem).
+   */
+  protected MintStoredField $mintStoredField;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -98,6 +104,7 @@ final class Token extends GateMethodBase {
     $instance->activeSecret = $container->get('file_gate.active_secret');
     $instance->secrets = $container->get('file_gate.secret_registry');
     $instance->resolver = $container->get('file_gate.resolver');
+    $instance->mintStoredField = $container->get('file_gate.mint_stored_field');
     return $instance;
   }
 
@@ -134,7 +141,10 @@ final class Token extends GateMethodBase {
       if (!$this->signer->validate($this->resourceId($file), $claims, $sig, $secret_id)) {
         return FALSE;
       }
-      $gate = $this->resolver->getGateForFile($file);
+      $gate = $this->resolver->getGateForFile(
+        $file,
+        $this->mintStoredField->fromRequest($request),
+      );
       if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
         return FALSE;
       }
