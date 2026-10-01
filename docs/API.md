@@ -54,6 +54,7 @@ Redeemed by the visitor's browser. Query parameters:
 | `k` | Opaque secret id for named credentials (key selection only; not an HMAC claim). Absent = legacy site secret. |
 | `token` | Present for the `token` method: the plaintext token. A minted link also carries `exp`/`sig`; a pre-shared campaign link carries only `token`. |
 | `jti`, `max` | Present only for usage-limited grants (one-time / N-use links). |
+| `fld` | Signed field storage id (`entity_type.field_name`). Bound at mint so unlimited grants (no jti inventory) pin field scope at redeem. Tampering fails the HMAC. |
 | `nbf` | Present only when a not-before window was set. |
 
 **Responses:** `200` streams the file (`Cache-Control: private, no-store`; a
@@ -178,9 +179,10 @@ sig = HMAC-SHA256(normalized_file_uri . "|" . canonical(claims), secret)
 canonical(claims) = claims sorted by key, rendered "key=value" and joined by "&"
 ```
 
-`claims` always contains `exp`; optionally `nbf`, and (`jti`, `max`) for usage
-limits. Because every claim is part of the signed payload, a client cannot alter
-the file, the expiry, or the usage cap without invalidating the signature.
+`claims` always contains `exp`; optionally `nbf`, `fld` (mint-resolved field),
+and (`jti`, `max`) for usage limits. Because every claim is part of the signed
+payload, a client cannot alter the file, the expiry, the field pin, or the
+usage cap without invalidating the signature.
 
 ## Field configuration (third-party settings)
 

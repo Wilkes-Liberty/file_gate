@@ -14,7 +14,9 @@ use Symfony\Component\HttpFoundation\Request;
  *
  * Unpinned getGateForFile() picks the lexicographic winner among equal-
  * strictness methods. Redeem must pin to the field stored on the grant row
- * (inventory jti or token hash) so allowsField() matches the minted scope.
+ * (inventory jti or token hash) or the HMAC-bound `fld` claim so
+ * allowsField() matches the minted scope. Unlimited signed_url grants have
+ * no inventory row and carry `fld` instead.
  */
 final class MintStoredField {
 
@@ -74,6 +76,40 @@ final class MintStoredField {
     }
 
     return NULL;
+  }
+
+  /**
+   * Field storage id from the signed `fld` query claim.
+   *
+   * Resolver hint only. Authorizing callers must HMAC-validate the claim
+   * (SignedUrl::signatureValid) so a forged `fld` fails closed. Do not treat
+   * an unsigned `field` query parameter as a pin.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The redeem request.
+   *
+   * @return string|null
+   *   entity_type.field_name, or NULL when `fld` is absent.
+   */
+  public function fromSignedClaim(Request $request): ?string {
+    $fld = trim((string) $request->query->get('fld', ''));
+    return $fld !== '' ? $fld : NULL;
+  }
+
+  /**
+   * Prefer the grant-row pin; fall back to the signed `fld` claim.
+   *
+   * Limited jti/token/OTP paths keep using fromRequest(). Unlimited
+   * signed_url grants have no inventory row and carry `fld` instead.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The redeem, bridge, or WebAuthn request.
+   *
+   * @return string|null
+   *   entity_type.field_name, or NULL when neither pin is present.
+   */
+  public function pin(Request $request): ?string {
+    return $this->fromRequest($request) ?? $this->fromSignedClaim($request);
   }
 
   /**

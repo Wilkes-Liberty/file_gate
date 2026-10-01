@@ -286,7 +286,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
   private function assuranceMethod(FileInterface $file, Request $request): array {
     $gate = $this->resolver->getGateForFile(
       $file,
-      $this->mintStoredField->fromRequest($request),
+      $this->mintStoredField->pin($request),
     );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return [NULL, []];
@@ -347,10 +347,6 @@ final class WebAuthnController implements ContainerInjectionInterface {
     if ($fixed !== '') {
       $candidates[] = $fixed;
     }
-    $subject = trim((string) ($settings['webauthn_subject'] ?? ''));
-    if ($subject !== '') {
-      $candidates[] = $subject;
-    }
     $wh = trim((string) $request->query->get('wh', ''));
     if ($wh !== '' && strlen($wh) <= 64) {
       $candidates[] = $wh;
@@ -371,7 +367,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
    */
   private function grantFingerprint(Request $request): string {
     $parts = [];
-    foreach (['f', 'exp', 'sig', 'jti', 'aal', 'sh', 'k', 'max', 'nbf'] as $key) {
+    foreach (['f', 'exp', 'sig', 'jti', 'aal', 'sh', 'k', 'max', 'nbf', 'fld'] as $key) {
       if ($request->query->has($key)) {
         $parts[] = $key . '=' . $request->query->get($key);
       }
