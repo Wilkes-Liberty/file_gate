@@ -34,7 +34,9 @@ final class GatedFieldSchemeGuard {
   #[Hook('field_storage_config_presave')]
   public function presave(FieldStorageConfigInterface $storage): void {
     $new = self::offendingScheme($storage);
-    $original = $storage->isNew() ? NULL : $storage->getOriginal();
+    // Both API generations remain supported; newer core knows this method.
+    // @phpstan-ignore function.alreadyNarrowedType
+    $original = $storage->isNew() ? NULL : (method_exists($storage, 'getOriginal') ? $storage->getOriginal() : ($storage->original ?? NULL));
     $before = $original instanceof FieldStorageConfigInterface ? self::offendingScheme($original) : NULL;
 
     if (GatedFieldSchemeRule::isRefused($new, $before)) {

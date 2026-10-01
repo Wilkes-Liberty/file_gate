@@ -8,6 +8,7 @@ use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 use Drupal\file\FileInterface;
 use Drupal\file\FileReferenceResolver;
+use Drupal\file_gate\Compatibility\FileReferenceResolver as LegacyFileReferenceResolver;
 
 /**
  * Resolves whether (and how) a managed file is gated.
@@ -45,15 +46,15 @@ final class FileGateResolver {
   /**
    * Constructs the resolver.
    *
-   * @param \Drupal\file\FileReferenceResolver $fileReferenceResolver
-   *   Core's file reference resolver (Drupal 11.4+).
+   * @param \Drupal\file\FileReferenceResolver|\Drupal\file_gate\Compatibility\FileReferenceResolver $fileReferenceResolver
+   *   Core's resolver or its revision-aware backport for older core.
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
    *   The entity type manager (loads field storage configs).
    * @param \Drupal\Core\StreamWrapper\StreamWrapperManagerInterface $streamWrapperManager
    *   The stream wrapper manager (scheme detection).
    */
   public function __construct(
-    private readonly FileReferenceResolver $fileReferenceResolver,
+    private readonly FileReferenceResolver|LegacyFileReferenceResolver $fileReferenceResolver,
     private readonly EntityTypeManagerInterface $entityTypeManager,
     private readonly StreamWrapperManagerInterface $streamWrapperManager,
   ) {}

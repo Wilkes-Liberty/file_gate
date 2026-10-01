@@ -30,6 +30,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 #[RunTestsInSeparateProcesses]
 final class ScopedSecretsTest extends KernelTestBase {
 
+  use RuntimeRequirementsTrait;
+
   /**
    * {@inheritdoc}
    */
@@ -258,12 +260,9 @@ final class ScopedSecretsTest extends KernelTestBase {
 
     // Through the module handler, the way the status report asks. With no
     // implementation invoke() returns NULL, so assert there is one.
-    $moduleHandler = $this->container->get('module_handler');
-    $this->assertTrue($moduleHandler->hasImplementations('runtime_requirements', 'file_gate'));
-    $requirements = $moduleHandler->invoke('file_gate', 'runtime_requirements');
-    $this->assertIsArray($requirements);
+    $requirements = $this->runtimeRequirements();
     $this->assertArrayHasKey('file_gate_unscoped_named_secrets', $requirements);
-    $this->assertSame(RequirementSeverity::Error, $requirements['file_gate_unscoped_named_secrets']['severity']);
+    $this->assertSame((enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2), $requirements['file_gate_unscoped_named_secrets']['severity']);
   }
 
   /**

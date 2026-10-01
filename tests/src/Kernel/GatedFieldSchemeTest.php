@@ -26,6 +26,8 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class GatedFieldSchemeTest extends KernelTestBase {
 
+  use RuntimeRequirementsTrait;
+
   /**
    * {@inheritdoc}
    */
@@ -89,32 +91,6 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   }
 
   /**
-   * The runtime requirements, asked for the way the status report asks.
-   *
-   * Through the module handler, not by calling an implementation: a direct
-   * call passes whether or not core still invokes the hook, which is how a
-   * security finding could leave the status report with every test green.
-   * Only this module's implementation is asked for; the System module's needs
-   * install-time functions a kernel test does not load.
-   *
-   * The implementation is asserted first. With none, invoke() returns NULL,
-   * and "no finding" would be indistinguishable from "no check".
-   *
-   * @return array<string, array<string, mixed>>
-   *   Requirements keyed by id.
-   */
-  private function runtimeRequirements(): array {
-    $moduleHandler = $this->container->get('module_handler');
-    $this->assertTrue(
-      $moduleHandler->hasImplementations('runtime_requirements', 'file_gate'),
-      'file_gate must implement hook_runtime_requirements(), or its findings are gone.',
-    );
-    $requirements = $moduleHandler->invoke('file_gate', 'runtime_requirements');
-    $this->assertIsArray($requirements);
-    return $requirements;
-  }
-
-  /**
    * A healthy site reports nothing.
    */
   public function testNoFindingWhenGatedFieldsArePrivate(): void {
@@ -137,7 +113,7 @@ final class GatedFieldSchemeTest extends KernelTestBase {
 
     $this->assertArrayHasKey('file_gate_public_gated_fields', $requirements);
     $this->assertSame(
-      RequirementSeverity::Error,
+      (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2),
       $requirements['file_gate_public_gated_fields']['severity'],
     );
     $this->assertStringContainsString(
@@ -148,14 +124,19 @@ final class GatedFieldSchemeTest extends KernelTestBase {
   }
 
   /**
-   * The procedural hook is gone, so nothing depends on core still calling it.
+   * The legacy bridge is silent on modern core and outside runtime.
    */
-  public function testTheLegacyProceduralHookIsRemoved(): void {
+  public function testLegacyBridgeDoesNotDuplicateRuntimeFindings(): void {
     $this->container->get('module_handler')->loadInclude('file_gate', 'install');
 
     // The include really loaded, so the absence below means something.
     $this->assertTrue(function_exists('file_gate_update_10001'));
-    $this->assertFalse(function_exists('file_gate_requirements'));
+    $this->assertSame([], file_gate_requirements('install'));
+    if (version_compare(\Drupal::VERSION, '11.2', '>=')) {
+      $this->makeStorage('field_legacy_bridge', 'public', TRUE);
+      $this->assertSame([], file_gate_requirements('runtime'));
+      $this->assertArrayHasKey('file_gate_public_gated_fields', $this->runtimeRequirements());
+    }
   }
 
   /**

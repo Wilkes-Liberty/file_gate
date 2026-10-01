@@ -18,7 +18,7 @@ final class GatedFieldSchemeRule {
   /**
    * The only scheme a gated field may use.
    */
-  public const string REQUIRED_SCHEME = 'private';
+  public const REQUIRED_SCHEME = 'private';
 
   /**
    * The scheme that breaks the rule, from raw field storage config data.

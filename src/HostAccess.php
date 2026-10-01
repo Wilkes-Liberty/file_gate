@@ -7,6 +7,7 @@ namespace Drupal\file_gate;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\file\FileInterface;
 use Drupal\file\FileReferenceResolver;
+use Drupal\file_gate\Compatibility\FileReferenceResolver as LegacyFileReferenceResolver;
 
 /**
  * Identity-aware mint host checks.
@@ -20,7 +21,7 @@ use Drupal\file\FileReferenceResolver;
 final class HostAccess {
 
   public function __construct(
-    private readonly FileReferenceResolver $fileReferenceResolver,
+    private readonly FileReferenceResolver|LegacyFileReferenceResolver $fileReferenceResolver,
     private readonly ParentWalker $parentWalker,
   ) {}
 

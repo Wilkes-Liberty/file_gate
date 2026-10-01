@@ -6,6 +6,13 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Support the base module on Drupal 10.6/PHP 8.2 and Drupal 11.3/PHP 8.3.
+  Older core uses a revision-aware file-reference backport; Drupal 11.4
+  retains the native resolver. Historical references, field authorization,
+  download refusal and runtime security findings retain their existing rules.
+  Optional submodule requirements remain unchanged.
+
 ## [1.10.5] - 2026-09-30
 
 ### Fixed

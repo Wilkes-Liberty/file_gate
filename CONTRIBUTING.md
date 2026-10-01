@@ -19,7 +19,7 @@ mirrored to drupal.org.
   vendor/bin/phpcs --standard=Drupal,DrupalPractice web/modules/contrib/file_gate
   ```
 
-- Target **PHP 8.3** and **Drupal 11.4+**.
+- Target **PHP 8.2 / Drupal 10.6** for the base module and **PHP 8.3 / Drupal 11.3+** on Drupal 11. Optional submodules retain their declared floor.
 - Keep the signing/mint core (`GrantSigner`, the `GateMethod` plugin type, the
   mint endpoint) **target-agnostic** — it must not assume it is protecting a
   file, so the core can be reused for other gated resources in future.

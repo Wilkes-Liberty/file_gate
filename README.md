@@ -92,8 +92,14 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 
 ## Requirements
 
-- **Drupal 11.4+** — the module builds on core's `FileReferenceResolver`
-  (introduced in 11.4).
+- **Base module: Drupal 10.6 / PHP 8.2 or Drupal 11.3+ / PHP 8.3+.**
+  Drupal 11.4 uses core's `FileReferenceResolver`; older core uses a
+  revision-aware backport with the same host and field access checks.
+  The backport recomputes references because older core cannot invalidate the
+  native resolver's cache tags.
+- Optional submodules retain their separately declared Drupal 11.4 floor.
+  The supported-core workflow exercises the base module; the existing full
+  suite covers optional integrations.
 - A configured **private file system** (`file_private_path`).
 - A **signing secret**, injected from the environment (below).
 
