@@ -214,12 +214,14 @@ final class UnlimitedSignedUrlFieldClaimTest extends KernelTestBase {
     $this->assertDownloadDenied($query, self::NDA_ORIGIN, $body);
 
     $token = 'unsigned-token-pin';
-    $this->container->get('keyvalue.expirable')->get(Token::TOKEN_COLLECTION)
-      ->setWithExpire(hash('sha256', $token), [
-        'uses' => 0,
-        'max' => 0,
-        'field' => self::NDA_FIELD,
-      ], 3600);
+    $factory = $this->container->get('keyvalue.expirable');
+    /** @var \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface $store */
+    $store = $factory->get(Token::TOKEN_COLLECTION);
+    $store->setWithExpire(hash('sha256', $token), [
+      'uses' => 0,
+      'max' => 0,
+      'field' => self::NDA_FIELD,
+    ], 3600);
     $with_token = $query + ['token' => $token];
     $this->assertSame(Response::HTTP_OK, $this->downloadWithOrigin(
       $with_token,
