@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-01
+
 ### Fixed
 - Unlimited signed URL grants (`max_uses=0`) pin the mint-resolved field as a
   signed `fld` claim. Redeem has no inventory row for those grants, so
