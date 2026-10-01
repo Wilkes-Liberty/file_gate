@@ -12,7 +12,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   `allowsField()` used unpinned `getGateForFile()` and could pick another
   `signed_url` field on the same file. Scope now follows the HMAC-validated
   claim (`referrer_lock` and `assurance` inherit). An unsigned `field=`
-  query is ignored.
+  query, a JSON body `field`, and a `token` query cannot select another
+  field's settings while `fld` is present. OTP issue still reads its body
+  field through `fromRequest()`.
 
 ## [1.11.0] - 2026-10-01
 

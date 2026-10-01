@@ -54,7 +54,7 @@ Redeemed by the visitor's browser. Query parameters:
 | `k` | Opaque secret id for named credentials (key selection only; not an HMAC claim). Absent = legacy site secret. |
 | `token` | Present for the `token` method: the plaintext token. A minted link also carries `exp`/`sig`; a pre-shared campaign link carries only `token`. |
 | `jti`, `max` | Present only for usage-limited grants (one-time / N-use links). |
-| `fld` | Signed field storage id (`entity_type.field_name`). Bound at mint so unlimited grants (no jti inventory) pin field scope at redeem. Tampering fails the HMAC. |
+| `fld` | Signed field storage id (`entity_type.field_name`). Bound at mint so unlimited grants (no jti inventory) pin field scope and gate settings at redeem. Tampering fails the HMAC. An unsigned JSON body `field`, or a `token` query, does not override it. |
 | `nbf` | Present only when a not-before window was set. |
 
 **Responses:** `200` streams the file (`Cache-Control: private, no-store`; a

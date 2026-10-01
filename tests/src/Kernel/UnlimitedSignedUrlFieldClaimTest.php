@@ -15,6 +15,7 @@ use Drupal\file\Entity\File;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Controller\DownloadController;
 use Drupal\file_gate\Controller\MintController;
+use Drupal\file_gate\Plugin\GateMethod\Token;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
@@ -27,7 +28,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  * Same class as #100, but max_uses=0 writes no inventory row. Unpinned
  * getGateForFile() picks field_nda. A named secret scoped only to
  * field_whitepaper then fails allowsField() unless redeem uses HMAC-validated
- * fld. An unsigned field= query is not a pin.
+ * fld. An unsigned field= query, JSON body field, or token query is not a pin
+ * when fld is present: those must not select the other field's settings.
  */
 #[Group('file_gate')]
 #[RunTestsInSeparateProcesses]
@@ -179,6 +181,106 @@ final class UnlimitedSignedUrlFieldClaimTest extends KernelTestBase {
     $request->headers->set('Origin', self::WHITEPAPER_ORIGIN);
     $download = DownloadController::create($this->container)->download($request);
     $this->assertSame(Response::HTTP_OK, $download->getStatusCode());
+  }
+
+  /**
+   * A weaker field's settings cannot be selected by an unsigned pin.
+   *
+   * ReferrerLock checks origin on the controller-selected instance before
+   * the HMAC. Body field and a token-store row are not signed_url claims,
+   * so either one used to apply field_nda's allowlist to a field_whitepaper
+   * grant while signatureValid() still trusted fld.
+   */
+  public function testUnsignedPinCannotSelectWeakerReferrerSettings(): void {
+    $this->createGatedField('field_nda', 'referrer_lock', [
+      'max_uses' => 0,
+      'allowed_origins' => [self::NDA_ORIGIN],
+    ]);
+    $this->createGatedField('field_whitepaper', 'referrer_lock', [
+      'max_uses' => 0,
+      'allowed_origins' => [self::WHITEPAPER_ORIGIN],
+    ]);
+    $file = $this->createFileOnBothFields('lock.pdf');
+    $query = $this->mintQuery($file, self::WHITEPAPER_FIELD);
+    $this->assertSame(self::WHITEPAPER_FIELD, $query['fld'] ?? NULL);
+    $this->assertArrayNotHasKey('jti', $query);
+
+    $body = json_encode(['field' => self::NDA_FIELD]);
+    $this->assertSame(Response::HTTP_OK, $this->downloadWithOrigin(
+      $query,
+      self::WHITEPAPER_ORIGIN,
+      $body,
+    )->getStatusCode());
+    $this->assertDownloadDenied($query, self::NDA_ORIGIN, $body);
+
+    $token = 'unsigned-token-pin';
+    $this->container->get('keyvalue.expirable')->get(Token::TOKEN_COLLECTION)
+      ->setWithExpire(hash('sha256', $token), [
+        'uses' => 0,
+        'max' => 0,
+        'field' => self::NDA_FIELD,
+      ], 3600);
+    $with_token = $query + ['token' => $token];
+    $this->assertSame(Response::HTTP_OK, $this->downloadWithOrigin(
+      $with_token,
+      self::WHITEPAPER_ORIGIN,
+    )->getStatusCode());
+    $this->assertDownloadDenied($with_token, self::NDA_ORIGIN);
+  }
+
+  /**
+   * Downloads with an Origin header and an optional raw body.
+   *
+   * @param array<string, mixed> $query
+   *   Download query, including the signed grant.
+   * @param string $origin
+   *   Origin header value.
+   * @param string|null $body
+   *   Raw request body, or NULL.
+   *
+   * @return \Symfony\Component\HttpFoundation\Response
+   *   The download response.
+   */
+  private function downloadWithOrigin(
+    array $query,
+    string $origin,
+    ?string $body = NULL,
+  ): Response {
+    $request = Request::create(
+      '/api/file-gate/download',
+      'GET',
+      $query,
+      [],
+      [],
+      [],
+      $body,
+    );
+    $request->headers->set('Origin', $origin);
+    return DownloadController::create($this->container)->download($request);
+  }
+
+  /**
+   * Asserts the download is denied for this origin.
+   *
+   * @param array<string, mixed> $query
+   *   Download query, including the signed grant.
+   * @param string $origin
+   *   Origin header value.
+   * @param string|null $body
+   *   Raw request body, or NULL.
+   */
+  private function assertDownloadDenied(
+    array $query,
+    string $origin,
+    ?string $body = NULL,
+  ): void {
+    try {
+      $this->downloadWithOrigin($query, $origin, $body);
+      $this->fail('Weaker-field origin must not redeem the signed grant.');
+    }
+    catch (AccessDeniedHttpException) {
+      // The other field's allowlist must not apply to this grant.
+    }
   }
 
   /**
