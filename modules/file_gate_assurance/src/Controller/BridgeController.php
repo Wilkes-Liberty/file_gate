@@ -80,7 +80,7 @@ final class BridgeController implements ContainerInjectionInterface {
     }
     $gate = $this->resolver->getGateForFile(
       $file,
-      $this->mintStoredField->fromRequest($request),
+      $this->mintStoredField->pin($request),
     );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return $this->error('File is not assurance-gated.', Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -446,7 +446,7 @@ HTML;
     }
     $gate = $this->resolver->getGateForFile(
       $file,
-      $this->mintStoredField->fromRequest($request),
+      $this->mintStoredField->pin($request),
     );
     if ($gate === NULL || $gate['method'] !== 'assurance') {
       return '';

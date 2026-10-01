@@ -147,6 +147,16 @@ final class AssuranceTest extends KernelTestBase {
   }
 
   /**
+   * Assurance inherits signed_url's mint-resolved fld claim (unlimited).
+   */
+  public function testMintBindsSignedFieldClaim(): void {
+    $file = $this->createFile('claim.pdf');
+    $query = $this->mintViaController($file);
+    $this->assertSame('entity_test.field_gated', $query['fld'] ?? NULL);
+    $this->assertArrayNotHasKey('jti', $query);
+  }
+
+  /**
    * A plain GET with no token is challenged (redirect to step-up), not 403.
    */
   public function testMissingTokenChallengesStepUp(): void {

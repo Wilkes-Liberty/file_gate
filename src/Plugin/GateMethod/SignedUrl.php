@@ -47,6 +47,7 @@ class SignedUrl extends GateMethodBase {
     GrantSignerInterface::CLAIM_NOT_BEFORE,
     'jti',
     'max',
+    'fld',
   ];
 
   /**
@@ -159,12 +160,13 @@ class SignedUrl extends GateMethodBase {
       return FALSE;
     }
     // Enforce field scope at redemption so narrowing a secret revokes
-    // outstanding grants (not only future mints). Pin to the mint-stored
-    // field: unpinned resolve picks the lexicographic winner among two
-    // signed_url fields, which can fall outside this secret's scope.
+    // outstanding grants (not only future mints). pin() is the same hint
+    // the controller used to build this gate: HMAC-bound fld, else the
+    // persisted jti/token row. The HMAC above already covers fld. An
+    // unsigned JSON body field is not consulted.
     $gate = $this->resolver->getGateForFile(
       $file,
-      $this->mintStoredField->fromRequest($request),
+      $this->mintStoredField->pin($request),
     );
     if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
       return FALSE;
@@ -232,6 +234,13 @@ class SignedUrl extends GateMethodBase {
     }
 
     $claims = [GrantSignerInterface::CLAIM_EXPIRES => $exp];
+
+    // Bind the mint-resolved field so unlimited grants (max_uses=0, no jti
+    // inventory) still pin allowsField() at redeem. Tampering fld fails HMAC.
+    $field = (string) ($this->configuration['field'] ?? '');
+    if ($field !== '') {
+      $claims['fld'] = $field;
+    }
 
     // Let subclasses bind additional claims (e.g. an assurance level). Keys
     // they add here MUST also appear in signedClaimKeys() so grants()
@@ -314,6 +323,7 @@ class SignedUrl extends GateMethodBase {
       GrantSignerInterface::CLAIM_NOT_BEFORE,
       'jti',
       'max',
+      'fld',
     ];
   }
 

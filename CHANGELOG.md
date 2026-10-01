@@ -6,6 +6,16 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Unlimited signed URL grants (`max_uses=0`) pin the mint-resolved field as a
+  signed `fld` claim. Redeem has no inventory row for those grants, so
+  `allowsField()` used unpinned `getGateForFile()` and could pick another
+  `signed_url` field on the same file. Scope now follows the HMAC-validated
+  claim (`referrer_lock` and `assurance` inherit). An unsigned `field=`
+  query, a JSON body `field`, and a `token` query cannot select another
+  field's settings while `fld` is present. OTP issue still reads its body
+  field through `fromRequest()`.
+
 ## [1.11.0] - 2026-10-01
 
 ### Changed
