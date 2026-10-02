@@ -22,7 +22,7 @@ use Symfony\Component\HttpFoundation\Request;
  * Prefer POST /api/file-gate/otp/session then download with the FG_OTP cookie.
  * Query email/otp remains supported but leaks secrets into logs and Referer.
  *
- * SECURITY: the passcode is delivered by e-mail, which is not a confidential
+ * SECURITY: the passcode is delivered by email, which is not a confidential
  * channel — it proves *control* of the address, not that the message is secret.
  */
 #[GateMethod(

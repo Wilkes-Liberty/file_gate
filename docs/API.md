@@ -156,7 +156,7 @@ Pre-shared campaign tokens are revoked by removing their hash from the field's
 
 Issues a one-time passcode for an `otp`-gated file. **Server-to-server only** —
 same shared-secret authentication as mint. Generates a code bound to (file,
-email), stores its hash (TTL-limited, attempt-capped), and e-mails it via the
+email), stores its hash (TTL-limited, attempt-capped), and emails it via the
 site mail transport. Rate-limited per IP and per (file, email).
 
 **Request body** (JSON):
@@ -233,7 +233,7 @@ third_party_settings:
       on_missing_referrer: 'deny'   # optional; 'deny' (default) or 'allow' when no parseable Origin/Referer is available
 ```
 
-The `otp` method (core) e-mails a one-time passcode; its `method_settings`:
+The `otp` method (core) emails a one-time passcode; its `method_settings`:
 
 ```yaml
 third_party_settings:
