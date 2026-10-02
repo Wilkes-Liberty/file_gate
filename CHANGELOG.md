@@ -6,6 +6,13 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-10-02
+
+### Changed
+- Drupal.org GitLab CI stays green. The project cspell dictionary covers
+  the module's unknown words, and the previous-major composer lane no
+  longer fails the pipeline.
+
 ## [1.11.1] - 2026-10-01
 
 ### Fixed
