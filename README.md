@@ -243,7 +243,7 @@ and the design note in
 
 The **One-time passcode** method (`otp`) proves control of an email address: a
 trusted back end requests a code bound to (file, email) at `POST
-/api/file-gate/otp` (shared-secret auth, like mint), File Gate e-mails it, and the
+/api/file-gate/otp` (shared-secret auth, like mint), File Gate emails it, and the
 visitor redeems the download with `?f=…&email=…&otp=…`. The code is single-use,
 TTL-limited, attempt-locked, and stored only as a hash. A step up from a bare
 token — verified in the moment — without an account.
@@ -365,7 +365,7 @@ already-gone token or jti), `429` (rate limited), `503` (no secret configured).
 ### OTP — `POST /api/file-gate/otp`
 
 Server-to-server, same shared-secret authentication as mint. Issues a single-use
-passcode bound to a `(file, email)` pair and e-mails it to that address (File Gate
+passcode bound to a `(file, email)` pair and emails it to that address (File Gate
 sends the mail and stores only a hash of the code). The visitor then redeems the
 download with `?f=…&email=…&otp=…`.
 
@@ -377,7 +377,7 @@ Request body (JSON):
 
 (or `"media": "<media-uuid>"` in place of `"file"`.)
 
-Responses: `204` (code issued and e-mailed), `400` (invalid body or email),
+Responses: `204` (code issued and emailed), `400` (invalid body or email),
 `401` (bad/absent secret), `404` (unknown file/media), `409` (host media
 unpublished), `422` (file not gated with the `otp` method), `429` (rate limited —
 per IP and per `(file, email)`), `503` (no secret configured).
@@ -589,7 +589,7 @@ submodules, not tracked as a roadmap here.
 | `authenticated` | shipped | Delivers to any logged-in Drupal user. |
 | `token` | shipped | Revocable per-grant token and/or a pre-shared campaign allowlist. |
 | `form` | shipped | Coupled email / lead-capture form (Drupal renders the gate). Ships in the **File Gate Form** submodule. |
-| `otp` | shipped | One-time passcode e-mailed to a self-identified address; single-use, TTL-limited, attempt-locked. |
+| `otp` | shipped | One-time passcode emailed to a self-identified address; single-use, TTL-limited, attempt-locked. |
 | `referrer_lock` | shipped | Signed URL that is only redeemable from an allowed origin/referrer (hardening, not authz). |
 | `assurance` | shipped | Signed URL gated on a hardware-backed OIDC assurance (PIV/CAC + FIDO2/WebAuthn), with opt-in DPoP. Ships in the **File Gate Assurance** submodule. |
 | `commerce` | shipped | Gate behind a purchase / entitlement (Drupal Commerce by default, or a pluggable external checker). Ships in the **File Gate Commerce** submodule. |

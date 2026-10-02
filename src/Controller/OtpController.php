@@ -179,7 +179,7 @@ final class OtpController implements ContainerInjectionInterface {
   }
 
   /**
-   * Issues (stores + e-mails) a one-time passcode for the requested file.
+   * Issues (stores + emails) a one-time passcode for the requested file.
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
    *   The request. Basic-auth password (or X-File-Gate-Secret header) carries
@@ -255,7 +255,7 @@ final class OtpController implements ContainerInjectionInterface {
   }
 
   /**
-   * Generates a code, stores its hash, and e-mails it.
+   * Generates a code, stores its hash, and emails it.
    *
    * @param \Drupal\file\FileInterface $file
    *   The gated file.

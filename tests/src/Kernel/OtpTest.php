@@ -86,7 +86,7 @@ final class OtpTest extends KernelTestBase {
   }
 
   /**
-   * Requesting a code stores it and e-mails it; the code redeems the file.
+   * Requesting a code stores it and emails it; the code redeems the file.
    */
   public function testRequestThenRedeem(): void {
     $file = $this->createFile('doc.pdf');

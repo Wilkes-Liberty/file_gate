@@ -16,10 +16,19 @@ include:
 variables:
   _GITLAB_TEMPLATES_REPO: project/gitlab_templates
   _GITLAB_TEMPLATES_REF: main
-  # The base module also supports 10.6/11.3; the supported-core GitHub workflow
-  # covers those base-module floors. Optional submodules retain 11.4, which
-  # the default full-integration phpunit job exercises.
+  # PREVIOUS_MAJOR = newest 10.x satisfying the constraint (10.6). The
+  # template image is CORE_PREVIOUS_PHP_MIN=8.1 (Drupal 10's historical
+  # min); composer.json requires PHP >= 8.2, so raise the previous-major
+  # PHP image to the project floor or Composer cannot resolve.
   #
+  # Autorun composer so the D10.6/8.2 install constraint is exercised on
+  # d.o. phpunit (previous major) is skipped below: that job also
+  # discovers 11.4-only submodule tests. The GitHub supported-core
+  # workflow is the hard D10.6/8.2 phpunit gate; the default phpunit job
+  # covers current core plus the 11.4 submodule suite.
+  OPT_IN_TEST_PREVIOUS_MAJOR: '1'
+  _AUTORUN_PREVIOUS_MAJOR: 'all'
+  CORE_PREVIOUS_PHP_MIN: '8.2'
   # The `^12` half is deliberately MANUAL rather than autorun: the next major is
   # a moving dev target, and a pipeline that goes red on upstream churn teaches
   # nothing and trains people to ignore the badge. Run it before tagging, and
@@ -27,3 +36,15 @@ variables:
   OPT_IN_TEST_NEXT_MAJOR: '1'
   # Forward-compat signal on the upcoming minor, available on demand.
   OPT_IN_TEST_NEXT_MINOR: '1'
+
+# Skip previous-major phpunit/phpstan. Composer (previous major) already
+# proves the D10.6/PHP 8.2 constraint resolves; those jobs would also
+# pick up file_gate_assurance/commerce/form/mcp tests and PHPUnit 10
+# attributes that are 11.4-only.
+phpunit (previous major):
+  rules:
+    - when: never
+
+phpstan (previous major):
+  rules:
+    - when: never
