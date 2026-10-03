@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-10-03
+
 ### Fixed
 - **Mint and language-prefixed token endpoints beside simple_oauth.**
   `AuthorizationShield` exact-matched only `/api/file-gate/download` and
