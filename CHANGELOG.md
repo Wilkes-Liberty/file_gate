@@ -6,6 +6,19 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Mint and language-prefixed token endpoints beside simple_oauth.**
+  `AuthorizationShield` exact-matched only `/api/file-gate/download` and
+  `/api/file-gate/assurance/bridge`, so a language prefix skipped the
+  stash and a global provider 401'd the IdP Bearer before the controller.
+  Mint (`verify_oidc_at_mint`) sends the same header and was not in the
+  list. The shield now suffix-matches download, the assurance bridge, and
+  mint without enumerating language codes. Bearer/DPoP is stashed; Basic and
+  `X-File-Gate-Secret` stay on the request. `file_gate.mint` pins
+  `_auth: ['cookie']` for non-global providers. Minted redeem paths stay
+  `/api/file-gate/download` (no language prefix), matching the existing
+  comment and the OTP session builder.
+
 ## [1.11.2] - 2026-10-02
 
 ### Changed

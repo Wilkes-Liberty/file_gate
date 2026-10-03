@@ -267,7 +267,7 @@ final class FileGateTest extends KernelTestBase {
 
     $this->assertSame(200, $response->getStatusCode());
     $data = json_decode((string) $response->getContent(), TRUE);
-    $this->assertStringStartsWith('/api/file-gate/download', $data['path']);
+    $this->assertStringStartsWith('/api/file-gate/download?', $data['path']);
     $this->assertStringContainsString('f=' . $file->uuid(), $data['path']);
     $this->assertStringContainsString('sig=', $data['path']);
     $this->assertGreaterThan(\Drupal::time()->getRequestTime(), $data['expires']);

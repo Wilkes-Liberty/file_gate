@@ -11,10 +11,12 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 /**
  * Guards the _auth pin on open-by-design token endpoints (GH #54).
  *
- * The bridge and assertion routes carry external IdP credentials in the
- * Authorization header. Without an _auth pin, any global authentication
- * provider that consumes Authorization (simple_oauth being the common case)
- * rejects the request during authentication and the controllers never run.
+ * The mint, bridge and assertion routes carry external IdP credentials in
+ * the Authorization header. Without an _auth pin, any non-global
+ * authentication provider that consumes Authorization (simple_oauth being
+ * the common case) rejects the request during authentication and the
+ * controllers never run. Global providers are the AuthorizationShield's
+ * job (GH #56).
  */
 #[Group('file_gate')]
 #[RunTestsInSeparateProcesses]
@@ -38,6 +40,7 @@ final class RouteAuthPinTest extends KernelTestBase {
   public function testOpenRoutesPinCookieAuth(): void {
     $provider = $this->container->get('router.route_provider');
     $pinned = [
+      'file_gate.mint',
       'file_gate_assurance.bridge',
       'file_gate_assurance.webauthn_assert_options',
       'file_gate_assurance.webauthn_assert',

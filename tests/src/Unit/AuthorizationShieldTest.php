@@ -35,10 +35,31 @@ final class AuthorizationShieldTest extends UnitTestCase {
   }
 
   /**
+   * Token-endpoint paths, including language-prefixed variants.
+   *
+   * @return list<string>
+   *   Paths that must stash Bearer/DPoP.
+   */
+  private function tokenEndpointPaths(): array {
+    $suffixes = [
+      '/api/file-gate/download',
+      '/api/file-gate/assurance/bridge',
+      '/api/file-gate/mint',
+    ];
+    $paths = $suffixes;
+    foreach (['/en', '/es', '/zh-hans'] as $prefix) {
+      foreach ($suffixes as $suffix) {
+        $paths[] = $prefix . $suffix;
+      }
+    }
+    return $paths;
+  }
+
+  /**
    * Bearer on a File Gate token endpoint is stashed and stripped.
    */
   public function testBearerStrippedOnTokenEndpoints(): void {
-    foreach (['/api/file-gate/download', '/api/file-gate/assurance/bridge'] as $path) {
+    foreach ($this->tokenEndpointPaths() as $path) {
       $request = Request::create($path, 'POST');
       $request->headers->set('Authorization', 'Bearer token-value');
       $this->shield()->handle($request);
@@ -76,18 +97,43 @@ final class AuthorizationShieldTest extends UnitTestCase {
    * Basic credentials (service-secret form) pass through untouched.
    */
   public function testBasicPassesThrough(): void {
-    $request = Request::create('/api/file-gate/download', 'GET');
-    $request->headers->set('Authorization', 'Basic dTpw');
-    $this->shield()->handle($request);
-    $this->assertSame('Basic dTpw', $this->inner->headers->get('Authorization'));
-    $this->assertFalse($this->inner->attributes->has(AuthorizationShield::ATTRIBUTE));
+    foreach (['/api/file-gate/download', '/en/api/file-gate/mint'] as $path) {
+      $request = Request::create($path, 'POST');
+      $request->headers->set('Authorization', 'Basic dTpw');
+      $this->shield()->handle($request);
+      $this->assertSame('Basic dTpw', $this->inner->headers->get('Authorization'), $path);
+      $this->assertFalse($this->inner->attributes->has(AuthorizationShield::ATTRIBUTE), $path);
+    }
+  }
+
+  /**
+   * Stashing mint Bearer leaves the mint secret headers on the request.
+   */
+  public function testMintSecretHeaderUntouchedWhenBearerStashed(): void {
+    foreach (['/api/file-gate/mint', '/en/api/file-gate/mint'] as $path) {
+      $request = Request::create($path, 'POST');
+      $request->headers->set('Authorization', 'Bearer token-value');
+      $request->headers->set('X-File-Gate-Secret', 'mint-secret');
+      $request->headers->set('X-File-Gate-Secret-Id', 'named');
+      $this->shield()->handle($request);
+      $this->assertFalse($this->inner->headers->has('Authorization'), $path);
+      $this->assertSame('Bearer token-value', AuthorizationShield::authorization($this->inner), $path);
+      $this->assertSame('mint-secret', $this->inner->headers->get('X-File-Gate-Secret'), $path);
+      $this->assertSame('named', $this->inner->headers->get('X-File-Gate-Secret-Id'), $path);
+    }
   }
 
   /**
    * Bearer on any other route passes through untouched — the negative proof.
    */
   public function testOtherRoutesUntouched(): void {
-    foreach (['/', '/api/file-gate/mint', '/api/file-gate/webauthn/register', '/jsonapi/node/page'] as $path) {
+    foreach ([
+      '/',
+      '/api/file-gate/revoke',
+      '/api/file-gate/webauthn/register',
+      '/en/api/file-gate/webauthn/register',
+      '/jsonapi/node/page',
+    ] as $path) {
       $request = Request::create($path, 'POST');
       $request->headers->set('Authorization', 'Bearer token-value');
       $this->shield()->handle($request);
