@@ -26,6 +26,12 @@ file_gate.mint:
     # Open by design: MintController authenticates the caller itself.
     _access: 'TRUE'
   options:
+    # Restricts post-routing provider authentication to cookie. NOTE: this
+    # cannot stop a GLOBAL provider (e.g. simple_oauth) from 401-ing a foreign
+    # Bearer token pre-routing — that is the AuthorizationShield middleware's
+    # job (GH #56); the pin only covers non-global providers. Needed when
+    # verify_oidc_at_mint presents an IdP Bearer alongside the mint secret.
+    _auth: ['cookie']
     no_cache: TRUE
 
 file_gate.revoke:

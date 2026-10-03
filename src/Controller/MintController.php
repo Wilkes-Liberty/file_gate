@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Drupal\file_gate\Controller;
 
 use Drupal\Component\Datetime\TimeInterface;
+use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\Session\AccountInterface;
-use Drupal\Core\Url;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
@@ -272,10 +272,14 @@ final class MintController implements ContainerInjectionInterface {
       ], Response::HTTP_BAD_REQUEST);
     }
 
-    // Build a root-relative, host-agnostic path. The front end prepends its own
-    // public origin (the internal mint host must never leak into this URL).
+    // Root-relative redeem path. Keep the request base URL (a subdirectory
+    // or index.php) and omit any language prefix. Url::fromRoute() would
+    // insert the active prefix. The front end prepends its public origin;
+    // the internal mint host must not appear in this URL.
     $query = ['f' => $file->uuid()] + $params;
-    $path = Url::fromRoute('file_gate.download', [], ['query' => $query, 'absolute' => FALSE])->toString();
+    $path = $request->getBaseUrl()
+      . '/api/file-gate/download?'
+      . UrlHelper::buildQuery($query);
 
     $this->logger->info('Minted @method grant for file @uuid to @ip.', [
       '@method' => $gate['method'],

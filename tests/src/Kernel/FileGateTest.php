@@ -267,11 +267,39 @@ final class FileGateTest extends KernelTestBase {
 
     $this->assertSame(200, $response->getStatusCode());
     $data = json_decode((string) $response->getContent(), TRUE);
-    $this->assertStringStartsWith('/api/file-gate/download', $data['path']);
+    $this->assertStringStartsWith('/api/file-gate/download?', $data['path']);
     $this->assertStringContainsString('f=' . $file->uuid(), $data['path']);
     $this->assertStringContainsString('sig=', $data['path']);
     $this->assertGreaterThan(\Drupal::time()->getRequestTime(), $data['expires']);
     $this->assertSame(120, $data['ttl']);
+  }
+
+  /**
+   * Mint keeps a subdirectory base URL and drops a language prefix.
+   */
+  public function testMintPathKeepsBaseUrlAndOmitsLanguagePrefix(): void {
+    $file = $this->createReferencedFile('field_gated', 'gated.pdf');
+    $request = Request::create(
+      '/drupal/en/api/file-gate/mint',
+      'POST',
+      [],
+      [],
+      [],
+      [
+        'SCRIPT_NAME' => '/drupal/index.php',
+        'SCRIPT_FILENAME' => '/var/www/html/index.php',
+      ],
+      json_encode(['file' => $file->uuid()]),
+    );
+    $request->headers->set('Authorization', 'Basic ' . base64_encode('mint:' . self::SECRET));
+
+    $response = MintController::create($this->container)->mint($request);
+
+    $this->assertSame(200, $response->getStatusCode());
+    $data = json_decode((string) $response->getContent(), TRUE);
+    $this->assertStringStartsWith('/drupal/api/file-gate/download?', $data['path']);
+    $this->assertStringNotContainsString('/en/', $data['path']);
+    $this->assertStringContainsString('f=' . $file->uuid(), $data['path']);
   }
 
   /**
