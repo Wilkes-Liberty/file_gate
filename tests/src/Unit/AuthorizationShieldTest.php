@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\file_gate\Unit;
 
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Config\ImmutableConfig;
 use Drupal\Tests\UnitTestCase;
 use Drupal\file_gate\StackMiddleware\AuthorizationShield;
+use Drupal\language\Plugin\LanguageNegotiation\LanguageNegotiationUrl;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,15 +26,46 @@ final class AuthorizationShieldTest extends UnitTestCase {
   private ?Request $inner = NULL;
 
   /**
-   * Builds the middleware around a capturing inner kernel.
+   * Builds the middleware with the default path-prefix negotiation.
+   *
+   * Prefixes: en, es, zh-hans, and a custom english prefix.
    */
   private function shield(): AuthorizationShield {
+    return $this->shieldWith([
+      'source' => LanguageNegotiationUrl::CONFIG_PATH_PREFIX,
+      'prefixes' => [
+        'en' => 'en',
+        'es' => 'es',
+        'zh-hans' => 'zh-hans',
+        'english' => 'english',
+      ],
+    ]);
+  }
+
+  /**
+   * Builds the middleware around a capturing inner kernel.
+   *
+   * @param array<string, mixed>|null $url_negotiation
+   *   language.negotiation `url` config. NULL means the config is absent.
+   */
+  private function shieldWith(?array $url_negotiation): AuthorizationShield {
     $kernel = $this->createMock(HttpKernelInterface::class);
-    $kernel->method('handle')->willReturnCallback(function (Request $request, int $type = HttpKernelInterface::MAIN_REQUEST, bool $catch = TRUE): Response {
+    $kernel->method('handle')->willReturnCallback(function (Request $request): Response {
       $this->inner = $request;
       return new Response();
     });
-    return new AuthorizationShield($kernel);
+    $config = $this->getMockBuilder(ImmutableConfig::class)
+      ->disableOriginalConstructor()
+      ->onlyMethods(['get'])
+      ->getMock();
+    $config->method('get')->willReturnCallback(
+      function (string $key) use ($url_negotiation): mixed {
+        return $key === 'url' ? $url_negotiation : NULL;
+      },
+    );
+    $factory = $this->createMock(ConfigFactoryInterface::class);
+    $factory->method('get')->with('language.negotiation')->willReturn($config);
+    return new AuthorizationShield($kernel, $factory);
   }
 
   /**
@@ -133,6 +167,12 @@ final class AuthorizationShieldTest extends UnitTestCase {
       '/api/file-gate/webauthn/register',
       '/en/api/file-gate/webauthn/register',
       '/jsonapi/node/page',
+      // A longer prefix is not a language prefix.
+      '/custom/admin/api/file-gate/mint',
+      '/en/es/api/file-gate/download',
+      // One segment that is not a configured prefix.
+      '/custom/api/file-gate/mint',
+      '/fr/api/file-gate/download',
     ] as $path) {
       $request = Request::create($path, 'POST');
       $request->headers->set('Authorization', 'Bearer token-value');
@@ -140,6 +180,40 @@ final class AuthorizationShieldTest extends UnitTestCase {
       $this->assertSame('Bearer token-value', $this->inner->headers->get('Authorization'), $path);
       $this->assertFalse($this->inner->attributes->has(AuthorizationShield::ATTRIBUTE), $path);
     }
+  }
+
+  /**
+   * Configured path prefixes shield; other prefixes do not.
+   */
+  public function testOnlyConfiguredPathPrefixShields(): void {
+    $bearer = 'Bearer token-value';
+
+    $custom = Request::create('/english/api/file-gate/mint', 'POST');
+    $custom->headers->set('Authorization', $bearer);
+    $this->shield()->handle($custom);
+    $this->assertFalse($this->inner->headers->has('Authorization'));
+    $this->assertSame($bearer, AuthorizationShield::authorization($this->inner));
+
+    $domain = Request::create('/en/api/file-gate/download', 'GET');
+    $domain->headers->set('Authorization', $bearer);
+    $this->shieldWith([
+      'source' => LanguageNegotiationUrl::CONFIG_DOMAIN,
+      'prefixes' => ['en' => 'en'],
+    ])->handle($domain);
+    $this->assertSame($bearer, $this->inner->headers->get('Authorization'));
+    $this->assertFalse($this->inner->attributes->has(AuthorizationShield::ATTRIBUTE));
+
+    $exact = Request::create('/api/file-gate/download', 'GET');
+    $exact->headers->set('Authorization', $bearer);
+    $this->shieldWith(NULL)->handle($exact);
+    $this->assertFalse($this->inner->headers->has('Authorization'));
+    $this->assertSame($bearer, AuthorizationShield::authorization($this->inner));
+
+    $prefixed = Request::create('/en/api/file-gate/mint', 'POST');
+    $prefixed->headers->set('Authorization', $bearer);
+    $this->shieldWith(NULL)->handle($prefixed);
+    $this->assertSame($bearer, $this->inner->headers->get('Authorization'));
+    $this->assertFalse($this->inner->attributes->has(AuthorizationShield::ATTRIBUTE));
   }
 
   /**

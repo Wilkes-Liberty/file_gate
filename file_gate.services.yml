@@ -114,5 +114,8 @@ services:
 
   http_middleware.file_gate_authorization_shield:
     class: Drupal\file_gate\StackMiddleware\AuthorizationShield
+    # StackedKernelPass prepends the inner kernel. This argument is the
+    # language-prefix config, so an unrelated route is not shielded.
+    arguments: ['@config.factory']
     tags:
       - { name: http_middleware, priority: 180 }

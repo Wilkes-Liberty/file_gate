@@ -12,12 +12,13 @@ All notable changes to **File Gate** are documented here. The format is based on
   `/api/file-gate/assurance/bridge`, so a language prefix skipped the
   stash and a global provider 401'd the IdP Bearer before the controller.
   Mint (`verify_oidc_at_mint`) sends the same header and was not in the
-  list. The shield now suffix-matches download, the assurance bridge, and
-  mint without enumerating language codes. Bearer/DPoP is stashed; Basic and
-  `X-File-Gate-Secret` stay on the request. `file_gate.mint` pins
-  `_auth: ['cookie']` for non-global providers. Minted redeem paths stay
-  `/api/file-gate/download` (no language prefix), matching the existing
-  comment and the OTP session builder.
+  list. The shield matches download, the assurance bridge, and mint
+  exactly, or with one configured path-prefix language. A longer prefix
+  is not a File Gate route and keeps its Authorization header. Bearer/DPoP
+  is stashed; Basic and `X-File-Gate-Secret` stay on the request.
+  `file_gate.mint` pins `_auth: ['cookie']` for non-global providers.
+  Minted redeem paths keep the request base URL and omit the language
+  prefix.
 
 ## [1.11.2] - 2026-10-02
 
