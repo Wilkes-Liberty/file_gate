@@ -318,7 +318,7 @@ final class Token extends GateMethodBase {
       $store = $this->tokenStore();
       $record = $store->get($token_hash);
       if (!is_array($record)) {
-        $record = ['uses' => 0, 'max' => $max, 'preshared' => TRUE];
+        $record = ['uses' => 0];
       }
       $uses = (int) ($record['uses'] ?? 0);
       if ($uses >= $max) {
