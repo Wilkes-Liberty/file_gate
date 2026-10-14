@@ -312,7 +312,9 @@ final class TokenRedeemMintStoredFieldTest extends KernelTestBase {
    *   The expirable key/value store holding minted token hashes.
    */
   private function tokenStore(): KeyValueStoreExpirableInterface {
-    return $this->container->get('keyvalue.expirable')->get(Token::TOKEN_COLLECTION);
+    /** @var \Drupal\Core\KeyValueStore\KeyValueStoreExpirableInterface $store */
+    $store = $this->container->get('keyvalue.expirable')->get(Token::TOKEN_COLLECTION);
+    return $store;
   }
 
 }
