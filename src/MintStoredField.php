@@ -79,7 +79,7 @@ final class MintStoredField {
    * @return string|null
    *   entity_type.field_name, or NULL when `fld` is absent.
    */
-  public function fromSignedClaim(Request $request): ?string {
+  private function fromSignedClaim(Request $request): ?string {
     $fld = trim((string) $request->query->get('fld', ''));
     return $fld !== '' ? $fld : NULL;
   }

@@ -6,6 +6,15 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+- **Token redeem pins the signed/stored field.** Token `allowsField()` now
+  uses `MintStoredField::pin()` (signed `fld`, else the token-store row),
+  matching download, signed URL, and the assurance bridge. An unsigned JSON
+  body `field` / `fld` is ignored. `fromSignedClaim()` is private to `pin()`.
+  The README trust-boundary section no longer claims identity-aware mint
+  and field-scoped secrets are unbuilt: both are shipped opt-in
+  constraints, not a default ACL.
+
 ## [1.11.3] - 2026-10-03
 
 ### Fixed

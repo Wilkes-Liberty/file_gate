@@ -202,7 +202,7 @@ final class FileGateToolsKernelTest extends KernelTestBase {
     $tool->setInputValue('file', '00000000-0000-4000-8000-000000000000');
     $tool->execute();
     self::assertTrue($tool->getResultStatus());
-    self::assertSame(['found' => FALSE], $tool->getResult()->getContextValues());
+    self::assertSame(['found' => FALSE], $this->resultValues($tool));
   }
 
   /**
@@ -328,7 +328,25 @@ final class FileGateToolsKernelTest extends KernelTestBase {
     $tool->setInputValue('media', '00000000-0000-4000-8000-000000000001');
     $tool->execute();
     self::assertTrue($tool->getResultStatus(), (string) $tool->getResultMessage());
-    self::assertSame(['found' => FALSE], $tool->getResult()->getContextValues());
+    self::assertSame(['found' => FALSE], $this->resultValues($tool));
+  }
+
+  /**
+   * Result context values without MCP Sentinel classification stamps.
+   *
+   * Sentinel 2.34+ adds `_mcp_sentinel_untrusted_read` on lookup results.
+   *
+   * @return array<string, mixed>
+   *   Tool context values minus `_mcp_*` keys.
+   */
+  private function resultValues(object $tool): array {
+    $values = $tool->getResult()->getContextValues();
+    foreach (array_keys($values) as $key) {
+      if (is_string($key) && str_starts_with($key, '_mcp_')) {
+        unset($values[$key]);
+      }
+    }
+    return $values;
   }
 
   /**

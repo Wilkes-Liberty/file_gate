@@ -45,3 +45,12 @@ parameters:
     -
       identifier: class.notFound
       path: modules/file_gate_assurance/*
+    # Hook signatures keep unused parameters (help $route_match, the field
+    # storage entity-builder $form / $entity_type_id, test field-access
+    # $items). PHPStan 2.3 bleedingEdge flags them; the parameters stay
+    # because Drupal calls the hooks with that arity.
+    -
+      identifier: function.unusedParameter
+      paths:
+        - file_gate.module
+        - tests/modules/file_gate_test_field_access/file_gate_test_field_access.module

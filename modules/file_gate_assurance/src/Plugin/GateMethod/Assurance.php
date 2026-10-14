@@ -252,21 +252,6 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   }
 
   /**
-   * Live OIDC (+ DPoP/introspection) check without session-bridge fallback.
-   *
-   * Used by the bridge controller when establishing the plain-link cookie.
-   *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The request presenting Authorization.
-   *
-   * @return bool
-   *   TRUE when live assurance passes.
-   */
-  public function liveAssuranceSatisfied(Request $request): bool {
-    return $this->liveOidcSatisfied($request);
-  }
-
-  /**
    * Whether the request satisfies the configured assurance.
    *
    * @param \Symfony\Component\HttpFoundation\Request $request
@@ -336,9 +321,18 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
   }
 
   /**
-   * Live token path for verify_at=redeem.
+   * Live OIDC (+ DPoP/introspection) check without session-bridge fallback.
+   *
+   * Used by the bridge controller when establishing the plain-link cookie,
+   * and by assuranceSatisfied() for verify_at=redeem.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The request presenting Authorization.
+   *
+   * @return bool
+   *   TRUE when live assurance passes.
    */
-  private function liveOidcSatisfied(Request $request): bool {
+  public function liveOidcSatisfied(Request $request): bool {
     $token = $this->bearerToken($request);
     if ($token === NULL) {
       return FALSE;
