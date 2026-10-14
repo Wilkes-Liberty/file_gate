@@ -503,10 +503,11 @@ check) — but it has two consequences worth stating plainly:
   doubles as the HMAC signing key, so rotating it invalidates outstanding
   grants — which is the point when you suspect exposure.
 
-If you need mint to enforce per-user rights rather than delegate them, that is
-not built yet. Scoping a secret to particular fields or media bundles, so a
-front end that only serves whitepapers cannot mint an NDA, is also not built.
-Both are tracked in the issue queue.
+Mint trusts the secret holder. Identity-aware mint (`account` / `uid`, field
+`require_identity_mint`, or global `require_acting_account`) and field-scoped
+named secrets (`secret_scopes`) are **opt-in constraints** on that holder —
+they are not a default ACL. Without them, anyone who holds the secret can
+mint any gated file.
 
 ### Gating requires the private file system
 

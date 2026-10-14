@@ -141,9 +141,12 @@ final class Token extends GateMethodBase {
       if (!$this->signer->validate($this->resourceId($file), $claims, $sig, $secret_id)) {
         return FALSE;
       }
+      // pin() is the same hint DownloadController used: HMAC-bound fld,
+      // else the persisted token-store row. An unsigned JSON body field
+      // is not consulted.
       $gate = $this->resolver->getGateForFile(
         $file,
-        $this->mintStoredField->fromRequest($request),
+        $this->mintStoredField->pin($request),
       );
       if ($gate === NULL || !$this->secrets->allowsField($secret_id, $gate['field'])) {
         return FALSE;
