@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.4] - 2026-10-14
+
 ### Security
 - **Token redeem pins the signed/stored field.** Token `allowsField()` now
   uses `MintStoredField::pin()` (signed `fld`, else the token-store row),
