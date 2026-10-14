@@ -18,7 +18,7 @@ jobs:
         include:
           - { core: '~10.6.0', php: '8.2' }
           - { core: '~11.3.0', php: '8.3' }
-          - { core: '11.4.7', php: '8.4' }
+          - { core: '11.4.10', php: '8.4' }
           - { core: '~11.4.0', php: '8.4' }
     steps:
       - uses: actions/checkout@v4
@@ -57,8 +57,6 @@ jobs:
               'extra': {'installer-paths': {'web/core': ['type:drupal-core'],
                   'web/modules/contrib/{$name}': ['type:drupal-module']}},
           }
-          if core == '11.4.7':
-              package['require']['twig/twig'] = '3.29.0'
           with open('composer.json', 'w') as out:
               json.dump(package, out, indent=2)
           PY
