@@ -6,6 +6,20 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Submodule runtime requirements now register.** `file_gate_assurance` and
+  `file_gate_commerce` defined `hook_runtime_requirements` only in `.install`,
+  which Drupal never discovers. Both now use `#[Hook('runtime_requirements')]`
+  classes, with the Drupal 10 `hook_requirements` bridge the base module uses.
+  Status report findings for a missing JWT library, missing WebAuthn library,
+  or missing Commerce entity type can appear again. Rebuild caches after
+  updating (`drush cr`): the compiled container still lists the removed
+  functions until it is rebuilt.
+
+### Changed
+- Call sites of `MintStoredField::pin()` point at that method instead of
+  restating the pin rules.
+
 ## [1.11.4] - 2026-10-14
 
 ### Security

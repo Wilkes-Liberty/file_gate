@@ -160,10 +160,7 @@ class SignedUrl extends GateMethodBase {
       return FALSE;
     }
     // Enforce field scope at redemption so narrowing a secret revokes
-    // outstanding grants (not only future mints). pin() is the same hint
-    // the controller used to build this gate: HMAC-bound fld, else the
-    // persisted jti/token row. The HMAC above already covers fld. An
-    // unsigned JSON body field is not consulted.
+    // outstanding grants (not only future mints). See MintStoredField::pin().
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->pin($request),

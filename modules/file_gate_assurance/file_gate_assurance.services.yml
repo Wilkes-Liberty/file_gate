@@ -1,5 +1,8 @@
 services:
 
+  Drupal\file_gate_assurance\Hook\FileGateRequirements:
+    class: Drupal\file_gate_assurance\Hook\FileGateRequirements
+
   file_gate_assurance.verifier:
     class: Drupal\file_gate_assurance\AssuranceVerifier
     arguments:
