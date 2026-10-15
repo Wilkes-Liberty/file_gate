@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.5] - 2026-10-15
+
 ### Fixed
 - **Submodule runtime requirements now register.** `file_gate_assurance` and
   `file_gate_commerce` defined `hook_runtime_requirements` only in `.install`,
