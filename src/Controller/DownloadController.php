@@ -128,10 +128,8 @@ final class DownloadController implements ContainerInjectionInterface {
     }
 
     // Only files that are actually gated may be delivered through this route;
-    // it must never become an open proxy for arbitrary private files. Pin to
-    // the signed fld claim, or the grant row when fld is absent. An unsigned
-    // body field must not select another field's settings. Unpinned resolve
-    // picks the lexicographic winner among two same-method fields.
+    // it must never become an open proxy for arbitrary private files.
+    // See MintStoredField::pin().
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->pin($request),

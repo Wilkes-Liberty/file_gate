@@ -78,6 +78,7 @@ final class BridgeController implements ContainerInjectionInterface {
     if (!$file instanceof FileInterface) {
       return $this->error('Unknown file.', Response::HTTP_NOT_FOUND);
     }
+    // See MintStoredField::pin().
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->pin($request),
@@ -444,6 +445,7 @@ HTML;
     if (!$file instanceof FileInterface) {
       return '';
     }
+    // See MintStoredField::pin().
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->pin($request),

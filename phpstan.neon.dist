@@ -37,7 +37,7 @@ parameters:
       paths:
         - src/FileTargetResolver.php
     # firebase/php-jwt is an optional dependency: `suggest` in composer.json,
-    # and file_gate_assurance.install reports it through hook_requirements when
+    # and File Gate Assurance reports it through hook_runtime_requirements when
     # it is absent. Only the Assurance submodule uses it, and only for OIDC
     # token verification. A consumer analysing this module without the library
     # installed should not be told its own code is broken. Drop this entry if

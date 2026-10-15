@@ -2,28 +2,24 @@
 
 /**
  * @file
- * Runtime checks for the File Gate Commerce submodule.
+ * Install and update functions for File Gate Commerce.
+ *
+ * Status report findings live in
+ * \Drupal\file_gate_commerce\Hook\FileGateRequirements.
  */
 
 declare(strict_types=1);
 
-use Drupal\Core\Extension\Requirement\RequirementSeverity;
+use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
+use Drupal\file_gate_commerce\Hook\FileGateRequirements;
 
 /**
- * Implements hook_runtime_requirements().
- *
- * The bundled entitlement checker needs Drupal Commerce. This is a warning, not
- * an error: a site may instead override the entitlement checker service to
- * check an external entitlement source, in which case Commerce is not required.
+ * Implements hook_requirements() for Drupal 10.
  */
-function file_gate_commerce_runtime_requirements(): array {
-  $requirements = [];
-  if (!\Drupal::entityTypeManager()->hasDefinition('commerce_order')) {
-    $requirements['file_gate_commerce_commerce'] = [
-      'title' => t('File Gate Commerce'),
-      'description' => t('The bundled entitlement checker needs Drupal Commerce (<code>commerce_order</code>). Install Commerce, or override the <code>file_gate_commerce.entitlement_checker</code> service to check an external entitlement source.'),
-      'severity' => RequirementSeverity::Warning,
-    ];
+#[LegacyRequirementsHook]
+function file_gate_commerce_requirements(string $phase): array {
+  if ($phase !== 'runtime' || version_compare(\Drupal::VERSION, '11.2', '>=')) {
+    return [];
   }
-  return $requirements;
+  return \Drupal::service(FileGateRequirements::class)->runtime();
 }
