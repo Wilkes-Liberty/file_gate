@@ -91,7 +91,7 @@ RFC 8705, are an alternative PoP mechanism with the same constraint.) DPoP ships
 
 **Recommendation:** Model A (A1) as the decoupled default (honestly labeled);
 Model B opt-in for same-origin / JS flows; DPoP (RFC 9449) opt-in hardening on
-Model B; A2 later.
+Model B; A2 (mint-time OIDC) opt-in.
 
 ### As shipped (additions beyond this note)
 
@@ -109,8 +109,10 @@ Two hardenings landed in `file_gate_assurance` beyond the two models above:
   reachable *solely* through that proxy; the mode fails closed without an
   allowlist. This is the closest File Gate gets to a verifier-adjacent posture,
   and it is still the proxy + PKI — not File Gate — doing the certificate
-  validation. A2 (verify the OIDC token at mint) was **not** built; it still needs
-  the file-gate-audienced-token story (decision #4).
+  validation. A2 (verify the OIDC token at mint) shipped as opt-in
+  (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
+  `Assurance::assertMintTimeOidc`). Audience via RFC 8693 token exchange or an
+  IdP mapper remains an operational requirement (decision #4).
 
 ## How assurance is conveyed
 
@@ -188,10 +190,10 @@ Two hardenings landed in `file_gate_assurance` beyond the two models above:
 
 | # | Decision | Resolved as shipped |
 |---|---|---|
-| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | A1 shipped as `verify_at: mint`; A2 **not** built (still needs the audience solution, #4) |
+| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | A1 shipped as `verify_at: mint` (default); A2 shipped opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`, `Assurance::assertMintTimeOidc`) |
 | 2 | Model A only / B only / both | Both — `verify_at: mint` (A) and `verify_at: redeem` (B), plus `client_cert` (edge mTLS) — with the honest caveat in docs |
 | 3 | Refactor `SignedUrl` claim-reconstruction seam | Shipped — `signedClaimKeys()` / `extraMintClaims()`, with regression tests |
-| 4 | File-Gate-audienced token for A2/B | Deferred — token exchange (RFC 8693) or an IdP mapper, when A2 is built |
+| 4 | File-Gate-audienced token for A2/B | Operational — RFC 8693 token exchange or an IdP audience mapper (SPA-only tokens fail audience pin by design) |
 | 5 | Interface: verify-in-controller + optional interface vs `mint()` change | Shipped as `ContextualMintInterface` (feature-detected by the mint controller); `mint()` unchanged |
 | 6 | PoP at delivery: none / DPoP (9449) / mTLS (8705) | DPoP shipped opt-in on Model B (off by default); mTLS documented as the alternative |
 | 7 | Revocation: valid-until-exp vs introspection | Introspection shipped optional (Model B); Model A limit documented |
@@ -207,5 +209,7 @@ Two hardenings landed in `file_gate_assurance` beyond the two models above:
    verification service; Model A (A1) method binding `aal`; kernel tests; docs.
 3. Model B (live token verify + `sub_hash`) opt-in; RFC 9470 challenge; optional
    introspection.
-4. DPoP (RFC 9449) opt-in hardening on Model B; then A2 once the audience story is
-   settled.
+4. DPoP (RFC 9449) opt-in hardening on Model B; A2 mint-time OIDC shipped
+   opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
+   `Assurance::assertMintTimeOidc`). Audience via RFC 8693 / IdP mapper remains
+   an operational requirement.

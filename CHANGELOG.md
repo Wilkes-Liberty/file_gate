@@ -6,6 +6,18 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Design note `piv-cac-webauthn.md` records A2 mint-time OIDC as shipped
+  opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
+  `Assurance::assertMintTimeOidc`). Audience via RFC 8693 / IdP mapper
+  remains an operational requirement.
+- MCP `file_gate_status` README row names the findings as base-module
+  runtime findings.
+- Supported-core path-repo pin is 1.11.5.
+- `AssuranceVerifier` uses `ASYMMETRIC_ALGS` for DPoP and OIDC (the
+  `DPOP_ALGS` / `OIDC_TOKEN_ALGS` aliases are gone).
+- `FileGateMetrics::hasDataSource()` is private.
+
 ## [1.11.5] - 2026-10-15
 
 ### Fixed
