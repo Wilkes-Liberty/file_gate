@@ -191,8 +191,10 @@ jobs:
         run: |
           set -euo pipefail
           cd drupal
-          # The module's own phpstan.neon.dist, so this and the drupalcode job
-          # ask the same question rather than two similar ones.
+          # Stay on phpstan.neon.dist. Drupal.org prefers phpstan.neon, which
+          # excludes modules/file_gate_mcp because that job does not install
+          # drupal/tool or drupal/mcp_sentinel. This job does, so it still
+          # analyzes the tools.
           vendor/bin/phpstan analyze web/modules/contrib/file_gate \
             -c web/modules/contrib/file_gate/phpstan.neon.dist \
             --autoload-file=vendor/autoload.php \
