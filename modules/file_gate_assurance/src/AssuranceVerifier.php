@@ -51,16 +51,6 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
   ];
 
   /**
-   * The signature algorithms accepted for DPoP proofs.
-   */
-  private const DPOP_ALGS = self::ASYMMETRIC_ALGS;
-
-  /**
-   * The asymmetric JWT algorithms accepted for OIDC token verification.
-   */
-  private const OIDC_TOKEN_ALGS = self::ASYMMETRIC_ALGS;
-
-  /**
    * The DPoP proof freshness window, in seconds.
    */
   private const DPOP_WINDOW = 60;
@@ -293,8 +283,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
    *
    * The issuer and its discovery document come from admin configuration — never
    * from the token — so a forged `iss` cannot point verification at an
-   * attacker-controlled key set (SSRF). Protected so tests can seed a key set
-   * without HTTP.
+   * attacker-controlled key set (SSRF).
    *
    * @param string $issuer
    *   The configured OIDC issuer URL.
@@ -384,7 +373,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
     $alg = (string) ($header['alg'] ?? '');
     $jwk = $header['jwk'] ?? NULL;
     // Reject "none"/HMAC and any missing embedded public key up front.
-    if (!in_array($alg, self::DPOP_ALGS, TRUE) || !is_array($jwk)) {
+    if (!in_array($alg, self::ASYMMETRIC_ALGS, TRUE) || !is_array($jwk)) {
       return NULL;
     }
 
@@ -557,7 +546,7 @@ class AssuranceVerifier implements AssuranceVerifierInterface {
       return NULL;
     }
     $alg = (string) ($header['alg'] ?? '');
-    return in_array($alg, self::OIDC_TOKEN_ALGS, TRUE) ? $alg : NULL;
+    return in_array($alg, self::ASYMMETRIC_ALGS, TRUE) ? $alg : NULL;
   }
 
   /**

@@ -36,7 +36,7 @@ final class FileGateMetrics {
   /**
    * Whether dblog is available as a data source.
    */
-  public function hasDataSource(): bool {
+  private function hasDataSource(): bool {
     return $this->moduleHandler->moduleExists('dblog')
       && $this->database->schema()->tableExists('watchdog');
   }
@@ -110,7 +110,6 @@ final class FileGateMetrics {
         $deliveries++;
         $by_day[$day]['deliveries']++;
         $method = (string) ($vars['@method'] ?? 'unknown');
-        // Strip parens form "(@method)" if already clean.
         $method = trim($method, " \t\n\r\0\x0B()");
         $method_counts[$method] = ($method_counts[$method] ?? 0) + 1;
         $uuid = (string) ($vars['@uuid'] ?? '');

@@ -413,7 +413,7 @@ MCP Sentinel does not declare Drupal 12 yet.
 
 | Tool | Operation | Returns |
 | --- | --- | --- |
-| `file_gate_status` | read | Status report findings, whether a signing secret is configured, named secret ids and whether each has a field scope, every gated field with its method, scheme and a `protected` flag |
+| `file_gate_status` | read | base-module runtime findings, whether a signing secret is configured, named secret ids and whether each has a field scope, every gated field with its method, scheme and a `protected` flag |
 | `file_gate_file_gate` | read | For one file or media UUID: whether it is gated, by which field and method, and that the plain `/system/files` URL will not serve it |
 | `file_gate_grants_list` | read | Live usage-limited grants for one gated field, newest first, at most 200 |
 | `file_gate_metrics` | read | Mints, deliveries, denials and authentication failures for 1 to 90 days |
