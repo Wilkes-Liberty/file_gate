@@ -6,6 +6,12 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+- Drupal 10 `hook_requirements` bridges from `file_gate_assurance` and
+  `file_gate_commerce`. Both submodules require `^11.4 || ^12`, so the
+  `#[LegacyRequirementsHook]` shims never ran. The base module still
+  keeps its Drupal 10.6 bridge.
+
 ### Changed
 - Design note `piv-cac-webauthn.md` records A2 mint-time OIDC as shipped
   opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
