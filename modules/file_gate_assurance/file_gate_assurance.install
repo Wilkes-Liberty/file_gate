@@ -10,9 +10,7 @@
 
 declare(strict_types=1);
 
-use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
 use Drupal\file_gate_assurance\AssuranceVerifier;
-use Drupal\file_gate_assurance\Hook\FileGateRequirements;
 use Drupal\file_gate_assurance\WebAuthn\WebAuthnCeremony;
 
 /**
@@ -109,15 +107,4 @@ function file_gate_assurance_uninstall(): void {
   ] as $collection) {
     $factory->get($collection)->deleteAll();
   }
-}
-
-/**
- * Implements hook_requirements() for Drupal 10.
- */
-#[LegacyRequirementsHook]
-function file_gate_assurance_requirements(string $phase): array {
-  if ($phase !== 'runtime' || version_compare(\Drupal::VERSION, '11.2', '>=')) {
-    return [];
-  }
-  return \Drupal::service(FileGateRequirements::class)->runtime();
 }
