@@ -13,6 +13,13 @@ All notable changes to **File Gate** are documented here. The format is based on
   keeps its Drupal 10.6 bridge.
 
 ### Changed
+- `file_gate_assurance` and `file_gate_commerce` runtime requirements use
+  `RequirementSeverity` directly. Both submodules require `^11.4 || ^12`,
+  where the enum exists; the `enum_exists()` integer fallbacks remain only
+  on the Drupal 10.6 base module.
+- Assurance download and bridge 401 challenges share one RFC 9470 builder.
+  Each path still returns its own `error_description`; only the download
+  JSON includes `step_up`.
 - Design note `piv-cac-webauthn.md` records A2 mint-time OIDC as shipped
   opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
   `Assurance::assertMintTimeOidc`). Audience via RFC 8693 / IdP mapper

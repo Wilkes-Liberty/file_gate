@@ -207,7 +207,11 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
       if ($mode === 'webauthn') {
         return $this->buildWebauthnApiChallenge($request, $step_up);
       }
-      return $this->buildApiChallenge($request, $step_up);
+      return $this->buildApiChallenge(
+        $request,
+        'Present a live OIDC access token meeting the required acr, then call the bridge endpoint (or use the step-up page) so a plain-link download can proceed.',
+        $step_up,
+      );
     }
 
     // Plain-link primary: send the browser to the step-up page.
@@ -372,29 +376,45 @@ final class Assurance extends SignedUrl implements ContextualMintInterface, Chal
 
   /**
    * Builds a 401 JSON challenge (RFC 9470-style WWW-Authenticate).
+   *
+   * Download and bridge share this builder. Each path passes its own
+   * error_description. The download path passes step_up; the bridge omits
+   * that member.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The request whose query is copied onto the challenge URLs.
+   * @param string $error_description
+   *   Path-specific error_description. The download and bridge strings differ.
+   * @param string|null $step_up
+   *   Step-up URL included on the download challenge. NULL omits the member.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   The 401 challenge with WWW-Authenticate and Cache-Control.
    */
-  private function buildApiChallenge(Request $request, ?string $step_up = NULL): JsonResponse {
+  public function buildApiChallenge(
+    Request $request,
+    string $error_description,
+    ?string $step_up = NULL,
+  ): JsonResponse {
     $acr = $this->requiredAcrList();
     $acr_values = implode(' ', $acr);
     $www = 'Bearer error="insufficient_user_authentication"';
     if ($acr_values !== '') {
       $www .= ', acr_values="' . addcslashes($acr_values, '"\\') . '"';
     }
-    $step_up ??= Url::fromRoute('file_gate_assurance.step_up', [], [
-      'query' => $request->query->all(),
-      'absolute' => FALSE,
-    ])->toString();
-    $bridge = Url::fromRoute('file_gate_assurance.bridge', [], [
-      'query' => $request->query->all(),
-      'absolute' => FALSE,
-    ])->toString();
-    $response = new JsonResponse([
+    $payload = [
       'error' => 'insufficient_user_authentication',
-      'error_description' => 'Present a live OIDC access token meeting the required acr, then call the bridge endpoint (or use the step-up page) so a plain-link download can proceed.',
+      'error_description' => $error_description,
       'acr_values' => $acr,
-      'step_up' => $step_up,
-      'bridge' => $bridge,
-    ], Response::HTTP_UNAUTHORIZED);
+    ];
+    if ($step_up !== NULL) {
+      $payload['step_up'] = $step_up;
+    }
+    $payload['bridge'] = Url::fromRoute('file_gate_assurance.bridge', [], [
+      'query' => $request->query->all(),
+      'absolute' => FALSE,
+    ])->toString();
+    $response = new JsonResponse($payload, Response::HTTP_UNAUTHORIZED);
     $response->headers->set('WWW-Authenticate', $www);
     $response->headers->set('Cache-Control', 'private, no-store');
     return $response;
