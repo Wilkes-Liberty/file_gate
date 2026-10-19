@@ -34,14 +34,14 @@ final class FileGateRequirements {
       $requirements['file_gate_assurance_jwt'] = [
         'title' => $this->t('File Gate Assurance (OIDC)'),
         'description' => $this->t('Install <code>firebase/php-jwt</code> for OIDC verification: <code>composer require firebase/php-jwt</code>.'),
-        'severity' => (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Error : 2),
+        'severity' => RequirementSeverity::Error,
       ];
     }
     if (!class_exists('Webauthn\CeremonyStep\CeremonyStepManagerFactory')) {
       $requirements['file_gate_assurance_webauthn'] = [
         'title' => $this->t('File Gate Assurance (WebAuthn)'),
         'description' => $this->t('Install <code>web-auth/webauthn-lib</code> for native WebAuthn: <code>composer require web-auth/webauthn-lib</code>.'),
-        'severity' => (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Warning : 1),
+        'severity' => RequirementSeverity::Warning,
       ];
     }
     return $requirements;

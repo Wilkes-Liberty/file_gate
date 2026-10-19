@@ -45,7 +45,7 @@ final class FileGateRequirements {
       'file_gate_commerce_commerce' => [
         'title' => $this->t('File Gate Commerce'),
         'description' => $this->t('The bundled entitlement checker needs Drupal Commerce (<code>commerce_order</code>). Install Commerce, or override the <code>file_gate_commerce.entitlement_checker</code> service to check an external entitlement source.'),
-        'severity' => (enum_exists(RequirementSeverity::class) ? RequirementSeverity::Warning : 1),
+        'severity' => RequirementSeverity::Warning,
       ],
     ];
   }

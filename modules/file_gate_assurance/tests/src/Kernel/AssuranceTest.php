@@ -178,7 +178,33 @@ final class AssuranceTest extends KernelTestBase {
     $this->assertStringContainsString('insufficient_user_authentication', (string) $response->headers->get('WWW-Authenticate'));
     $data = json_decode((string) $response->getContent(), TRUE);
     $this->assertSame('insufficient_user_authentication', $data['error'] ?? NULL);
+    $this->assertSame(
+      'Present a live OIDC access token meeting the required acr, then call the bridge endpoint (or use the step-up page) so a plain-link download can proceed.',
+      $data['error_description'] ?? NULL,
+    );
     $this->assertNotEmpty($data['bridge'] ?? NULL);
+    $this->assertNotEmpty($data['step_up'] ?? NULL);
+  }
+
+  /**
+   * A bridge POST without a live token returns the RFC 9470 401 challenge.
+   */
+  public function testMissingTokenBridgeJsonChallenge(): void {
+    $file = $this->createFile('bridge-challenge.pdf');
+    $query = $this->mintQuery($file);
+    $request = Request::create('/api/file-gate/assurance/bridge?' . http_build_query($query), 'POST');
+    $request->headers->set('Accept', 'application/json');
+    $response = BridgeController::create($this->container)->establish($request);
+    $this->assertSame(401, $response->getStatusCode());
+    $this->assertStringContainsString('insufficient_user_authentication', (string) $response->headers->get('WWW-Authenticate'));
+    $data = json_decode((string) $response->getContent(), TRUE);
+    $this->assertSame('insufficient_user_authentication', $data['error'] ?? NULL);
+    $this->assertSame(
+      'Present a live OIDC access token meeting the required acr (and DPoP if configured).',
+      $data['error_description'] ?? NULL,
+    );
+    $this->assertNotEmpty($data['bridge'] ?? NULL);
+    $this->assertArrayNotHasKey('step_up', $data);
   }
 
   /**

@@ -117,7 +117,10 @@ final class BridgeController implements ContainerInjectionInterface {
           '@ip' => $request->getClientIp() ?? 'unknown',
         ],
       );
-      return $this->challengeJson($request, $method);
+      return $method->buildApiChallenge(
+        $request,
+        'Present a live OIDC access token meeting the required acr (and DPoP if configured).',
+      );
     }
 
     $ttl = (int) ($gate['settings']['bridge_ttl'] ?? SessionBridge::DEFAULT_TTL);
@@ -524,30 +527,6 @@ HTML;
    */
   private function error(string $message, int $status): JsonResponse {
     $response = new JsonResponse(['error' => $message], $status);
-    $response->headers->set('Cache-Control', 'private, no-store');
-    return $response;
-  }
-
-  /**
-   * RFC 9470-style challenge when token is missing/low assurance.
-   */
-  private function challengeJson(Request $request, Assurance $method): JsonResponse {
-    $acr = $method->requiredAcrList();
-    $acr_values = implode(' ', $acr);
-    $www = 'Bearer error="insufficient_user_authentication"';
-    if ($acr_values !== '') {
-      $www .= ', acr_values="' . addcslashes($acr_values, '"\\') . '"';
-    }
-    $response = new JsonResponse([
-      'error' => 'insufficient_user_authentication',
-      'error_description' => 'Present a live OIDC access token meeting the required acr (and DPoP if configured).',
-      'acr_values' => $acr,
-      'bridge' => Url::fromRoute('file_gate_assurance.bridge', [], [
-        'query' => $request->query->all(),
-        'absolute' => FALSE,
-      ])->toString(),
-    ], Response::HTTP_UNAUTHORIZED);
-    $response->headers->set('WWW-Authenticate', $www);
     $response->headers->set('Cache-Control', 'private, no-store');
     return $response;
   }
