@@ -59,16 +59,6 @@ file_gate_assurance.webauthn_register:
   options:
     no_cache: TRUE
 
-file_gate_assurance.webauthn_credentials:
-  path: '/api/file-gate/webauthn/credentials'
-  defaults:
-    _controller: '\Drupal\file_gate_assurance\Controller\WebAuthnController::listCredentials'
-  methods: [GET]
-  requirements:
-    _permission: 'register file gate webauthn+administer file gate'
-  options:
-    no_cache: TRUE
-
 file_gate_assurance.webauthn_credential_delete:
   path: '/api/file-gate/webauthn/credentials/delete'
   defaults:

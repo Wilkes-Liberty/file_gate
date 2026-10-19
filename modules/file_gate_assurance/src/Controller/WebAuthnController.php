@@ -216,25 +216,6 @@ final class WebAuthnController implements ContainerInjectionInterface {
   }
 
   /**
-   * Lists the current user's credentials (label + id prefix).
-   */
-  public function listCredentials(): JsonResponse {
-    if ($this->currentUser->isAnonymous()) {
-      return new JsonResponse(['error' => 'Authentication required.'], Response::HTTP_FORBIDDEN);
-    }
-    $rows = $this->storage->loadByUserHandle((string) $this->currentUser->id());
-    $out = [];
-    foreach ($rows as $row) {
-      $out[] = [
-        'credential_id' => $row['credential_id'],
-        'label' => $row['label'],
-        'created' => (int) $row['created'],
-      ];
-    }
-    return new JsonResponse(['credentials' => $out]);
-  }
-
-  /**
    * Deletes one of the current user's credentials.
    */
   public function deleteCredential(Request $request): JsonResponse {

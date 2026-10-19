@@ -7,6 +7,9 @@ All notable changes to **File Gate** are documented here. The format is based on
 ## [Unreleased]
 
 ### Removed
+- Unused GET `/api/file-gate/webauthn/credentials` (`listCredentials`) and
+  unused `userHandle` in enrollment `drupalSettings`. The account form lists
+  credentials server-side; enrollment JS never reads `cfg.userHandle`.
 - Drupal 10 `hook_requirements` bridges from `file_gate_assurance` and
   `file_gate_commerce`. Both submodules require `^11.4 || ^12`, so the
   `#[LegacyRequirementsHook]` shims never ran. The base module still
