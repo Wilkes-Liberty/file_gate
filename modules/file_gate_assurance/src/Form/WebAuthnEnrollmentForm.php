@@ -62,7 +62,6 @@ final class WebAuthnEnrollmentForm extends FormBase {
       'registerOptions' => Url::fromRoute('file_gate_assurance.webauthn_register_options')->toString(),
       'register' => Url::fromRoute('file_gate_assurance.webauthn_register')->toString(),
       'delete' => Url::fromRoute('file_gate_assurance.webauthn_credential_delete')->toString(),
-      'userHandle' => $handle,
     ];
 
     $form['intro'] = [
