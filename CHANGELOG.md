@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.6] - 2026-10-19
+
 ### Removed
 - Unused GET `/api/file-gate/webauthn/credentials` (`listCredentials`) and
   unused `userHandle` in enrollment `drupalSettings`. The account form lists
