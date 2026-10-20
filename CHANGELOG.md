@@ -6,6 +6,12 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Assurance README Model B front-end section matches shipped plain-link
+  redeem (`docs/assurance-redeem.md`); `fetch` + Bearer is an API-client
+  option, not the required path. Security notes no longer call RFC 7662
+  introspection a future addition; `introspect` is the shipped opt-in.
+
 ## [1.11.6] - 2026-10-19
 
 ### Removed
