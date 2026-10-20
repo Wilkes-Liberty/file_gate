@@ -156,8 +156,15 @@ A commercial IdP (Okta, Entra ID, Ping, …) emits its own step-up ACR — use t
 
 ## Front-end integration (Model B)
 
-Because the download endpoint must receive the token, redeem with `fetch` rather
-than a plain link:
+Redeem is **plain-link primary**. Open the signed download URL as a normal
+link. Without a live proof, File Gate challenges (302 step-up page or 401
+JSON). After `POST /api/file-gate/assurance/bridge` with a valid OIDC token
+(optional DPoP), a short-lived HttpOnly cookie lets the **same plain URL**
+stream the file. Flow, integrator checklist, and SPA example:
+[`docs/assurance-redeem.md`](../../docs/assurance-redeem.md).
+
+API clients may still send the token on the download request instead of using
+the bridge:
 
 ```js
 const res = await fetch(downloadUrl, {
@@ -167,9 +174,9 @@ const blob = await res.blob();
 // …hand the blob to the user (object URL / download).
 ```
 
-With DPoP enabled, send `Authorization: DPoP <token>` plus a `DPoP: <proof>`
-header (a per-request proof JWT bound to the method + URL); your OIDC client
-library generates it.
+With DPoP enabled on that path, send `Authorization: DPoP <token>` plus a
+`DPoP: <proof>` header (a per-request proof JWT bound to the method + URL);
+your OIDC client library generates it.
 
 ## IdP setup (non-normative examples)
 
@@ -196,5 +203,5 @@ all do this; the specifics are the IdP's, not File Gate's.
   signature verification.
 - DPoP proofs are checked for `htm`/`htu` binding, freshness, single use (replay
   protection), and that the token's `cnf.jkt` matches the proving key.
-- Mid-grant IdP session revocation is not reflected until the token expires;
-  token introspection (RFC 7662) is a possible future addition.
+- Mid-grant IdP session revocation is not reflected until the token expires
+  unless `introspect` is enabled (RFC 7662 live check at the IdP).
