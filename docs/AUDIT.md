@@ -16,7 +16,7 @@ File Gate integrates **softly**:
 | Mode | Behaviour |
 |------|-----------|
 | `audit_chain` **enabled** | `file_gate.audit` writes channel `file_gate` via `audit_chain.logger` |
-| `audit_chain` **absent** | no-op; dblog/logger still work |
+| `audit_chain` **absent** | `file_gate.audit` is a no-op (chain-only). Operational dblog still comes from controllers / `logger.channel.file_gate`, not this service |
 
 There is **no hard dependency** on Key/Encrypt — gated downloads keep working
 on lean installs. Composer `suggests` `drupal/audit_chain`.
