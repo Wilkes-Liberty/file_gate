@@ -110,12 +110,22 @@ Without one of these, correct audience pinning rejects the SPA token at File Gat
 4. Bearer presented to `/api/file-gate/assurance/bridge` → `FG_AB` cookie.
 5. Same URL streams the file; `max_uses` / TTL still apply.
 
-### C. Same-origin already logged in (planned)
+### C. Same-origin already logged in
 
-When a Drupal session exists with a recent high-ACR OIDC login, a future
-integration may establish `FG_AB` without a separate JS token handoff — only if
-`sub` matches grant `sh=` and ACR policy is satisfied. Until then, journey B
-applies.
+When `session_bridge_sso` is on (the field default) and Drupal already has a
+recent high-ACR `openid_connect` session:
+
+1. Browser opens the signed download URL (same as B).
+2. Step-up page `trySessionBridge()` POSTs `/api/file-gate/assurance/bridge`
+   same-origin, with cookies and no Bearer.
+3. `requestWithSessionToken()` reads the session access token via
+   `SessionOidcToken`. The live OIDC check (issuer/aud/acr, `sub` vs grant
+   `sh=`) establishes `FG_AB`.
+4. Same URL streams the file; `max_uses` / TTL still apply.
+
+No `sessionStorage` token paste. Stale tokens fail closed — refresh remains a
+site OIDC concern. Journey B still applies when the field opts out of
+session-bridge SSO or the session has no usable token.
 
 ---
 

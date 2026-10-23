@@ -9,10 +9,11 @@ use Psr\Log\LoggerInterface;
 /**
  * Optional durable audit trail for File Gate security events.
  *
- * When the sibling module audit_chain is enabled, events are appended to its
- * hash-chained table (channel "file_gate") for SIEM export and tamper evidence.
- * When audit_chain is absent, calls are no-ops beyond the existing dblog
- * logger channel — File Gate must not hard-require Key/Encrypt for every site.
+ * This service is chain-only. When the sibling module audit_chain is enabled,
+ * events are appended to its hash-chained table (channel "file_gate") for SIEM
+ * export and tamper evidence. When audit_chain is absent, log() is a no-op.
+ * Operational dblog comes from controllers and logger.channel.file_gate, not
+ * from this class — File Gate must not hard-require Key/Encrypt for every site.
  *
  * The chain service is intentionally untyped so this class loads when
  * audit_chain is not installed (no hard use of AuditChainLoggerInterface).

@@ -160,9 +160,10 @@ download step (not the site login IdP):
    *Register File Gate WebAuthn credentials*).
 2. Mint a grant; pass `subject` (or set a fixed `webauthn_user_handle` on the
    field) so the grant’s `sh=` matches the credential handle.
-3. Open the signed URL → step-up page runs `navigator.credentials.get()` →
-   `POST /api/file-gate/webauthn/assert` sets the same `FG_AB` bridge cookie →
-   plain download.
+3. Open the signed URL → step-up page POSTs
+   `/api/file-gate/webauthn/assert/options`, runs `navigator.credentials.get()`,
+   then `POST /api/file-gate/webauthn/assert` sets the same `FG_AB` bridge
+   cookie → plain download.
 
 Configure **RP ID**, **allowed origins**, and optional fixed user handle on the
 field. Origins may also be set in `settings.php` as
