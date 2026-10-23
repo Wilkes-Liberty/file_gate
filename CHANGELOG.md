@@ -6,6 +6,11 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+- Unused `gexp` claim on the assurance session-bridge cookie (`FG_AB`).
+  Grant expiry already clamps cookie `exp` and `isSatisfied()` checks
+  that `exp`. Cookies minted with `gexp` still verify; the key is ignored.
+
 ## [1.11.7] - 2026-10-23
 
 ### Changed
