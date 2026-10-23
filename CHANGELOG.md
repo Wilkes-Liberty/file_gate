@@ -6,6 +6,8 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.11.7] - 2026-10-23
+
 ### Changed
 - Assurance README Model B front-end section matches shipped plain-link
   redeem (`docs/assurance-redeem.md`); `fetch` + Bearer is an API-client
@@ -15,6 +17,9 @@ All notable changes to **File Gate** are documented here. The format is based on
   match shipped behavior: same-origin SSO bridge (`session_bridge_sso`,
   `trySessionBridge` / `SessionOidcToken`), assert options then assert,
   and chain-only audit writes.
+- Requirements name Drupal 12, which the base module already declares.
+  `file_gate_mcp` stays on `^11.4` because Tool API declares
+  `^10.5 || ^11`.
 
 ## [1.11.6] - 2026-10-19
 

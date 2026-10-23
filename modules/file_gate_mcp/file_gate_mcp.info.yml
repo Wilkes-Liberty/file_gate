@@ -2,8 +2,8 @@ name: 'File Gate MCP'
 type: module
 description: 'Optional Tool API plugins for gate status, file gate lookup, grants, metrics and single-grant revoke, governed by MCP Sentinel.'
 package: 'Security'
-# File Gate needs 11.4. MCP Sentinel does not declare Drupal 12 yet, so this
-# submodule cannot either.
+# File Gate needs 11.4. Tool API declares ^10.5 || ^11, so this submodule
+# stays off Drupal 12.
 core_version_requirement: ^11.4
 dependencies:
   - file_gate:file_gate

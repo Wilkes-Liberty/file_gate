@@ -92,7 +92,7 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 
 ## Requirements
 
-- **Base module: Drupal 10.6 / PHP 8.2 or Drupal 11.3+ / PHP 8.3+.**
+- **Base module: Drupal 10.6 / PHP 8.2, Drupal 11.3+ / PHP 8.3+, or Drupal 12.**
   Drupal 11.4 uses core's `FileReferenceResolver`; older core uses a
   revision-aware backport with the same host and field access checks.
   The backport recomputes references because older core cannot invalidate the
@@ -408,8 +408,8 @@ resolvable file URL — the bytes are delivered only through the gated endpoint.
 `file_gate_mcp` exposes [Tool API](https://www.drupal.org/project/tool) plugins
 so an operator or a governed agent can ask about the gate over MCP. It depends
 on Tool API and [MCP Sentinel](https://www.drupal.org/project/mcp_sentinel).
-The base module depends on neither. The submodule declares Drupal `^11.4` only:
-MCP Sentinel does not declare Drupal 12 yet.
+The base module depends on neither. The submodule declares Drupal `^11.4` only.
+Tool API declares `^10.5 || ^11`, so the submodule stays off Drupal 12.
 
 | Tool | Operation | Returns |
 | --- | --- | --- |
