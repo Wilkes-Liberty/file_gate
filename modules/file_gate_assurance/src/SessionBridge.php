@@ -102,11 +102,13 @@ final class SessionBridge {
     if ($exp <= $now) {
       return NULL;
     }
+    // Cookie lifetime is already min(now + ttl, grant exp). A second
+    // grant-expiry claim was stored and never read. Decode keeps unknown
+    // keys; isSatisfied() only checks f, exp, and the grant-binding fields.
     $payload = [
       'v' => 1,
       'f' => $file_uuid,
       'exp' => $exp,
-      'gexp' => $grant_exp,
       'aal' => (string) $request->query->get('aal', ''),
       'sh' => (string) $request->query->get('sh', ''),
       'jti' => (string) $request->query->get('jti', ''),
@@ -203,6 +205,8 @@ final class SessionBridge {
     catch (\JsonException) {
       return NULL;
     }
+    // Extra keys are ignored. Older cookies that still carry a grant-expiry
+    // claim besides exp continue to verify.
     return is_array($payload) ? $payload : NULL;
   }
 
