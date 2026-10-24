@@ -222,6 +222,12 @@ final class WebAuthnController implements ContainerInjectionInterface {
     if ($this->currentUser->isAnonymous()) {
       return new JsonResponse(['error' => 'Authentication required.'], Response::HTTP_FORBIDDEN);
     }
+    // Same OR as registerOptions / registerComplete. Routing + is OR, but
+    // this write must not rely on routing alone if that conjunction changes.
+    if (!$this->currentUser->hasPermission('register file gate webauthn')
+      && !$this->currentUser->hasPermission('administer file gate')) {
+      return new JsonResponse(['error' => 'Permission denied.'], Response::HTTP_FORBIDDEN);
+    }
     $body = json_decode($request->getContent(), TRUE);
     $id = is_array($body) ? (string) ($body['credential_id'] ?? '') : '';
     if ($id === '') {
