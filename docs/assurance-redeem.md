@@ -105,7 +105,8 @@ body `subject` is omitted. A1 (trust secret-holder only) remains the default.
 Register keys at **Account → File Gate keys** (`/user/{uid}/file-gate-webauthn`)
 with permission *Register File Gate WebAuthn credentials*. User handle defaults
 to the Drupal **uid** string. Mint with `"subject": "<uid>"` (or match field
-`webauthn_user_handle`). JSON APIs remain available for headless enrollment.
+`webauthn_user_handle`). JSON APIs remain available for headless enrollment;
+session cookie POSTs must send `X-CSRF-Token` (same token as `/session/token`).
 
 Manual hardware checklist: `docs/E2E-ASSURANCE.md`.
 
@@ -157,7 +158,8 @@ download step (not the site login IdP):
 
 1. Register credentials: `POST /api/file-gate/webauthn/register/options` then
    `POST /api/file-gate/webauthn/register` (permission
-   *Register File Gate WebAuthn credentials*).
+   *Register File Gate WebAuthn credentials*; session POSTs send
+   `X-CSRF-Token`).
 2. Mint a grant; pass `subject` (or set a fixed `webauthn_user_handle` on the
    field) so the grant’s `sh=` matches the credential handle.
 3. Open the signed URL → step-up page POSTs

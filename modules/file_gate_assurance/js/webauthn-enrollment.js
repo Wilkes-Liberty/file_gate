@@ -2,8 +2,9 @@
  * @file
  * Browser WebAuthn registration ceremony for File Gate enrollment UI.
  *
- * Calls the existing JSON APIs (register/options, register, credentials/delete).
- * User handle defaults to the Drupal uid string (see enrollment form settings).
+ * Calls the JSON APIs (register/options, register, credentials/delete).
+ * Those session POSTs require X-CSRF-Token from
+ * drupalSettings.fileGateWebauthn.csrfToken. User handle is the Drupal uid.
  */
 (function (Drupal, drupalSettings, once) {
   function b64urlToBuffer(b64) {
@@ -35,6 +36,20 @@
     el.classList.toggle('messages--status', !isError);
   }
 
+  /**
+   * Headers for enrollment session POSTs.
+   *
+   * X-CSRF-Token is required by _csrf_request_header_token on the three
+   * register/delete routes. Same-origin credentials alone are not enough.
+   */
+  function enrollmentHeaders(cfg) {
+    return {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': cfg.csrfToken || '',
+    };
+  }
+
   async function register(cfg, statusEl) {
     if (!window.PublicKeyCredential) {
       setStatus(
@@ -48,10 +63,7 @@
     const optRes = await fetch(cfg.registerOptions, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
+      headers: enrollmentHeaders(cfg),
       body: JSON.stringify({}),
     });
     const optBody = await optRes.json().catch(function () {
@@ -97,10 +109,7 @@
     const res = await fetch(cfg.register, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
+      headers: enrollmentHeaders(cfg),
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(function () {
@@ -119,10 +128,7 @@
     const res = await fetch(cfg.delete, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
+      headers: enrollmentHeaders(cfg),
       body: JSON.stringify({ credential_id: credentialId }),
     });
     const data = await res.json().catch(function () {

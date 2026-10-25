@@ -6,6 +6,8 @@ namespace Drupal\file_gate_assurance\Form;
 
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Access\AccessResultInterface;
+use Drupal\Core\Access\CsrfRequestHeaderAccessCheck;
+use Drupal\Core\Access\CsrfTokenGenerator;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Session\AccountInterface;
@@ -29,9 +31,12 @@ final class WebAuthnEnrollmentForm extends FormBase {
    *
    * @param \Drupal\file_gate_assurance\WebAuthn\WebAuthnCredentialStorage $storage
    *   Native WebAuthn credential storage.
+   * @param \Drupal\Core\Access\CsrfTokenGenerator $csrfToken
+   *   Session CSRF tokens for the enrollment JSON POSTs.
    */
   public function __construct(
     protected WebAuthnCredentialStorage $storage,
+    protected CsrfTokenGenerator $csrfToken,
   ) {}
 
   /**
@@ -40,6 +45,8 @@ final class WebAuthnEnrollmentForm extends FormBase {
   public static function create(ContainerInterface $container): static {
     return new static(
       $container->get('file_gate_assurance.webauthn_storage'),
+      // Header-token generator used by _csrf_request_header_token.
+      $container->get('csrf_token'),
     );
   }
 
@@ -62,6 +69,8 @@ final class WebAuthnEnrollmentForm extends FormBase {
       'registerOptions' => Url::fromRoute('file_gate_assurance.webauthn_register_options')->toString(),
       'register' => Url::fromRoute('file_gate_assurance.webauthn_register')->toString(),
       'delete' => Url::fromRoute('file_gate_assurance.webauthn_credential_delete')->toString(),
+      // Same key CsrfRequestHeaderAccessCheck validates on X-CSRF-Token.
+      'csrfToken' => $this->csrfToken->get(CsrfRequestHeaderAccessCheck::TOKEN_KEY),
     ];
 
     $form['intro'] = [
