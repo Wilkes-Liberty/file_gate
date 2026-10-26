@@ -6,16 +6,16 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+- Unused `gexp` claim on the assurance session-bridge cookie (`FG_AB`).
+  Grant expiry already clamps cookie `exp` and `isSatisfied()` checks
+  that `exp`. Cookies minted with `gexp` still verify; the key is ignored.
+
 ### Security
 - WebAuthn enrollment JSON POSTs (register/options, register,
   credentials/delete) require Drupal's `X-CSRF-Token` header. The
   account form sends the session token. `deleteCredential` re-checks
   register-or-administer. Grant-bound assert routes are unchanged.
-
-### Removed
-- Unused `gexp` claim on the assurance session-bridge cookie (`FG_AB`).
-  Grant expiry already clamps cookie `exp` and `isSatisfied()` checks
-  that `exp`. Cookies minted with `gexp` still verify; the key is ignored.
 
 ## [1.11.7] - 2026-10-23
 
