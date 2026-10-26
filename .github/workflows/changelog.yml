@@ -1,0 +1,19 @@
+# Requires the shared-ci release containing PRs #28 and #27.
+name: Changelog
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [1.x]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  fragments:
+    uses: Wilkes-Liberty/shared-ci/.github/workflows/changelog-fragments.yml@v1
+    with:
+      entry-policy: opt-in
+      changelog-format: versioned
+      preserve-history: true
+      enforce-fragments: true
+      extra-sections: Docs,Documentation,Dependencies,Tests

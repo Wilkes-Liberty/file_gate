@@ -44,5 +44,10 @@ closed. See the README "Extending" section.
 
 ## Documentation
 
-Update `README.md`, `CHANGELOG.md` (under `[Unreleased]`), and the docs in
+Update `README.md`, a unique `changelog.d/` fragment, and the docs in
 `docs/` for any user-facing change.
+
+## Changelog fragments
+
+Follow [the changelog workflow](.github/CHANGELOG.md) for independent PR notes
+and lossless release compilation. Existing opt-in entry policy is unchanged.
