@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Request;
  * Short-lived HttpOnly cookie for OTP redeem without query secrets (GH #43).
  *
  * After POST /api/file-gate/otp/session validates email+code, the cookie binds
- * file UUID + normalized email for a brief window so GET download need not put
+ * file UUID + normalized email for a brief window so GET download must not put
  * otp/email in the query string (logs, Referer, history).
  */
 final class OtpSession {

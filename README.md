@@ -244,9 +244,11 @@ and the design note in
 The **One-time passcode** method (`otp`) proves control of an email address: a
 trusted back end requests a code bound to (file, email) at `POST
 /api/file-gate/otp` (shared-secret auth, like mint), File Gate emails it, and the
-visitor redeems the download with `?f=…&email=…&otp=…`. The code is single-use,
-TTL-limited, attempt-locked, and stored only as a hash. A step up from a bare
-token — verified in the moment — without an account.
+visitor exchanges the code at `POST /api/file-gate/otp/session` (JSON body:
+`file`, `email`, `otp`). That sets an HttpOnly `FG_OTP` cookie; the browser then
+downloads with `GET /api/file-gate/download?f=…` and no passcode in the URL. The
+code is single-use, TTL-limited, attempt-locked, and stored only as a hash. A
+step up from a bare token — verified in the moment — without an account.
 
 | Setting | Meaning |
 |---|---|
@@ -328,8 +330,9 @@ or not gated.
 
 For the *Token* method the browser also sends `token` (the plaintext token); a
 pre-shared campaign link sends only `token` (no `exp`/`sig`). For the *OTP*
-method the browser sends `email` and `otp` (the emailed code) in place of a
-signature (`?f=…&email=…&otp=…`).
+method the browser first `POST`s `email` and `otp` in the JSON body to
+`/api/file-gate/otp/session`, then `GET`s the download with the `FG_OTP`
+cookie. The passcode is never a query parameter.
 
 ### Revoke — `POST /api/file-gate/revoke`
 
@@ -366,8 +369,9 @@ already-gone token or jti), `429` (rate limited), `503` (no secret configured).
 
 Server-to-server, same shared-secret authentication as mint. Issues a single-use
 passcode bound to a `(file, email)` pair and emails it to that address (File Gate
-sends the mail and stores only a hash of the code). The visitor then redeems the
-download with `?f=…&email=…&otp=…`.
+sends the mail and stores only a hash of the code). The visitor then redeems by
+posting the code in the JSON body to `/api/file-gate/otp/session` and downloading
+with the `FG_OTP` cookie (`GET /api/file-gate/download?f=…`).
 
 Request body (JSON):
 
