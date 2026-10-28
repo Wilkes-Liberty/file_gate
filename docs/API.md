@@ -73,10 +73,12 @@ HttpOnly bridge cookie `FG_AB`, re-GET the same URL. See
 on the bridge POST. Do not put `login_url` in the step-up query; configure
 **Step-up login URL** on the field only.
 
-The `otp` method prefers a short-lived HttpOnly cookie `FG_OTP` set by
-`POST /api/file-gate/otp/session` (recommended — no secrets in the query string).
-Legacy query parameters `email` and `otp` still work for backward compatibility.
-OTP HMAC uses the **authenticated mint secret** (named or legacy).
+The `otp` method redeems with a short-lived HttpOnly cookie `FG_OTP` set by
+`POST /api/file-gate/otp/session`. The passcode is accepted only in that POST
+body (then the session cookie). Query parameters `email` and `otp` are
+rejected so the secret cannot land in access logs, Referer, or browser
+history. A query-string `otp` on the session POST is `400`. OTP HMAC uses
+the **authenticated mint secret** (named or legacy).
 
 ### `POST /api/file-gate/otp/session`
 
@@ -95,7 +97,8 @@ file is referenced by more than one gated field.
 
 On success: sets `FG_OTP` (HttpOnly, path `/api/file-gate`) and returns
 `{"ok":true,"path":"/api/file-gate/download?f=…"}`. Then `GET` the download URL
-**without** `email`/`otp` query parameters.
+**without** `email`/`otp` query parameters. A query-string `otp` is `400`;
+only the JSON body is a credential.
 
 ### `GET /api/file-gate/grants`
 

@@ -95,34 +95,31 @@ final class OtpTest extends KernelTestBase {
     $code = $this->lastMailCode();
     $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
 
-    $response = $this->download($file, self::EMAIL, $code);
+    $response = $this->redeemWithSession($file, self::EMAIL, $code);
     $this->assertInstanceOf(BinaryFileResponse::class, $response);
     $this->assertSame(200, $response->getStatusCode());
   }
 
   /**
-   * A code is single-use: the second redemption is denied.
+   * A code is single-use: the second session exchange is denied.
    */
   public function testCodeIsSingleUse(): void {
     $file = $this->createFile('doc.pdf');
     $this->requestOtp($file, self::EMAIL);
     $code = $this->lastMailCode();
 
-    $this->assertSame(200, $this->download($file, self::EMAIL, $code)->getStatusCode());
-
-    $this->expectException(AccessDeniedHttpException::class);
-    $this->download($file, self::EMAIL, $code);
+    $this->assertSame(200, $this->redeemWithSession($file, self::EMAIL, $code)->getStatusCode());
+    $this->assertSame(403, $this->establishSession($file, self::EMAIL, $code)->getStatusCode());
   }
 
   /**
-   * A wrong code is denied.
+   * A wrong code is denied at the session exchange.
    */
   public function testWrongCodeDenied(): void {
     $file = $this->createFile('doc.pdf');
     $this->requestOtp($file, self::EMAIL);
 
-    $this->expectException(AccessDeniedHttpException::class);
-    $this->download($file, self::EMAIL, '000000');
+    $this->assertSame(403, $this->establishSession($file, self::EMAIL, '000000')->getStatusCode());
   }
 
   /**
@@ -134,31 +131,69 @@ final class OtpTest extends KernelTestBase {
     $code = $this->lastMailCode();
     $wrong = $code === '111111' ? '222222' : '111111';
 
-    // max_attempts = 3: three wrong tries lock it out.
+    // max_attempts = 3: three wrong session tries lock it out.
     for ($i = 0; $i < 3; $i++) {
-      try {
-        $this->download($file, self::EMAIL, $wrong);
-        $this->fail('Expected the wrong code to be denied.');
-      }
-      catch (AccessDeniedHttpException) {
-        // Expected.
-      }
+      $this->assertSame(403, $this->establishSession($file, self::EMAIL, $wrong)->getStatusCode());
     }
 
     // The correct code no longer works — the code was locked out.
-    $this->expectException(AccessDeniedHttpException::class);
-    $this->download($file, self::EMAIL, $code);
+    $this->assertSame(403, $this->establishSession($file, self::EMAIL, $code)->getStatusCode());
   }
 
   /**
-   * A request with no email or no code is denied at redemption.
+   * A session without a code, or a download without the cookie, is denied.
    */
   public function testMissingCredentialsDenied(): void {
     $file = $this->createFile('doc.pdf');
     $this->requestOtp($file, self::EMAIL);
 
+    $this->assertSame(400, $this->establishSession($file, self::EMAIL, '')->getStatusCode());
+
     $this->expectException(AccessDeniedHttpException::class);
-    $this->download($file, self::EMAIL, '');
+    $this->downloadBare($file);
+  }
+
+  /**
+   * A valid passcode in the query string is not a credential.
+   *
+   * Fails if download honors ?otp= or if /otp/session falls back to the
+   * query string. The code must remain unused so a body-only session still
+   * redeems afterward.
+   */
+  public function testQueryStringOtpDenied(): void {
+    $file = $this->createFile('doc.pdf');
+    $this->requestOtp($file, self::EMAIL);
+    $code = $this->lastMailCode();
+
+    try {
+      $this->downloadWithQueryOtp($file, self::EMAIL, $code);
+      $this->fail('Query-string OTP must be denied.');
+    }
+    catch (AccessDeniedHttpException) {
+      // Expected: grants() ignores query email/otp.
+    }
+
+    // Session POST with otp in the URL is refused even when the JSON body
+    // is valid, so the passcode cannot travel in the query string.
+    $request = Request::create(
+      '/api/file-gate/otp/session?otp=' . rawurlencode($code),
+      'POST',
+      [],
+      [],
+      [],
+      [],
+      (string) json_encode([
+        'file' => $file->uuid(),
+        'email' => self::EMAIL,
+        'otp' => $code,
+      ]),
+    );
+    $this->assertSame(400, OtpController::create($this->container)->establishSession($request)->getStatusCode());
+
+    // Body-only session still works: neither deny path consumed the code.
+    $response = $this->redeemWithSession($file, self::EMAIL, $code);
+    $this->assertInstanceOf(BinaryFileResponse::class, $response);
+    $this->assertSame(200, $response->getStatusCode());
   }
 
   /**
@@ -252,7 +287,7 @@ final class OtpTest extends KernelTestBase {
 
     $code = $this->lastMailCode();
     $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
-    $response = $this->download($file, self::EMAIL, $code);
+    $response = $this->redeemWithSession($file, self::EMAIL, $code);
     $this->assertInstanceOf(BinaryFileResponse::class, $response);
     $this->assertSame(200, $response->getStatusCode());
   }
@@ -294,7 +329,65 @@ final class OtpTest extends KernelTestBase {
   }
 
   /**
-   * Redeems the download with an email and code.
+   * Exchanges email + otp for an FG_OTP cookie (JSON body, no query).
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   * @param string $email
+   *   The email.
+   * @param string $code
+   *   The passcode.
+   *
+   * @return \Symfony\Component\HttpFoundation\Response
+   *   The session response.
+   */
+  private function establishSession(FileInterface $file, string $email, string $code) {
+    $request = Request::create(
+      '/api/file-gate/otp/session',
+      'POST',
+      [],
+      [],
+      [],
+      [],
+      (string) json_encode([
+        'file' => $file->uuid(),
+        'email' => $email,
+        'otp' => $code,
+      ]),
+    );
+    return OtpController::create($this->container)->establishSession($request);
+  }
+
+  /**
+   * Redeems via POST /otp/session then GET download with the FG_OTP cookie.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   * @param string $email
+   *   The email.
+   * @param string $code
+   *   The passcode.
+   *
+   * @return \Symfony\Component\HttpFoundation\Response
+   *   The session error, or the download response after a 200 session.
+   */
+  private function redeemWithSession(FileInterface $file, string $email, string $code) {
+    $session = $this->establishSession($file, $email, $code);
+    if ($session->getStatusCode() !== 200) {
+      return $session;
+    }
+    $cookies = [];
+    foreach ($session->headers->getCookies() as $cookie) {
+      $cookies[$cookie->getName()] = $cookie->getValue();
+    }
+    $request = Request::create('/api/file-gate/download', 'GET', [
+      'f' => $file->uuid(),
+    ], $cookies);
+    return DownloadController::create($this->container)->download($request);
+  }
+
+  /**
+   * Attempts to redeem with email and otp in the download query string.
    *
    * @param \Drupal\file\FileInterface $file
    *   The file.
@@ -306,11 +399,27 @@ final class OtpTest extends KernelTestBase {
    * @return \Symfony\Component\HttpFoundation\Response
    *   The response.
    */
-  private function download(FileInterface $file, string $email, string $code) {
+  private function downloadWithQueryOtp(FileInterface $file, string $email, string $code) {
     $request = Request::create('/api/file-gate/download', 'GET', [
       'f' => $file->uuid(),
       'email' => $email,
       'otp' => $code,
+    ]);
+    return DownloadController::create($this->container)->download($request);
+  }
+
+  /**
+   * Downloads with only the file UUID (no cookie, no query secrets).
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   *
+   * @return \Symfony\Component\HttpFoundation\Response
+   *   The response.
+   */
+  private function downloadBare(FileInterface $file) {
+    $request = Request::create('/api/file-gate/download', 'GET', [
+      'f' => $file->uuid(),
     ]);
     return DownloadController::create($this->container)->download($request);
   }

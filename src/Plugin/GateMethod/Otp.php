@@ -19,8 +19,9 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Grants delivery after the requester proves control of an email address.
  *
- * Prefer POST /api/file-gate/otp/session then download with the FG_OTP cookie.
- * Query email/otp remains supported but leaks secrets into logs and Referer.
+ * Redeem via POST /api/file-gate/otp/session (JSON body) then the FG_OTP
+ * cookie. Query email/otp is not accepted: the passcode would land in
+ * access logs, Referer headers, and browser history.
  *
  * SECURITY: the passcode is delivered by email, which is not a confidential
  * channel — it proves *control* of the address, not that the message is secret.
@@ -88,23 +89,13 @@ final class Otp extends GateMethodBase {
    * {@inheritdoc}
    */
   public function grants(FileInterface $file, Request $request): bool {
-    // Prefer short-lived FG_OTP cookie after /otp/session (GH #43).
-    $uuid = $file->uuid();
-    if ($this->otpSession->isSatisfied($request, $uuid)) {
-      return TRUE;
-    }
-
-    $email = self::normalizeEmail((string) $request->query->get('email', ''));
-    $code = trim((string) $request->query->get('otp', ''));
-    if ($email === '' || $code === '') {
-      return FALSE;
-    }
-
-    return $this->consumeCode($uuid, $email, $code);
+    // Cookie after /otp/session is the only redeem path. Query email/otp
+    // is ignored so a passcode never becomes a URL credential.
+    return $this->otpSession->isSatisfied($request, $file->uuid());
   }
 
   /**
-   * Validates and consumes an outstanding OTP (shared by grants and session).
+   * Validates and consumes an outstanding OTP (session exchange).
    *
    * @param string $file_uuid
    *   File UUID.

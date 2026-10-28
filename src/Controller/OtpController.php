@@ -126,7 +126,9 @@ final class OtpController implements ContainerInjectionInterface {
    * Exchanges email+otp for a short-lived cookie (no query secrets, GH #43).
    *
    * Public endpoint (no mint secret). JSON body carries file, email, and otp.
-   * On success sets FG_OTP and returns ok plus a download path for the file.
+   * Query-string otp is refused so the passcode cannot land in access logs
+   * or browser history. On success sets FG_OTP and returns ok plus a
+   * download path for the file.
    */
   public function establishSession(Request $request): Response {
     $ip = $request->getClientIp() ?? '0.0.0.0';
@@ -134,6 +136,14 @@ final class OtpController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'Too many requests.'], Response::HTTP_TOO_MANY_REQUESTS);
     }
     $this->flood->register('file_gate.otp_session', 60, $ip);
+
+    // Fail closed: a query-string passcode is not a credential, even when
+    // the JSON body is also valid. The secret would already be in the URL.
+    if ($request->query->has('otp')) {
+      return new JsonResponse([
+        'error' => 'Passcode must be sent in the JSON body, not the query string.',
+      ], Response::HTTP_BAD_REQUEST);
+    }
 
     $data = json_decode($request->getContent(), TRUE);
     if (!is_array($data)) {
