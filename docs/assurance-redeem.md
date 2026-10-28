@@ -102,11 +102,14 @@ body `subject` is omitted. A1 (trust secret-holder only) remains the default.
 
 ## Native WebAuthn enrollment
 
-Register keys at **Account → File Gate keys** (`/user/{uid}/file-gate-webauthn`)
-with permission *Register File Gate WebAuthn credentials*. User handle defaults
-to the Drupal **uid** string. Mint with `"subject": "<uid>"` (or match field
-`webauthn_user_handle`). JSON APIs remain available for headless enrollment;
-session cookie POSTs must send `X-CSRF-Token` (same token as `/session/token`).
+Register keys at **Account → File Gate keys** (`/user/{uid}/file-gate-webauthn`
+on your own account) with permission *Register File Gate WebAuthn credentials*.
+The page is self-only: another account's URL is 403, including for
+administrators (the JSON APIs always enroll the current user). User handle
+defaults to the Drupal **uid** string. Mint with `"subject": "<uid>"` (or match
+field `webauthn_user_handle`). JSON APIs remain available for headless
+enrollment; session cookie POSTs must send `X-CSRF-Token` (same token as
+`/session/token`).
 
 Manual hardware checklist: `docs/E2E-ASSURANCE.md`.
 
