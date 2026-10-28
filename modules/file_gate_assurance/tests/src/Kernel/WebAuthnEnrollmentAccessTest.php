@@ -6,11 +6,13 @@ namespace Drupal\Tests\file_gate_assurance\Kernel;
 
 use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Access\CsrfRequestHeaderAccessCheck;
+use Drupal\Core\Form\FormState;
 use Drupal\Core\Routing\RouteMatch;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\file_gate_assurance\Controller\WebAuthnController;
+use Drupal\file_gate_assurance\Form\WebAuthnEnrollmentForm;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,10 +21,11 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Enrollment route access: register-only OR, CSRF header, delete permission.
+ * Enrollment route access: register-only OR, CSRF header, self-only page.
  *
  * Drupal _permission + is OR. A comma would lock out the intended register
- * audience. Session POSTs without X-CSRF-Token must 403.
+ * audience. Session POSTs without X-CSRF-Token must 403. The keys page is
+ * self-only: another user's URL is forbidden, including for administer.
  */
 #[Group('file_gate')]
 #[RunTestsInSeparateProcesses]
@@ -93,6 +96,123 @@ final class WebAuthnEnrollmentAccessTest extends KernelTestBase {
     $this->container->get('current_user')->setAccount($account);
     $response = $this->container->get('http_kernel')->handle($request);
     $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+  }
+
+  /**
+   * An administrator is forbidden on another user's keys page (403).
+   *
+   * Fails if administer is treated as a second management surface.
+   */
+  public function testAdminForbiddenOnAnotherUsersKeysPage(): void {
+    $admin = $this->createUser(['administer file gate']);
+    $other = $this->createUser([]);
+    $this->assertTrue(
+      WebAuthnEnrollmentForm::access($admin, $other)->isForbidden(),
+      'Admin viewing another user keys page must be forbidden.',
+    );
+
+    $route = $this->container->get('router.route_provider')
+      ->getRouteByName('file_gate_assurance.webauthn_enrollment');
+    $route_match = new RouteMatch(
+      'file_gate_assurance.webauthn_enrollment',
+      $route,
+      ['user' => $other],
+      ['user' => (string) $other->id()],
+    );
+    $access = $this->container->get('access_manager')
+      ->check($route_match, $admin, NULL, TRUE);
+    $this->assertTrue(
+      $access->isForbidden(),
+      'Routing access for admin on another user keys page must be forbidden.',
+    );
+  }
+
+  /**
+   * An administrator may open their own keys page without register permission.
+   */
+  public function testAdminAllowedOnOwnKeysPage(): void {
+    $admin = $this->createUser(['administer file gate']);
+    $this->assertFalse($admin->hasPermission('register file gate webauthn'));
+    $this->assertTrue(
+      WebAuthnEnrollmentForm::access($admin, $admin)->isAllowed(),
+      'Admin on their own keys page must be allowed.',
+    );
+  }
+
+  /**
+   * A register-only user is forbidden on another user's keys page.
+   */
+  public function testRegisterOnlyForbiddenOnAnotherUsersKeysPage(): void {
+    $account = $this->createUser(['register file gate webauthn']);
+    $other = $this->createUser([]);
+    $this->assertTrue(
+      WebAuthnEnrollmentForm::access($account, $other)->isForbidden(),
+      'Register-only user on another keys page must be forbidden.',
+    );
+  }
+
+  /**
+   * A register-only user may open their own keys page.
+   */
+  public function testRegisterOnlyAllowedOnOwnKeysPage(): void {
+    $account = $this->createUser(['register file gate webauthn']);
+    $this->assertTrue(
+      WebAuthnEnrollmentForm::access($account, $account)->isAllowed(),
+      'Register-only user on their own keys page must be allowed.',
+    );
+  }
+
+  /**
+   * An authenticated user without enrollment permission is forbidden on self.
+   */
+  public function testOwnKeysPageRequiresEnrollmentPermission(): void {
+    $account = $this->createUser([]);
+    $this->assertTrue(
+      WebAuthnEnrollmentForm::access($account, $account)->isForbidden(),
+      'Own keys page without register or administer must be forbidden.',
+    );
+  }
+
+  /**
+   * The form lists the session account's keys, not the route {user}.
+   *
+   * Fails if buildForm lists $user again (the admin-on-other mismatch).
+   */
+  public function testEnrollmentFormListsCurrentUserKeysOnly(): void {
+    $admin = $this->createUser(['administer file gate']);
+    $other = $this->createUser([]);
+
+    $storage = $this->container->get('file_gate_assurance.webauthn_storage');
+    $storage->insert([
+      'user_handle' => (string) $other->id(),
+      'credential_id' => 'other-user-credential-id',
+      'public_key' => 'pk',
+      'counter' => 0,
+      'label' => 'Other user key',
+      'uid' => (int) $other->id(),
+    ]);
+    $storage->insert([
+      'user_handle' => (string) $admin->id(),
+      'credential_id' => 'admin-user-credential-id',
+      'public_key' => 'pk',
+      'counter' => 0,
+      'label' => 'Admin key',
+      'uid' => (int) $admin->id(),
+    ]);
+
+    $this->container->get('current_user')->setAccount($admin);
+    $form_object = WebAuthnEnrollmentForm::create($this->container);
+    $form = $form_object->buildForm([], new FormState(), $other);
+    $labels = [];
+    foreach ($form['credentials']['#rows'] as $row) {
+      $labels[] = (string) $row[0];
+    }
+    $this->assertContains('Admin key', $labels);
+    $this->assertNotContains(
+      'Other user key',
+      $labels,
+      'Form must not list the route user keys when they differ from the session.',
+    );
   }
 
   /**

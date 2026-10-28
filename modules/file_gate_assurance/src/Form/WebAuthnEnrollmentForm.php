@@ -19,6 +19,10 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 /**
  * Account UI to register and remove native WebAuthn credentials.
  *
+ * Self-only: the page manages the current user's keys. Another account's
+ * URL is forbidden, including for administer, because the JSON APIs always
+ * enroll the session account.
+ *
  * Consumes the existing JSON registration APIs (options + register + delete).
  * Binding: registration user_handle defaults to the Drupal uid string; mint
  * should pass subject matching that handle (or set webauthn_user_handle on the
@@ -61,8 +65,15 @@ final class WebAuthnEnrollmentForm extends FormBase {
    * {@inheritdoc}
    */
   public function buildForm(array $form, FormStateInterface $form_state, ?UserInterface $user = NULL): array {
-    $account = $user instanceof UserInterface ? $user : $this->currentUser();
-    $handle = (string) $account->id();
+    // JSON register/delete always enroll the session account. List that
+    // account's keys even if the route {user} were wrong (self-only access
+    // should already have 403'd a mismatch).
+    $handle = (string) $this->currentUser()->id();
+    if ($user instanceof UserInterface && (string) $user->id() !== $handle) {
+      // Route {user} is not the session. Access should have 403'd; still
+      // do not list that account's keys.
+      $handle = (string) $this->currentUser()->id();
+    }
 
     $form['#attached']['library'][] = 'file_gate_assurance/webauthn_enrollment';
     $form['#attached']['drupalSettings']['fileGateWebauthn'] = [
@@ -143,20 +154,54 @@ final class WebAuthnEnrollmentForm extends FormBase {
   }
 
   /**
-   * Access callback: self with register permission, or administer.
+   * Access callback: the account may manage keys only on its own page.
+   *
+   * Administrators are not a second management surface. The JSON register
+   * and delete APIs always act as the current user, so another user's page
+   * would list that account's keys and then enroll or 404 as the viewer.
+   * Fail closed: a mismatched {user} is forbidden, including administer.
+   *
+   * @param \Drupal\Core\Session\AccountInterface $account
+   *   The account asking for the page.
+   * @param \Drupal\user\UserInterface $user
+   *   The account whose keys page was requested.
+   *
+   * @return \Drupal\Core\Access\AccessResultInterface
+   *   Allowed only for an authenticated self with register or administer.
    */
   public static function access(AccountInterface $account, UserInterface $user): AccessResultInterface {
     if (!$account->isAuthenticated()) {
-      return AccessResult::forbidden()->cachePerPermissions()->cachePerUser();
+      return self::denyKeysPage($user);
     }
-    if ($account->hasPermission('administer file gate')) {
-      return AccessResult::allowed()->cachePerPermissions();
+    // Self only. Do not special-case administer: there is no target-user
+    // parameter on the enrollment APIs.
+    if ((int) $account->id() !== (int) $user->id()) {
+      return self::denyKeysPage($user);
     }
-    if ((int) $account->id() === (int) $user->id()
-      && $account->hasPermission('register file gate webauthn')) {
-      return AccessResult::allowed()->cachePerPermissions()->cachePerUser();
+    if ($account->hasPermission('register file gate webauthn')
+      || $account->hasPermission('administer file gate')) {
+      return AccessResult::allowed()
+        ->cachePerPermissions()
+        ->cachePerUser()
+        ->addCacheableDependency($user);
     }
-    return AccessResult::forbidden()->cachePerPermissions()->cachePerUser();
+    return self::denyKeysPage($user);
+  }
+
+  /**
+   * Forbidden keys-page result, cached per viewer and target account.
+   *
+   * @param \Drupal\user\UserInterface $user
+   *   The account whose keys page was requested.
+   *
+   * @return \Drupal\Core\Access\AccessResultInterface
+   *   A forbidden result. Callers must not reuse the object.
+   */
+  private static function denyKeysPage(UserInterface $user): AccessResultInterface {
+    return AccessResult::forbidden()
+      ->cachePerPermissions()
+      ->cachePerUser()
+      ->addCacheableDependency($user);
   }
 
 }

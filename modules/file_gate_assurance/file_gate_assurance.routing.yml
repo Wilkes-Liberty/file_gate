@@ -32,6 +32,8 @@ file_gate_assurance.webauthn_enrollment:
     _title: 'File Gate security keys'
   requirements:
     user: \d+
+    # Self-only. administer is not a second keys-management surface; the
+    # JSON register/delete APIs always act as the current user.
     _custom_access: '\Drupal\file_gate_assurance\Form\WebAuthnEnrollmentForm::access'
   options:
     parameters:

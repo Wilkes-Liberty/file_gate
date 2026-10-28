@@ -13,7 +13,8 @@ d.o [#3614250](https://www.drupal.org/project/file_gate/issues/3614250).
 - **Fallback:** YubiKey registered only in File Gate native WebAuthn.
 - File Gate secret configured; assurance field with issuer, audience, acr.
 - For native WebAuthn only: `web-auth/webauthn-lib`, field `verify_at: webauthn`,
-  `rp_id` + origins; user registered at `/user/{uid}/file-gate-webauthn`.
+  `rp_id` + origins; user registered at `/user/{uid}/file-gate-webauthn`
+  (own account; another uid is 403).
 
 ## 0. IdP enrollment (once per operator)
 
@@ -81,7 +82,8 @@ plain themeless 403 (§1 step 7; the page is generic and self-contained, #66).
 
 ## 2. Native WebAuthn
 
-1. Enroll a key at **Account → File Gate keys** (or JSON register APIs).
+1. Enroll a key at **Account → File Gate keys** on your own account (or JSON
+   register APIs). Another user's keys URL is 403, including for admins.
 2. Mint with `subject` equal to the user handle (Drupal uid string by default).
 3. Open plain download URL → step-up `mode=webauthn` → touch authenticator.
 4. Bridge cookie set; file streams.

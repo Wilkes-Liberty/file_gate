@@ -79,7 +79,7 @@ its own endpoint, only after a pluggable **gate method** approves the request.
   mint/delivery/denial tables from the `file_gate` dblog channel when Database
   Logging is enabled.
 - **Secret rotation with dual keys**, multi-field mint pin, forced identity mint,
-  mint-time OIDC (A2), WebAuthn enrollment UI — see `CHANGELOG.md` and
+  mint-time OIDC (A2), self-only WebAuthn enrollment UI — see `CHANGELOG.md` and
   `docs/SECRET_ROTATION.md`, `docs/E2E-ASSURANCE.md`.
 - **IdP-first (Keycloak) architecture:**
   [`docs/KEYCLOAK-UNIFIED-AUTH.md`](docs/KEYCLOAK-UNIFIED-AUTH.md). Roadmap and
