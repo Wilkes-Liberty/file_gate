@@ -135,7 +135,8 @@ session-bridge SSO or the session has no usable token.
 - Do not treat long-lived Drupal sessions as perpetual AAL3 without re-auth policy.
 - Do not mint high-assurance grants with a shared secret and no subject/identity
   when the product is “named user only.”
-- Do not put secrets or full tokens in audit_chain metadata.
+- Do not put secrets, full tokens, or original filenames in audit_chain
+  metadata. Identify files as `file:<id>`.
 
 ---
 

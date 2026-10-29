@@ -42,6 +42,7 @@ services:
     arguments:
       - '@?audit_chain.logger'
       - '@logger.channel.file_gate'
+      - '@config.factory'
 
   file_gate.grant_inventory:
     class: Drupal\file_gate\Service\GrantInventory

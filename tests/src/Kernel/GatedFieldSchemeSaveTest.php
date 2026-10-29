@@ -49,7 +49,7 @@ final class GatedFieldSchemeSaveTest extends KernelTestBase {
    */
   protected function setUp(): void {
     parent::setUp();
-    RecordingAuditChain::$events = [];
+    RecordingAuditChain::reset();
     $this->installEntitySchema('user');
     $this->installEntitySchema('file');
     $this->installSchema('user', ['users_data']);

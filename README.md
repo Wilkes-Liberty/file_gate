@@ -74,7 +74,10 @@ its own endpoint, only after a pluggable **gate method** approves the request.
 - **Auditing & analytics.** A dedicated logger channel records security events
   (denied downloads, failed mint auth, fail-closed refusals) and usage events
   (mints and deliveries). Optional soft integration with **audit_chain** for a
-  hash-chained durable trail (`docs/AUDIT.md`).
+  hash-chained durable trail (`docs/AUDIT.md`). Audit rows identify files as
+  `file:<id>` — never the original filename. Optional `audit_require_keyed`
+  (off by default) refuses mint and download with HTTP 503 when a signed
+  audit append fails.
 - **Admin dashboard.** Secret status, defaults, gate methods, gated fields, plus
   mint/delivery/denial tables from the `file_gate` dblog channel when Database
   Logging is enabled.
@@ -286,7 +289,10 @@ for licences or an external entitlement API. Access gating, not DRM. See
 Visit **Administration → Configuration → Media → File Gate**
 (`/admin/config/media/file-gate`) to set the default TTL, content disposition
 (attachment/inline), and mint rate limiting, to check the secret status, and to
-see every gated field.
+see every gated field. Optional **Refuse delivery if a signed audit write
+fails** (`audit_require_keyed`, default off) makes mint and download call
+`audit_chain` `logKeyed()` and return HTTP 503 if that signed append fails.
+See [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## API contract (for front ends)
 
@@ -318,7 +324,8 @@ Response `200`:
 ```
 
 `path` is **root-relative and host-agnostic** — prepend your public Drupal file
-origin. Errors: `503` (no secret configured), `401` (bad/absent secret), `404`
+origin. Errors: `503` (no secret configured, or `audit_require_keyed` is on
+and the signed audit write failed), `401` (bad/absent secret), `404`
 (unknown file/media), `409` (host media unpublished), `422` (file not gated /
 empty), `429` (rate limited), `400` (bad request).
 
@@ -326,7 +333,8 @@ empty), `429` (rate limited), `400` (bad request).
 
 Redeemed by the visitor's browser. Returns the file stream (`200`) or `403` when
 the grant is missing, expired, tampered, or spent; `404` when the file is unknown
-or not gated.
+or not gated; `503` when `audit_require_keyed` is on and the signed audit write
+failed (generic body, no file bytes).
 
 For the *Token* method the browser also sends `token` (the plaintext token); a
 pre-shared campaign link sends only `token` (no `exp`/`sig`). For the *OTP*

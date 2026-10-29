@@ -46,3 +46,6 @@ File Gate is only as strong as its deployment. Operators must:
   every gated file is denied).
 - No `private://` path disclosure in signed URLs; delivery sets
   `Cache-Control: private, no-store`.
+- Audit Chain rows never store original filenames (`label` is `file:<id>`).
+  Optional `audit_require_keyed` (default off) refuses mint and download
+  with HTTP 503 if a signed audit append fails.

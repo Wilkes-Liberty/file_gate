@@ -51,6 +51,17 @@ function file_gate_update_10001(): void {
 }
 
 /**
+ * Add audit_require_keyed default (off).
+ */
+function file_gate_update_10002(): void {
+  $config = \Drupal::configFactory()->getEditable('file_gate.settings');
+  if ($config->get('audit_require_keyed') === NULL) {
+    $config->set('audit_require_keyed', FALSE);
+  }
+  $config->save();
+}
+
+/**
  * Implements hook_requirements() for Drupal 10.
  */
 #[LegacyRequirementsHook]

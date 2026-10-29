@@ -39,6 +39,9 @@ file_gate.settings:
     require_acting_account:
       type: boolean
       label: 'Require acting account (account/uid) on every mint'
+    audit_require_keyed:
+      type: boolean
+      label: 'Refuse mint and download if a signed audit write fails'
     introspection_client_secret:
       type: string
       label: 'OIDC introspection client secret'

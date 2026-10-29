@@ -31,3 +31,7 @@ download_flood_window: 60
 # When TRUE, every mint must include acting account (uuid or uid). Can also be
 # set per-field via method setting require_identity_mint.
 require_acting_account: false
+# When TRUE, mint and download use audit_chain logKeyed() and refuse delivery
+# (HTTP 503, generic body) if the signed append fails. Default FALSE keeps
+# today's best-effort log() so a missing key does not block downloads.
+audit_require_keyed: false

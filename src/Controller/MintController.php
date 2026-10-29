@@ -187,7 +187,7 @@ final class MintController implements ContainerInjectionInterface {
       $this->audit->log('mint_denied', [
         'entity_type' => 'file',
         'id' => (string) $file->id(),
-        'label' => $file->getFilename() ?? '',
+        'label' => FileGateAudit::fileLabel($file),
         'uuid' => $file->uuid(),
         'reason' => 'secret_scope',
         'field' => $gate['field'],
@@ -286,15 +286,20 @@ final class MintController implements ContainerInjectionInterface {
       '@uuid' => $file->uuid(),
       '@ip' => $request->getClientIp() ?? 'unknown',
     ]);
-    $this->audit->log('mint', [
+    if (!$this->audit->logDelivery('mint', [
       'entity_type' => 'file',
       'id' => (string) $file->id(),
-      'label' => $file->getFilename() ?? '',
+      'label' => FileGateAudit::fileLabel($file),
       'uuid' => $file->uuid(),
       'gate_method' => $gate['method'],
       'field' => $gate['field'],
       'secret_id' => $secret_id ?? 'legacy',
-    ]);
+    ])) {
+      $this->logger->error('Refused mint for file @uuid: keyed audit write failed.', [
+        '@uuid' => $file->uuid(),
+      ]);
+      return new JsonResponse(['error' => FileGateAudit::REFUSAL_MESSAGE], Response::HTTP_SERVICE_UNAVAILABLE);
+    }
 
     // Report the grant's real expiry and remaining lifetime. Both derive from
     // the minted claim, so a field-specific TTL (or an availability-window cap)
