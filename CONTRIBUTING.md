@@ -13,10 +13,12 @@ mirrored to drupal.org.
 ## Coding standards
 
 - Follow the [Drupal coding standards](https://www.drupal.org/docs/develop/standards).
-  Code must pass `phpcs` with the `Drupal` and `DrupalPractice` standards:
+  Code must pass `phpcs` with this repository's `phpcs.xml.dist` (Drupal and
+  DrupalPractice on `php,module,inc,install,test,profile,theme,yml` — not JS).
+  From the module root, same as the GitHub phpcs job:
 
   ```bash
-  vendor/bin/phpcs --standard=Drupal,DrupalPractice web/modules/contrib/file_gate
+  phpcs -p .
   ```
 
 - Target **PHP 8.2 / Drupal 10.6** for the base module and **PHP 8.3 / Drupal 11.3+** on Drupal 11. Optional submodules retain their declared floor.
@@ -26,10 +28,14 @@ mirrored to drupal.org.
 
 ## Tests
 
-Kernel tests live in `tests/src/Kernel`. Run them with a database configured:
+Kernel tests live in `tests/src/Kernel`. Unit tests live in `tests/src/Unit`.
+Submodule suites live under `modules/*/tests`. Run the same paths GitHub CI
+uses, with a database configured:
 
 ```bash
-vendor/bin/phpunit -c web/core web/modules/contrib/file_gate/tests/src/Kernel
+vendor/bin/phpunit -c web/core/phpunit.xml.dist \
+  web/modules/contrib/file_gate/tests \
+  web/modules/contrib/file_gate/modules
 ```
 
 Any change to the deny hook, the signer, delivery, minting, or a gate method must

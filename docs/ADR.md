@@ -68,6 +68,8 @@ login, a purchase) that the front end owns.
 - The allow-path does not depend on core's private-file access rules.
 - Editors need *Bypass file gate* to download via the admin UI.
 - Usage limits require a small amount of server-side state (an expirable
-  redemption counter) and are therefore approximate under races.
+  redemption counter). Redeem and revoke take `GrantLockTrait` so concurrent
+  redeem/revoke cannot double-spend or resurrect a revoked row under normal
+  contention (fail closed on lock failure). See SECURITY.md.
 - The signing/mint core can graduate into a shared base module (for content or
   entity gating) without a rewrite.

@@ -40,7 +40,7 @@ final class SettingsForm extends ConfigFormBase {
    * @param \Drupal\file_gate\GateMethodManager $gateMethodManager
    *   The gate method plugin manager (to list available methods).
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
-   *   The entity type manager (to build the gated-fields overview).
+   *   The entity type manager (loads field_config for Field UI links).
    * @param \Drupal\file_gate\SecretRegistryInterface $secrets
    *   Secret registry (named secret status).
    * @param \Drupal\file_gate\Service\FileGateMetrics $metrics

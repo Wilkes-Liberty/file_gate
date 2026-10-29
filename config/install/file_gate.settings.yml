@@ -28,6 +28,12 @@ flood_window: 60
 # Flood protection for failed download grants (per IP). 0 disables.
 download_flood_limit: 120
 download_flood_window: 60
+# SECURITY: introspection_client_secret ships EMPTY, same as download_secret.
+# Inject the real value at runtime from the environment (e.g. in settings.php:
+#   $config['file_gate.settings']['introspection_client_secret'] = getenv('FILE_GATE_INTROSPECTION_SECRET');
+# ) and never commit it. Used only by File Gate Assurance optional RFC 7662
+# introspection. Missing or empty is treated as no secret.
+introspection_client_secret: ''
 # When TRUE, every mint must include acting account (uuid or uid). Can also be
 # set per-field via method setting require_identity_mint.
 require_acting_account: false
