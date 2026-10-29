@@ -176,7 +176,7 @@ final class DownloadController implements ContainerInjectionInterface {
       $this->audit->log('download_denied', [
         'entity_type' => 'file',
         'id' => (string) $file->id(),
-        'label' => $file->getFilename() ?? '',
+        'label' => FileGateAudit::fileLabel($file),
         'uuid' => $file->uuid(),
         'gate_method' => $gate['method'],
         'field' => $gate['field'],
@@ -198,6 +198,24 @@ final class DownloadController implements ContainerInjectionInterface {
       ? ResponseHeaderBag::DISPOSITION_INLINE
       : ResponseHeaderBag::DISPOSITION_ATTACHMENT;
 
+    // Record the download before opening the stream so a required keyed
+    // append can refuse delivery without emitting bytes.
+    if (!$this->audit->logDelivery('download', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => FileGateAudit::fileLabel($file),
+      'uuid' => $file->uuid(),
+      'gate_method' => $gate['method'],
+      'field' => $gate['field'],
+    ])) {
+      $this->logger->error('Refused gated download of file @uuid: keyed audit write failed.', [
+        '@uuid' => $file->uuid(),
+      ]);
+      $refusal = new Response(FileGateAudit::REFUSAL_MESSAGE, Response::HTTP_SERVICE_UNAVAILABLE);
+      $refusal->headers->set('Cache-Control', 'private, no-store, max-age=0');
+      return $refusal;
+    }
+
     $response = new BinaryFileResponse($uri, Response::HTTP_OK, [], FALSE);
     $response->headers->set('Content-Type', $mime);
     // Never let the browser MIME-sniff a gated response into a runnable type.
@@ -217,14 +235,6 @@ final class DownloadController implements ContainerInjectionInterface {
       '@uuid' => $file->uuid(),
       '@method' => $gate['method'],
       '@ip' => $request->getClientIp() ?? 'unknown',
-    ]);
-    $this->audit->log('download', [
-      'entity_type' => 'file',
-      'id' => (string) $file->id(),
-      'label' => $file->getFilename() ?? '',
-      'uuid' => $file->uuid(),
-      'gate_method' => $gate['method'],
-      'field' => $gate['field'],
     ]);
 
     return $response;

@@ -222,6 +222,12 @@ final class SettingsForm extends ConfigFormBase {
       '#default_value' => !empty($config->get('require_acting_account')),
       '#description' => $this->t('Mint body must include <code>account</code> (user UUID) or <code>uid</code>. Can also be required per field via method settings. See docs/API.md.'),
     ];
+    $form['audit_require_keyed'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Refuse delivery if a signed audit write fails'),
+      '#default_value' => !empty($config->get('audit_require_keyed')),
+      '#description' => $this->t('When enabled, mint and download call <code>audit_chain</code> <code>logKeyed()</code> and return HTTP 503 (generic body, no file bytes) if the signed append fails — missing module, missing signing key, or write error. Off by default: audit writes stay best-effort so a missing key does not block delivery. See docs/AUDIT.md.'),
+    ];
 
     $method_items = [];
     foreach ($this->gateMethodManager->getDefinitions() as $id => $definition) {
@@ -359,6 +365,7 @@ final class SettingsForm extends ConfigFormBase {
       ->set('download_flood_limit', (int) $form_state->getValue('download_flood_limit'))
       ->set('download_flood_window', (int) $form_state->getValue('download_flood_window'))
       ->set('require_acting_account', (bool) $form_state->getValue('require_acting_account'))
+      ->set('audit_require_keyed', (bool) $form_state->getValue('audit_require_keyed'))
       ->set('secret_scopes', $this->parseSecretScopes((string) $form_state->getValue('secret_scopes_text')))
       ->save();
     parent::submitForm($form, $form_state);

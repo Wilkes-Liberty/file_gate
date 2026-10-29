@@ -44,16 +44,38 @@ drush audit-chain:verify
 
 Metadata promotes `entity_type` / `id` / `label` when present; free keys
 (`uuid`, `gate_method`, `field`, `reason`, `secret_id`) stay in JSON. **Never**
-store raw secrets or full tokens.
+store raw secrets, full tokens, or original filenames.
+
+`label` is always an opaque identifier (`file:<id>`), never
+`FileInterface::getFilename()`. audit_chain copies `label` into the indexed
+`entity_label` column; a filename there cannot be redacted without breaking
+the hash chain.
+
+### Evidence-required delivery (`audit_require_keyed`)
+
+By default, mint and download use best-effort `log()`. If the chain is
+absent or the signing key will not resolve, the event is unsigned or
+dropped and **delivery still proceeds**.
+
+Set `file_gate.settings.audit_require_keyed` to `true` (also a checkbox on
+the File Gate settings form) when a signed row is mandatory evidence.
+Mint and download then call `logKeyed()` and, if the signed append fails,
+return **HTTP 503** with a generic body and **do not stream file bytes**.
+Denied paths (`mint_denied`, `download_denied`, `otp_issue`, `revoke`) stay
+best-effort: they already refuse the action.
+
+Leave the setting off unless the site has `audit_chain` enabled and a
+signing key configured. A missing key with the setting on fails closed for
+every mint and download.
 
 ### Code
 
 ```php
 // Service: file_gate.audit → \Drupal\file_gate\Service\FileGateAudit
-$this->audit->log('download', [
+$this->audit->logDelivery('download', [
   'entity_type' => 'file',
   'id' => (string) $file->id(),
-  'label' => $file->getFilename() ?? '',
+  'label' => FileGateAudit::fileLabel($file),
   'uuid' => $file->uuid(),
   'gate_method' => $gate['method'],
   'field' => $gate['field'],

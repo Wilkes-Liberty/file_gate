@@ -334,7 +334,7 @@ final class OtpController implements ContainerInjectionInterface {
     $this->audit->log('otp_issue', [
       'entity_type' => 'file',
       'id' => (string) $file->id(),
-      'label' => $file->getFilename() ?? '',
+      'label' => FileGateAudit::fileLabel($file),
       'uuid' => $file->uuid(),
       'secret_id' => $secret_id ?? 'legacy',
     ]);
