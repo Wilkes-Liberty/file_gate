@@ -6,6 +6,18 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-29
+
+### Changed
+- Use independent changelog fragments for pull requests and the shared validator for lossless release preparation.
+- Install config now ships an empty `introspection_client_secret` to match
+  schema. ADR usage-limit wording matches `GrantLockTrait` / SECURITY.md
+  (locked, fail closed). CONTRIBUTING phpcs uses `phpcs.xml.dist`; phpunit
+  covers unit tests and submodule suites.
+- The File Gate keys page (`/user/{user}/file-gate-webauthn`) is self-only.
+  Administrators are denied (403) on another account's page; the form lists
+  the current user's credentials. JSON APIs were already current-user-only.
+
 ### Removed
 - Unused `gexp` claim on the assurance session-bridge cookie (`FG_AB`).
   Grant expiry already clamps cookie `exp` and `isSatisfied()` checks
@@ -16,6 +28,13 @@ All notable changes to **File Gate** are documented here. The format is based on
   credentials/delete) require Drupal's `X-CSRF-Token` header. The
   account form sends the session token. `deleteCredential` re-checks
   register-or-administer. Grant-bound assert routes are unchanged.
+- Audit Chain rows no longer store original filenames in `label` (they use an
+  opaque `file:<id>` instead). Optional `audit_require_keyed` (default off)
+  refuses mint and download with HTTP 503 when a signed audit append fails.
+- OTP redeem no longer accepts `email` or `otp` query parameters. Present the
+  passcode in the JSON body of `POST /api/file-gate/otp/session`, then download
+  with the `FG_OTP` cookie. A query-string passcode is denied so it cannot
+  land in access logs or browser history.
 
 ## [1.11.7] - 2026-10-23
 
