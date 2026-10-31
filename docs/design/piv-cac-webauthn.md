@@ -4,8 +4,9 @@ Status: **implemented / accepted** — shipped in the `file_gate_assurance`
 submodule (see
 [issue #6](https://github.com/Wilkes-Liberty/file_gate/issues/6)). This note is
 retained as the design record; the decisions table at the end records how each
-question was resolved as built. Two hardenings were added beyond the original
-two-model framing — see "As shipped" below.
+question was resolved as built. The shipped default is Model B (`verify_at:
+redeem`) with a plain-link session bridge. Further modes and hardenings sit
+beyond the original two-model framing — see "As shipped" below.
 
 This note designs a gate method that delivers a gated file only after
 phishing-resistant, hardware-backed authentication — PIV/CAC smart cards
@@ -41,15 +42,17 @@ the IdP, to an assurance level the site configures.
 
 ## Where the assertion is verified — two models
 
-### Model A — verify at mint, bind the asserted level (decoupled default)
+### Model A — verify at mint, bind the asserted level (opt-in)
 
 The front end authenticates the user to AAL3 via its IdP; its back end calls the
-mint endpoint.
+mint endpoint. Choose this with `verify_at: mint` when the mint caller has
+already stepped the user up.
 
-- **A1 (recommended default):** trust the secret-holding caller's asserted level —
-  consistent with the existing mint trust model (the mint endpoint already trusts
-  the secret-holder). File Gate records the level for audit; it does not
-  independently verify a token. Honestly labeled "RP-asserted."
+- **A1 (trust the secret-holder):** trust the secret-holding caller's asserted
+  level — consistent with the existing mint trust model (the mint endpoint
+  already trusts the secret-holder). File Gate records the level for audit; it
+  does not independently verify a token. Honestly labeled "RP-asserted."
+  `verify_oidc_at_mint` stays off.
 - **A2 (stronger, shipped as opt-in):** File Gate verifies the user's OIDC token
   at mint when field setting `verify_oidc_at_mint` is enabled. The token's `aud`
   must be File Gate's audience — use **RFC 8693 token exchange** or an IdP
@@ -63,15 +66,18 @@ mint endpoint.
   identity to compare, so the bound level/subject are self-attestations under File
   Gate's own HMAC — they gate what mint *issues*, not what redemption *verifies*.
 
-### Model B — verify at redemption (opt-in; same-origin or JS-driven)
+### Model B — verify at redemption (shipped default; plain-link + bridge)
 
-- The download carries the OIDC token; the method's `grants()` validates it live
+- The download is a normal signed URL. `grants()` validates a live OIDC token
   (JWKS signature, `iss`/`aud`/`exp`, `acr`) and compares the token subject to a
   `sub_hash` bound at mint — **real per-user enforcement lives here.**
-- Fits the plugin interface (`grants()` sees the request) but **not** headless
-  direct navigation (you can't set `Authorization` on an `<a href>`). It requires
-  a JS `fetch` + Bearer → Blob download (loses Range/resumable/native UX; whole
-  file in memory) or a same-origin cookie/session (hard cross-origin).
+- **Plain `<a href>` / email / Save-as is the primary path.** Without a live
+  proof, File Gate challenges (302 to the step-up page, or 401 JSON for API
+  clients). After a successful live OIDC check,
+  `POST /api/file-gate/assurance/bridge` sets a short-lived HttpOnly cookie
+  (`FG_AB`) so the **same** signed URL streams without `Authorization` on every
+  GET. Direct `Authorization` on download still works for JS/`fetch` clients.
+  The cookie does not replace the HMAC grant.
 - As a resource server, File Gate can issue an **RFC 9470** step-up challenge
   (`401 WWW-Authenticate: Bearer error="insufficient_user_authentication",
   acr_values="…"`) when the presented `acr` is too low.
@@ -89,27 +95,38 @@ the JS-`fetch` flow only, **not** plain `<a href>` navigation. (mTLS-bound token
 RFC 8705, are an alternative PoP mechanism with the same constraint.) DPoP ships
 **opt-in**, off by default; sites needing PoP at delivery choose Model B + DPoP.
 
-**Recommendation:** Model A (A1) as the decoupled default (honestly labeled);
-Model B opt-in for same-origin / JS flows; DPoP (RFC 9449) opt-in hardening on
-Model B; A2 (mint-time OIDC) opt-in.
+**Recommendation (as shipped):** Model B (`verify_at: redeem`) is the default.
+Plain `<a href>` uses the `FG_AB` session bridge after one live OIDC step-up.
+When an operator chooses Model A (`verify_at: mint`), A1 remains “trust the
+secret-holder” (`verify_oidc_at_mint` off). A2 (mint-time OIDC) stays opt-in.
+DPoP (RFC 9449) stays opt-in on Model B.
 
-### As shipped (additions beyond this note)
+### As shipped (additions beyond the original two models)
 
-Two hardenings landed in `file_gate_assurance` beyond the two models above:
+The original note treated Model A as the decoupled default. What shipped:
 
+- **Model B is the default** (`verify_at: redeem`). The **session bridge**
+  (`FG_AB`) is the primary redeem UX: a short-lived HttpOnly cookie set after a
+  successful live OIDC check so a plain signed URL streams. Direct
+  `Authorization` on download remains supported. Opt out with `bridge: false`
+  only when every redeem must present `Authorization`.
 - **Live revocation (RFC 7662 introspection), opt-in.** In Model B, the method can
   additionally introspect the presented token at redemption so an IdP-revoked
   session is denied before its `exp`. The introspection client secret is injected
   from the environment (`file_gate.settings:introspection_client_secret`), never
   stored in field config.
-- **A third `verify_at` mode, `client_cert` (edge mTLS).** File Gate trusts a
-  PIV/CAC certificate subject that an mTLS-terminating reverse proxy validated
-  against the Federal PKI and passed in a configured header, checked against a
-  **required** subject allowlist. The header is only trustworthy when File Gate is
-  reachable *solely* through that proxy; the mode fails closed without an
-  allowlist. This is the closest File Gate gets to a verifier-adjacent posture,
-  and it is still the proxy + PKI — not File Gate — doing the certificate
-  validation. A2 (verify the OIDC token at mint) shipped as opt-in
+- **`client_cert` (edge mTLS).** File Gate trusts a PIV/CAC certificate subject
+  that an mTLS-terminating reverse proxy validated against the Federal PKI and
+  passed in a configured header, checked against a **required** subject
+  allowlist. The header is only trustworthy when File Gate is reachable *solely*
+  through that proxy; the mode fails closed without an allowlist. This is the
+  closest File Gate gets to a verifier-adjacent posture, and it is still the
+  proxy + PKI — not File Gate — doing the certificate validation.
+- **`webauthn` (native RP).** A fourth `verify_at`: File Gate runs the WebAuthn
+  assertion ceremony for a registered authenticator, then sets the same `FG_AB`
+  session bridge. For sites without IdP WebAuthn; not the primary path when an
+  IdP is in use.
+- **A2 (verify the OIDC token at mint)** shipped as opt-in
   (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
   `Assurance::assertMintTimeOidc`). Audience via RFC 8693 token exchange or an
   IdP mapper remains an operational requirement (decision #4).
@@ -190,8 +207,8 @@ Two hardenings landed in `file_gate_assurance` beyond the two models above:
 
 | # | Decision | Resolved as shipped |
 |---|---|---|
-| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | A1 shipped as `verify_at: mint` (default); A2 shipped opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`, `Assurance::assertMintTimeOidc`) |
-| 2 | Model A only / B only / both | Both — `verify_at: mint` (A) and `verify_at: redeem` (B), plus `client_cert` (edge mTLS) — with the honest caveat in docs |
+| 1 | A1 (trust asserted level) vs A2 (verify token at mint) | Shipped default is `verify_at: redeem` (Model B, plain-link + `FG_AB` bridge). When Model A (`verify_at: mint`) is chosen, A1 is the mint default (`verify_oidc_at_mint` off — trust the secret-holder); A2 shipped opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`, `Assurance::assertMintTimeOidc`) |
+| 2 | Model A only / B only / both | All four — `verify_at: redeem` (B, default), `verify_at: mint` (A), `client_cert` (edge mTLS), and `webauthn` (native RP) — with the honest caveat in docs |
 | 3 | Refactor `SignedUrl` claim-reconstruction seam | Shipped — `signedClaimKeys()` / `extraMintClaims()`, with regression tests |
 | 4 | File-Gate-audienced token for A2/B | Operational — RFC 8693 token exchange or an IdP audience mapper (SPA-only tokens fail audience pin by design) |
 | 5 | Interface: verify-in-controller + optional interface vs `mint()` change | Shipped as `ContextualMintInterface` (feature-detected by the mint controller); `mint()` unchanged |
@@ -202,13 +219,15 @@ Two hardenings landed in `file_gate_assurance` beyond the two models above:
 | 10 | Claims contract: `sub_hash` + scalar `aal`; forbid `download_secret` reuse as JWT key | Shipped — scalar `aal` + `sh` (sha-256 subject hash) bound; JWT key domain kept separate; the signer canonicalisation was later hardened to be injective so a bound claim cannot be dropped |
 | 11 | JWT/OIDC dependency (provider-agnostic) | `firebase/php-jwt` + OIDC discovery (a suggested dependency of the parent module) |
 
-## Phased implementation (after the decisions are settled)
+## Implementation history
+
+Build order after the decisions landed (not current defaults):
 
 1. Refactor the `SignedUrl` claim-reconstruction seam (+ regression tests).
 2. `file_gate_assurance`: config schema + settings form; provider-agnostic OIDC
    verification service; Model A (A1) method binding `aal`; kernel tests; docs.
-3. Model B (live token verify + `sub_hash`) opt-in; RFC 9470 challenge; optional
-   introspection.
+3. Model B (live token verify + `sub_hash`); RFC 9470 challenge; optional
+   introspection; session bridge (`FG_AB`) so plain `<a href>` works.
 4. DPoP (RFC 9449) opt-in hardening on Model B; A2 mint-time OIDC shipped
    opt-in (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
    `Assurance::assertMintTimeOidc`). Audience via RFC 8693 / IdP mapper remains
