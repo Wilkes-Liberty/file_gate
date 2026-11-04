@@ -286,7 +286,7 @@ final class WebAuthnController implements ContainerInjectionInterface {
   }
 
   /**
-   * RP config from JSON body (registration) or empty.
+   * RP config from JSON body (registration) or site settings.
    *
    * @return array<string, mixed>|null
    *   Config or NULL.
@@ -294,7 +294,10 @@ final class WebAuthnController implements ContainerInjectionInterface {
   private function rpConfigFromRequest(Request $request): ?array {
     $body = json_decode($request->getContent(), TRUE);
     $cfg = is_array($body) && isset($body['rp']) && is_array($body['rp']) ? $body['rp'] : [];
-    // Prefer site settings override for admin registration UI.
+    // Register APIs are account-scoped: there is no grant or field on this
+    // request, so field rp_id / origins cannot be read. The keys page posts
+    // {}, which is why enrollment needs $settings['file_gate.webauthn'] (or
+    // a JSON rp object). Field RP is used on assert/redeem only.
     $from_settings = $this->settings->get('file_gate.webauthn');
     if (is_array($from_settings)) {
       $cfg = $from_settings + $cfg;

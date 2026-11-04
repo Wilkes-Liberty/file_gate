@@ -36,7 +36,7 @@ The `assurance` method extends `signed_url`: it mints and validates the same
 short-lived HMAC grant (inheriting `ttl`, `available_until`, `max_uses`) and
 binds the asserted level (`aal`) into the signature. The assurance check runs
 *before* the signature/usage check, so a failed check never spends a
-usage-limited grant. Two modes, chosen by `verify_at`:
+usage-limited grant. Four `verify_at` values:
 
 - **`redeem` (default — Model B, plain-link primary):** open the signed download
   URL normally. Without a live proof, File Gate challenges (302 step-up page or
@@ -48,13 +48,19 @@ usage-limited grant. Two modes, chosen by `verify_at`:
   File Gate binds the level as an audit claim and trusts the caller (consistent
   with the mint trust model). Works with plain direct-navigation downloads, but
   the URL is a bearer capability — not itself AAL3-bound.
+- **`client_cert` (edge mTLS):** the reverse proxy terminates the client
+  certificate and passes the validated subject in `trusted_proxy_header`. File
+  Gate fail-closes unless `allowed_subjects` lists that DN. See Edge mTLS
+  below.
 - **`webauthn` (native RP):** File Gate runs the WebAuthn assertion ceremony for
   a registered authenticator (`web-auth/webauthn-lib`), then sets the same
   session bridge cookie. Register keys on your own **Account → File Gate keys**
   page (`/user/{uid}/file-gate-webauthn`; another uid is 403, including for
   administrators) or via `/api/file-gate/webauthn/register/*` (permission
-  *Register File Gate WebAuthn credentials*). Configure RP ID + allowed origins
-  on the field.
+  *Register File Gate WebAuthn credentials*). Enrollment has no field context
+  (the keys page posts `{}`); set RP ID + origins in
+  `$settings['file_gate.webauthn']` or send JSON `rp`. Field `rp_id` /
+  `origins` apply to assert/redeem only.
 
 ## Configuration
 
@@ -70,7 +76,7 @@ third_party_settings:
     gated: true
     method: assurance
     method_settings:
-      verify_at: redeem                 # 'redeem' (default), 'mint', or 'client_cert'
+      verify_at: redeem                 # 'redeem' (default), 'mint', 'client_cert', or 'webauthn'
       aal: 3                            # bound into the grant (audit + tamper)
       trusted_issuers:                  # trusted OIDC issuers (required for redeem)
         - issuer: 'https://idp.example.gov'
@@ -89,7 +95,7 @@ third_party_settings:
       leeway: 60                        # clock-skew tolerance (seconds)
       # edge-mTLS mode (verify_at: client_cert):
       trusted_proxy_header: ''          # header your proxy sets to the cert subject
-      allowed_subjects: []              # optional DN allowlist; empty = any valid cert
+      allowed_subjects: []              # required DN allowlist; empty denies (fail closed)
       # inherited from signed_url:
       ttl: 120
       max_uses: 1
@@ -104,7 +110,7 @@ settings form migrates them to `trusted_issuers`.
 
 | Setting | Meaning |
 |---|---|
-| `verify_at` | `redeem` (verify a live token at delivery), `mint` (trust the caller; audit binding only), or `client_cert` (edge mTLS — below). |
+| `verify_at` | `redeem` (verify a live token at delivery), `mint` (trust the caller; audit binding only), `client_cert` (edge mTLS — below), or `webauthn` (native RP — File Gate runs the assertion). |
 | `aal` | The assurance level bound into the signed grant (audit + downgrade protection). |
 | `trusted_issuers` | The trusted OIDC issuers. Each entry has its own `issuer` URL (JWKS via OIDC discovery), `audience`, and `required_acr` list. Matched exactly-one by the token's `iss`; duplicate issuers invalidate the whole set (every token denied). Required for `redeem`. |
 | `trusted_issuers[].issuer` | That entry's OIDC issuer URL, compared byte-exactly against the token's `iss`. |
@@ -113,7 +119,8 @@ settings form migrates them to `trusted_issuers`.
 | `required_amr` | Optional advisory `amr` values to also require. Off unless set; `amr` is advisory (RFC 8176). |
 | `dpop` | `true` to require a DPoP proof (RFC 9449) sender-constraining the token. |
 | `introspect` | `true` for a live RFC 7662 revocation check (adds a round-trip). Needs `introspection_endpoint`; the client secret is injected globally (below), never stored here. |
-| `trusted_proxy_header` / `allowed_subjects` | Edge-mTLS mode — see below. |
+| `leeway` | Clock-skew tolerance in seconds (default 60). |
+| `trusted_proxy_header` / `allowed_subjects` | Edge-mTLS mode — see below. Empty `allowed_subjects` denies. |
 
 ### Per-user binding (optional)
 
@@ -133,8 +140,9 @@ validated certificate subject in a header. **The proxy plus its trust store is
 the verifier; File Gate consumes the result.**
 
 - `trusted_proxy_header` — the header the proxy sets (e.g. `X-Client-Cert-Dn`).
-- `allowed_subjects` — optional exact-match DN allowlist; empty accepts any
-  subject the proxy validated.
+- `allowed_subjects` — required exact-match DN allowlist; empty denies. The
+  header is spoofable off-proxy, so an allowlist is mandatory. The field form
+  already says “Empty denies.”
 
 > **SECURITY:** this trusts a request header, so it is only safe when File Gate is
 > reachable **exclusively** through that proxy and the proxy strips any
@@ -149,12 +157,38 @@ from the environment into global config — never stored in field settings:
 // settings.php
 $config['file_gate.settings']['introspection_client_secret'] = getenv('FILE_GATE_INTROSPECTION_SECRET');
 ```
-| `leeway` | Clock-skew tolerance in seconds (default 60). |
 
 `acr` values are **entirely IdP-configured** — pin to whatever your IdP emits.
 Common federal example: login.gov / ICAM emit
 `http://idmanagement.gov/ns/assurance/aal/3` (and `…/aal/3?hspd12=true` for PIV).
 A commercial IdP (Okta, Entra ID, Ping, …) emits its own step-up ACR — use that.
+
+### Native WebAuthn RP (settings.php)
+
+Enrollment (`Account → File Gate keys` and
+`/api/file-gate/webauthn/register/*`) has no grant or field. The keys page
+posts `{}`. RP ID and origins must come from site settings, or a JSON `rp`
+object on a headless register POST:
+
+```php
+// settings.php — required for Account → File Gate keys
+$settings['file_gate.webauthn'] = [
+  'rp_id' => 'files.example.gov',
+  'rp_name' => 'File Gate',
+  'origins' => ['https://files.example.gov'],
+];
+```
+
+Field `rp_id` / `origins` apply when asserting at redeem. A second,
+origins-only override also exists:
+
+```php
+$settings['file_gate.webauthn_origins'] = ['https://files.example.gov'];
+```
+
+When that array is non-empty, `WebAuthnCeremony` uses it instead of origins
+from `$settings['file_gate.webauthn']` or the field. Prefer the full
+`file_gate.webauthn` array for enrollment so `rp_id` is also set.
 
 ## Front-end integration (Model B)
 
