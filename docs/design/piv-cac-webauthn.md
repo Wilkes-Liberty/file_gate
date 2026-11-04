@@ -26,19 +26,33 @@ the IdP, to an assurance level the site configures.
 
 ## Honest scope (read first)
 
-- The AAL3 authentication **event** happens at the IdP + the PIV card / FIDO2
+- For the OIDC models (`verify_at: redeem` and `verify_at: mint`), the AAL3
+  authentication **event** happens at the IdP + the PIV card / FIDO2
   authenticator. File Gate is an OIDC **Relying Party** consuming an assertion.
   This is **federation — NIST SP 800-63C — an *asserted* assurance level**, not
   File Gate acting as an AAL3 **verifier** under 800-63B.
-- File Gate does **not** validate PIV x509 chains (CRL/OCSP, FIPS 201 policies),
-  verify WebAuthn attestation/challenge, or assert any FIPS 140 boundary — those
-  belong to the authenticator and the IdP.
+- Those OIDC models do **not** validate PIV x509 chains (CRL/OCSP, FIPS 201
+  policies) or verify a WebAuthn attestation or challenge. That work belongs
+  to the authenticator and the IdP. No mode asserts a FIPS 140 boundary.
+- **Native `verify_at: webauthn` verifies the assertion, not the hardware.**
+  File Gate is the WebAuthn Relying Party for that mode.
+  `WebAuthnController::assertComplete()` calls
+  `WebAuthnCeremony::completeAssertion()`, which checks the single-use
+  challenge, the grant fingerprint, and the assertion against the registered
+  public key. The ceremony accepts only `none` attestation
+  (`NoneAttestationStatementSupport`, `EmptyTrustPath`). That is not
+  authenticator attestation, not FIPS 201 path validation, and not an AAL3
+  certification of File Gate.
 - **Holder-of-key caveat:** a signed download URL is a **bearer capability**, so
   the *delivery step* is not itself AAL3-bound even when the login was — unless the
-  delivery token is proof-of-possession bound (DPoP; opt-in, below).
-- Honest phrasing for docs: *"AAL3 (asserted at the IdP) gates the authorization
-  decision; file delivery is a short-lived bearer capability unless DPoP-bound."*
-  Do not claim the module "provides AAL3" or that a plain download is AAL3.
+  delivery token is proof-of-possession bound (DPoP; opt-in, below). On Model B
+  with the default session bridge, DPoP is checked when `FG_AB` is issued.
+  Later GETs of that grant are satisfied by the cookie until it expires.
+- Honest phrasing for the OIDC models: *"AAL3 (asserted at the IdP) gates the
+  authorization decision; file delivery is a short-lived bearer capability
+  unless DPoP-bound."* For native WebAuthn, say File Gate verified the
+  assertion. Do not claim the module "provides AAL3", certified the
+  authenticator, or that a plain download is AAL3.
 
 ## Where the assertion is verified — two models
 
@@ -68,9 +82,11 @@ already stepped the user up.
 
 ### Model B — verify at redemption (shipped default; plain-link + bridge)
 
-- The download is a normal signed URL. `grants()` validates a live OIDC token
-  (JWKS signature, `iss`/`aud`/`exp`, `acr`) and compares the token subject to a
-  `sub_hash` bound at mint — **real per-user enforcement lives here.**
+- The download is a normal signed URL. When the request presents an OIDC
+  token, `grants()` validates it live (JWKS signature, `iss`/`aud`/`exp`,
+  `acr`) and compares the token subject to a `sub_hash` bound at mint —
+  **per-user enforcement lives on that live check.** A valid `FG_AB` cookie
+  skips it.
 - **Plain `<a href>` / email / Save-as is the primary path.** Without a live
   proof, File Gate challenges (302 to the step-up page, or 401 JSON for API
   clients). After a successful live OIDC check,
@@ -78,22 +94,37 @@ already stepped the user up.
   (`FG_AB`) so the **same** signed URL streams without `Authorization` on every
   GET. Direct `Authorization` on download still works for JS/`fetch` clients.
   The cookie does not replace the HMAC grant.
+- **The bridge caches that live check until the cookie expires.**
+  `Assurance::assuranceSatisfied()` accepts a valid `FG_AB` before OIDC, DPoP,
+  or introspection. Those run on the request that presents the token: the
+  bridge POST (`liveOidcSatisfied()`), or a download that sends
+  `Authorization` and has no valid cookie. Later GETs of the same grant that
+  send only the cookie do not repeat them. Lifetime is `bridge_ttl` (default
+  120 seconds, clamped to 15–600 and to the grant `exp`). Per-request
+  proof-of-possession and live revocation on the download itself require
+  `bridge: false`.
 - As a resource server, File Gate can issue an **RFC 9470** step-up challenge
   (`401 WWW-Authenticate: Bearer error="insufficient_user_authentication",
   acr_values="…"`) when the presented `acr` is too low.
 - **Revocation:** a JWT stays valid until its own `exp` regardless of IdP session
   termination; true mid-grant revocation needs introspection (RFC 7662, opt-in).
+  With the bridge on, introspection runs when the cookie is established, not
+  again on each later GET.
 
 ### Opt-in hardening: DPoP proof-of-possession (RFC 9449)
 
 The only way the **delivery** step approaches AAL3's holder-of-key requirement. In
 **Model B**, accept a **DPoP-bound** access token: the client proves possession of
-a private key on each request via a `DPoP` header JWT, and File Gate checks the
-token's `cnf.jkt` thumbprint matches — so a stolen bearer token is useless without
-the key. Trade-off: DPoP requires the client to send the header, so it applies to
-the JS-`fetch` flow only, **not** plain `<a href>` navigation. (mTLS-bound tokens,
-RFC 8705, are an alternative PoP mechanism with the same constraint.) DPoP ships
-**opt-in**, off by default; sites needing PoP at delivery choose Model B + DPoP.
+a private key on each request that presents the token, via a `DPoP` header JWT,
+and File Gate checks the token's `cnf.jkt` thumbprint matches — so a stolen
+bearer token is useless without the key **on that request**. With the session
+bridge on (the default), that request is the bridge POST, or a download that
+sends `Authorization` directly. Later plain-link GETs carry `FG_AB` only and do
+not repeat DPoP until the cookie expires. Per-request DPoP on every download
+requires `bridge: false`. DPoP still cannot ride a bare `<a href>` that has not
+stepped up. (mTLS-bound tokens, RFC 8705, are an alternative PoP mechanism with
+the same header constraint.) DPoP ships **opt-in**, off by default; sites
+needing PoP on every GET choose Model B + DPoP and `bridge: false`.
 
 **Recommendation (as shipped):** Model B (`verify_at: redeem`) is the default.
 Plain `<a href>` uses the `FG_AB` session bridge after one live OIDC step-up.
@@ -108,13 +139,17 @@ The original note treated Model A as the decoupled default. What shipped:
 - **Model B is the default** (`verify_at: redeem`). The **session bridge**
   (`FG_AB`) is the primary redeem UX: a short-lived HttpOnly cookie set after a
   successful live OIDC check so a plain signed URL streams. Direct
-  `Authorization` on download remains supported. Opt out with `bridge: false`
-  only when every redeem must present `Authorization`.
+  `Authorization` on download remains supported. A valid cookie satisfies
+  assurance until it expires and does not re-check OIDC, DPoP, or
+  introspection. Opt out with `bridge: false` when every redeem must present
+  `Authorization` and receive those checks.
 - **Live revocation (RFC 7662 introspection), opt-in.** In Model B, the method can
-  additionally introspect the presented token at redemption so an IdP-revoked
-  session is denied before its `exp`. The introspection client secret is injected
-  from the environment (`file_gate.settings:introspection_client_secret`), never
-  stored in field config.
+  additionally introspect the presented token so an IdP-revoked session is denied
+  before its `exp`. With the bridge on, that runs when the cookie is
+  established. Introspection on every download requires `bridge: false`. The
+  introspection client secret is injected from the environment
+  (`file_gate.settings:introspection_client_secret`), never stored in field
+  config.
 - **`client_cert` (edge mTLS).** File Gate trusts a PIV/CAC certificate subject
   that an mTLS-terminating reverse proxy validated against the Federal PKI and
   passed in a configured header, checked against a **required** subject
@@ -122,10 +157,12 @@ The original note treated Model A as the decoupled default. What shipped:
   through that proxy; the mode fails closed without an allowlist. This is the
   closest File Gate gets to a verifier-adjacent posture, and it is still the
   proxy + PKI — not File Gate — doing the certificate validation.
-- **`webauthn` (native RP).** A fourth `verify_at`: File Gate runs the WebAuthn
-  assertion ceremony for a registered authenticator, then sets the same `FG_AB`
-  session bridge. For sites without IdP WebAuthn; not the primary path when an
-  IdP is in use.
+- **`webauthn` (native RP).** A fourth `verify_at`: File Gate verifies the
+  WebAuthn assertion and challenge locally
+  (`WebAuthnCeremony::completeAssertion()`), then sets the same `FG_AB`
+  session bridge. Bridged downloads do not repeat that ceremony until the
+  cookie expires. This is assertion verification, not hardware attestation.
+  For sites without IdP WebAuthn; not the primary path when an IdP is in use.
 - **A2 (verify the OIDC token at mint)** shipped as opt-in
   (`verify_oidc_at_mint`, `MintTimeOidcInterface`,
   `Assurance::assertMintTimeOidc`). Audience via RFC 8693 token exchange or an
@@ -195,10 +232,16 @@ The original note treated Model A as the decoupled default. What shipped:
 
 ## Security & compliance caveats (ship in the docs)
 
-- Federation (800-63C), *asserted* AAL — not File-Gate-verified AAL3. Delivery is a
-  bearer capability (Model A) unless DPoP-bound (Model B + RFC 9449).
+- Federation (800-63C), *asserted* AAL — not File-Gate-verified AAL3 for the
+  OIDC models. Native `verify_at: webauthn` verifies the assertion locally and
+  still does not attest the authenticator or certify AAL3. Delivery is a
+  bearer capability (Model A) unless DPoP-bound on the request that presents
+  the token (Model B + RFC 9449). The default bridge then caches that result
+  in `FG_AB` until expiry.
 - No FIPS 140 boundary in File Gate. Reauthentication / session limits are the
-  IdP's. Mid-grant revocation requires introspection (Model B, RFC 7662).
+  IdP's for the OIDC models. Mid-grant revocation requires introspection
+  (Model B, RFC 7662). With the default bridge that check is not repeated on
+  each GET; `bridge: false` checks every download.
 - Provider-agnostic: no IdP is assumed; the admin supplies the issuer and `acr`
   values.
 - Audit: log the asserted level, `sub_hash`, method, and decision.
@@ -212,8 +255,8 @@ The original note treated Model A as the decoupled default. What shipped:
 | 3 | Refactor `SignedUrl` claim-reconstruction seam | Shipped — `signedClaimKeys()` / `extraMintClaims()`, with regression tests |
 | 4 | File-Gate-audienced token for A2/B | Operational — RFC 8693 token exchange or an IdP audience mapper (SPA-only tokens fail audience pin by design) |
 | 5 | Interface: verify-in-controller + optional interface vs `mint()` change | Shipped as `ContextualMintInterface` (feature-detected by the mint controller); `mint()` unchanged |
-| 6 | PoP at delivery: none / DPoP (9449) / mTLS (8705) | DPoP shipped opt-in on Model B (off by default); mTLS documented as the alternative |
-| 7 | Revocation: valid-until-exp vs introspection | Introspection shipped optional (Model B); Model A limit documented |
+| 6 | PoP at delivery: none / DPoP (9449) / mTLS (8705) | DPoP shipped opt-in on the live Model B request (off by default). Bridged GETs do not repeat it; `bridge: false` does. mTLS documented as the alternative |
+| 7 | Revocation: valid-until-exp vs introspection | Introspection shipped optional (Model B) on the live check. The default bridge caches that result until `FG_AB` expires; `bridge: false` checks every download. Model A limit documented |
 | 8 | Assurance signal: `acr` policy vs `amr` | `acr` drives the decision; `amr` advisory only |
 | 9 | Typed schema + settings form for the submodule | Settings form shipped; `method_settings` kept `type: ignore` (polymorphic), not per-method typed schema; `introspection_client_secret` declared in the parent schema |
 | 10 | Claims contract: `sub_hash` + scalar `aal`; forbid `download_secret` reuse as JWT key | Shipped — scalar `aal` + `sh` (sha-256 subject hash) bound; JWT key domain kept separate; the signer canonicalisation was later hardened to be injective so a bound claim cannot be dropped |
