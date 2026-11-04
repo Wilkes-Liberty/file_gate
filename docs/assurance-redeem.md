@@ -111,6 +111,11 @@ field `webauthn_user_handle`). JSON APIs remain available for headless
 enrollment; session cookie POSTs must send `X-CSRF-Token` (same token as
 `/session/token`).
 
+Enrollment has no field context — the keys page posts `{}` — so RP ID and
+origins must come from `$settings['file_gate.webauthn']` or a JSON `rp`
+object on the register POST. Field-only RP setup makes “Add security key”
+return 400.
+
 Manual hardware checklist: `docs/E2E-ASSURANCE.md`.
 
 ## Minimal SPA redeem (JSON clients)
@@ -171,8 +176,20 @@ download step (not the site login IdP):
    cookie → plain download.
 
 Configure **RP ID**, **allowed origins**, and optional fixed user handle on the
-field. Origins may also be set in `settings.php` as
-`$settings['file_gate.webauthn']`.
+field for **assert/redeem**. Enrollment (the keys page and
+`/api/file-gate/webauthn/register/*`) has no field context — the keys page
+posts `{}` — so set the RP in `settings.php`:
+
+```php
+$settings['file_gate.webauthn'] = [
+  'rp_id' => 'files.example.gov',
+  'origins' => ['https://files.example.gov'],
+];
+```
+
+A non-empty `$settings['file_gate.webauthn_origins']` overrides origins from
+that array or the field. Sending JSON `rp` on a headless register POST also
+works.
 
 Requires `composer require web-auth/webauthn-lib`.
 

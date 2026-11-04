@@ -65,15 +65,10 @@ final class WebAuthnEnrollmentForm extends FormBase {
    * {@inheritdoc}
    */
   public function buildForm(array $form, FormStateInterface $form_state, ?UserInterface $user = NULL): array {
-    // JSON register/delete always enroll the session account. List that
-    // account's keys even if the route {user} were wrong (self-only access
-    // should already have 403'd a mismatch).
+    // $user is the route {user}; access already required it to be the
+    // session account. List currentUser() so the table matches the JSON
+    // register/delete APIs, which always enroll the session account.
     $handle = (string) $this->currentUser()->id();
-    if ($user instanceof UserInterface && (string) $user->id() !== $handle) {
-      // Route {user} is not the session. Access should have 403'd; still
-      // do not list that account's keys.
-      $handle = (string) $this->currentUser()->id();
-    }
 
     $form['#attached']['library'][] = 'file_gate_assurance/webauthn_enrollment';
     $form['#attached']['drupalSettings']['fileGateWebauthn'] = [

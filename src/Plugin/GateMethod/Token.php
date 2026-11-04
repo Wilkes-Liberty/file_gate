@@ -393,7 +393,7 @@ final class Token extends GateMethodBase {
         '#type' => 'textarea',
         '#title' => $this->t('Pre-shared campaign tokens'),
         '#default_value' => $this->tokensFormDefault((array) ($settings['tokens'] ?? [])),
-        '#description' => $this->t('Optional. One entry per line: SHA-256 hash only (unlimited), or <code>hash|exp|max</code> where <code>exp</code> is a Unix expiry (0 = none) and <code>max</code> is redemptions (0 = unlimited). Store hashes only — never plaintext. Prefer minted revocable tokens for sensitive files (GH #46).'),
+        '#description' => $this->t('Optional. One entry per line: SHA-256 hash only (unlimited), or <code>hash|exp|max</code> where <code>exp</code> is a Unix expiry (0 = none) and <code>max</code> is redemptions (0 = unlimited). Store hashes only — never plaintext. Prefer minted revocable tokens for sensitive files.'),
       ],
       // Enforced by the mint controller for every method; a rebuild-only
       // submit strips a config-imported TRUE on form save (d.o #3619534).
