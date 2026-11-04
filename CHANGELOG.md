@@ -6,6 +6,21 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-11-04
+
+### Changed
+- Assurance operator docs match shipped fail-closed `allowed_subjects` (empty
+  denies), list all four `verify_at` values, and state that WebAuthn enrollment
+  RP comes from `$settings['file_gate.webauthn']` (or JSON `rp`), not the field.
+  Field settings forms no longer show ticket ids in descriptions.
+- Assurance design note `docs/design/piv-cac-webauthn.md` now matches shipped
+  defaults: `verify_at: redeem` (Model B, plain-link + `FG_AB` session bridge).
+  A1 remains trust-the-secret-holder (`verify_oidc_at_mint` off); A2 stays
+  opt-in. A valid bridge cookie satisfies later downloads until expiry without
+  repeating OIDC, DPoP, or introspection (`bridge: false` checks every
+  download). Native WebAuthn verifies the assertion locally and does not
+  attest the authenticator or certify AAL3.
+
 ## [1.12.0] - 2026-10-29
 
 ### Changed
