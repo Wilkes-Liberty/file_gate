@@ -9,6 +9,7 @@ use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 use Drupal\file\FileInterface;
 use Drupal\file\FileReferenceResolver;
 use Drupal\file_gate\Compatibility\FileReferenceResolver as LegacyFileReferenceResolver;
+use Drupal\file_gate\Service\GrantParticipation;
 
 /**
  * Resolves whether (and how) a managed file is gated.
@@ -52,11 +53,17 @@ final class FileGateResolver {
    *   The entity type manager (loads field storage configs).
    * @param \Drupal\Core\StreamWrapper\StreamWrapperManagerInterface $streamWrapperManager
    *   The stream wrapper manager (scheme detection).
+   * @param \Drupal\file_gate\Service\GrantParticipation|null $participation
+   *   Optional enrolled grant coordination.
+   * @param \Drupal\file_gate\GateMethodManager|null $gateMethodManager
+   *   Optional plugin manager for enrolled gate implementation verification.
    */
   public function __construct(
     private readonly FileReferenceResolver|LegacyFileReferenceResolver $fileReferenceResolver,
     private readonly EntityTypeManagerInterface $entityTypeManager,
     private readonly StreamWrapperManagerInterface $streamWrapperManager,
+    private readonly ?GrantParticipation $participation = NULL,
+    private readonly ?GateMethodManager $gateMethodManager = NULL,
   ) {}
 
   /**
@@ -94,6 +101,22 @@ final class FileGateResolver {
       return NULL;
     }
 
+    if ($this->participation !== NULL) {
+      $unique = array_column($candidates, NULL, 'field');
+      $enrolled = array_filter($unique, fn (array $gate): bool => $this->participation->protectsField($gate['field']));
+      if ($enrolled !== []) {
+        $gate = reset($enrolled);
+        $definition = $this->gateMethodManager?->getDefinition($gate['method'], FALSE);
+        $class = $definition['class'] ?? '';
+        if (count($unique) !== 1 || $gate['method'] !== $this->participation->method($gate['field'])
+          || !$this->participation->supportsPlugin($gate['method'], $class)
+          || ($field_key !== NULL && $field_key !== '' && $field_key !== $gate['field'])) {
+          return NULL;
+        }
+        return $gate;
+      }
+    }
+
     if ($field_key !== NULL && $field_key !== '') {
       foreach ($candidates as $gate) {
         if ($gate['field'] === $field_key) {
@@ -127,7 +150,23 @@ final class FileGateResolver {
    *   TRUE if any referencing field gates the file.
    */
   public function isGated(FileInterface $file): bool {
-    return $this->getGateForFile($file) !== NULL;
+    return $this->gatedFieldKeys($file) !== [];
+  }
+
+  /**
+   * Whether a referencing field requires transactional grant protection.
+   *
+   * Protection exists independently of whether a qualified gate is available.
+   */
+  public function hasProtectedField(FileInterface $file): bool {
+    if ($this->participation !== NULL) {
+      foreach ($this->gatedFieldKeys($file) as $field) {
+        if ($this->participation->protectsField($field)) {
+          return TRUE;
+        }
+      }
+    }
+    return FALSE;
   }
 
   /**
@@ -170,12 +209,14 @@ final class FileGateResolver {
       if ($field_storage === NULL) {
         continue;
       }
-      if (!$field_storage->getThirdPartySetting('file_gate', 'gated', FALSE)) {
+      $field = $usage->entityTypeId . '.' . $usage->fieldName;
+      $gated = $field_storage->getThirdPartySetting('file_gate', 'gated', FALSE);
+      if (!$gated && !$this->participation?->protectsField($field)) {
         continue;
       }
       $out[] = [
-        'method' => (string) ($field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url'),
-        'field' => $usage->entityTypeId . '.' . $usage->fieldName,
+        'method' => $gated ? (string) ($field_storage->getThirdPartySetting('file_gate', 'method') ?: 'signed_url') : '',
+        'field' => $field,
         'settings' => (array) $field_storage->getThirdPartySetting('file_gate', 'method_settings', []),
       ];
     }

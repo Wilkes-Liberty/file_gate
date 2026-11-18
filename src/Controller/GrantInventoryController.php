@@ -7,6 +7,7 @@ namespace Drupal\file_gate\Controller;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Flood\FloodInterface;
+use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\GrantRevokeLockException;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\FileGateAudit;
@@ -145,7 +146,7 @@ final class GrantInventoryController implements ContainerInjectionInterface {
       try {
         $this->inventory->revokeJti($jti, $field, $ttl);
       }
-      catch (GrantRevokeLockException) {
+      catch (GrantRevokeLockException | GrantParticipationException) {
         $response = new JsonResponse(['error' => 'Grant is momentarily locked; retry.'], Response::HTTP_SERVICE_UNAVAILABLE);
         $response->headers->set('Retry-After', '5');
         return $response;

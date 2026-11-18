@@ -558,6 +558,14 @@ Changing an existing field to the private scheme does not move files that are
 already stored publicly. They stay where they are, and stay readable, until they
 are re-uploaded or migrated.
 
+## Coordinating grants with a host transaction
+
+Site developers can enroll a usage-limited Signed URL or Assurance field by
+its storage key and named signing credential. A server-side participant
+coordinates mint, redemption, and revoke with the site's resource writer
+locks and database transaction. See [transactional grant participation](docs/API.md#transactional-grant-participation)
+for the integration contract and storage requirements.
+
 ## Extending: writing a gate method
 
 A gate method answers "has this request passed the gate for this file?"
