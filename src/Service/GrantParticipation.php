@@ -15,7 +15,6 @@ use Drupal\Core\KeyValueStore\DatabaseStorageExpirable;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\DatabaseLockBackend;
 use Drupal\Core\Lock\LockBackendInterface;
-use Drupal\Core\ProxyClass\Lock\DatabaseLockBackend as DatabaseLockProxy;
 use Drupal\Core\Site\Settings;
 use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\GrantParticipantInterface;
@@ -313,8 +312,9 @@ final class GrantParticipation {
         }
       }
       $lock = $this->lock;
-      if ($lock::class === DatabaseLockProxy::class) {
-        $lock = (new \ReflectionMethod(DatabaseLockProxy::class, 'lazyLoadItself'))->invoke($lock);
+      // This exact core proxy is generated when the service container boots.
+      if ($lock::class === 'Drupal\\Core\\ProxyClass\\Lock\\DatabaseLockBackend') {
+        $lock = (new \ReflectionMethod($lock, 'lazyLoadItself'))->invoke($lock);
       }
       if ($lock::class !== DatabaseLockBackend::class
         || (new \ReflectionProperty(DatabaseLockBackend::class, 'database'))->getValue($lock) !== $this->database) {
