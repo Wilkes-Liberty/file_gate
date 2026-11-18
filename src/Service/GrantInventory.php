@@ -253,19 +253,25 @@ final class GrantInventory {
     if ($jti === '') {
       return;
     }
-    if ($this->participation !== NULL && ($this->participation->enabled() || $this->usesPrimaryInventory($field))) {
+    if ($this->participation !== NULL) {
       $meta = $this->meta($jti);
       $stored_field = $meta['field'] ?? '';
-      if (($stored_field === '' && ($field === '' || $this->participation->enrolled($field)))
-        || ($stored_field !== '' && $this->participation->enrolled($stored_field))) {
-        if (!is_array($meta) || ($field !== '' && $field !== $stored_field)) {
-          throw new GrantParticipationException('The enrolled grant could not be identified.');
+      $protected = is_string($stored_field) && $this->usesPrimaryInventory($stored_field);
+      if ($protected || $this->usesPrimaryInventory($field)
+        || ($field === '' && $stored_field === '' && $this->participation->enabled())) {
+        if ($meta === NULL || !$protected || ($field !== '' && $field !== $stored_field)) {
+          throw new GrantParticipationException('The protected grant could not be identified.');
         }
-        $this->revokeParticipating($this->grantFromMetadata($jti, $meta), $ttl, FALSE);
+        $cleanup = !$this->participation->enrolled($stored_field);
+        $this->revokeProtected($this->grantFromMetadata($jti, $meta), $ttl, FALSE, $cleanup);
         return;
       }
     }
     $ok = $this->runLocked(self::redemptionLockName($jti), function () use ($jti, $field, $ttl): bool {
+      // A repeat without coordinates cannot replace an authoritative kill.
+      if (is_array($this->killExpiryStore()->get($jti))) {
+        throw new GrantParticipationException('The protected kill requires its original scope.');
+      }
       // Read the expiry before forget() deletes the row that holds it.
       $ttl = $this->killTtl($jti, $ttl);
       $this->redemptionStore()->setWithExpire($jti, PHP_INT_MAX, $ttl);
@@ -400,20 +406,21 @@ final class GrantInventory {
    * The result is provisional until the host commits its authority change.
    */
   public function revokeScoped(ScopedGrant $grant): ScopedGrantState {
-    return $this->revokeParticipating($grant, NULL, TRUE);
+    return $this->revokeProtected($grant, NULL, TRUE);
   }
 
   /**
    * Writes and verifies the full kill horizon before returning.
    */
-  private function revokeParticipating(ScopedGrant $grant, ?int $ttl, bool $nested): ScopedGrantState {
+  private function revokeProtected(ScopedGrant $grant, ?int $ttl, bool $nested, bool $cleanup = FALSE): ScopedGrantState {
     $verified = NULL;
     $verify = $nested ? function () use ($grant, &$verified): bool {
       $verified = $this->readState($grant);
-      return $verified->killed && !$verified->metadataPresent;
+      return $verified->killed && $verified->coordinatedKill && !$verified->metadataPresent;
     } : NULL;
-    $ok = $this->requireParticipation()->run('revoke', $grant, function () use ($grant, $ttl, &$verified): bool {
-      return $this->runLocked(self::redemptionLockName($grant->jti), function () use ($grant, $ttl, &$verified): bool {
+    $operation = $cleanup ? 'cleanup_revoke' : 'revoke';
+    $ok = $this->requireParticipation()->run($operation, $grant, function () use ($grant, $ttl, $cleanup, &$verified): bool {
+      return $this->runLocked(self::redemptionLockName($grant->jti), function () use ($grant, $ttl, $cleanup, &$verified): bool {
         $state = $this->readState($grant);
         if (!$state->metadataPresent && !$state->killed) {
           return FALSE;
@@ -428,10 +435,11 @@ final class GrantInventory {
         $this->killExpiryStore()->setWithExpire($grant->jti, [
           'expires_at' => $horizon,
           'grant' => $grant->coordinates(),
+          'coordinated' => !$cleanup,
         ], $horizon - $now);
         $this->metaStore()->delete($grant->jti);
         $verified = $this->readState($grant);
-        if (!$verified->killed || $verified->metadataPresent || $verified->killExpiresAt < $horizon) {
+        if (!$verified->killed || $verified->coordinatedKill === $cleanup || $verified->metadataPresent || $verified->killExpiresAt < $horizon) {
           throw new GrantParticipationException('The full grant kill horizon could not be verified.');
         }
         return TRUE;
@@ -471,6 +479,7 @@ final class GrantInventory {
       $killed,
       $killed ? $expiry : NULL,
       ($primary['value']['transactional'] ?? FALSE) === TRUE,
+      $killed && ($mark['value']['coordinated'] ?? FALSE) === TRUE,
     );
   }
 

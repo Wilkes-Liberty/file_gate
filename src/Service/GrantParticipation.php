@@ -114,8 +114,15 @@ final class GrantParticipation {
    * Validates exact named class and representable original expiry.
    */
   public function assertEnrolledGrant(ScopedGrant $grant): void {
-    $scope = $this->qualifiedScope($grant->field);
-    if ($scope === NULL || $scope['class'] !== $grant->grantClass
+    $this->assertGrantScope($grant, $this->qualifiedScope($grant->field));
+  }
+
+  /**
+   * Validates coordinates against an active or durable field scope.
+   */
+  private function assertGrantScope(ScopedGrant $grant, ?array $scope): void {
+    if (!is_string($scope['class'] ?? NULL) || $scope['class'] === '' || $scope['class'] !== $grant->grantClass
+      || !is_string($scope['method'] ?? NULL) || !isset(self::METHOD_CLASSES[$scope['method']])
       || ($grant->gateMethod !== NULL && $grant->gateMethod !== $scope['method'])
       || $grant->jti === '' || $grant->fileUuid === '' || $grant->maxUses <= 0
       || $grant->expiresAt <= 0 || $grant->expiresAt > self::MAX_STORE_EXPIRY - GrantInventory::KILL_MARGIN) {
@@ -138,14 +145,28 @@ final class GrantParticipation {
    *   Optional evidence to verify before a provisional operation returns.
    */
   public function run(string $operation, ScopedGrant $grant, \Closure $effect, bool $nested = FALSE, ?\Closure $verify = NULL): bool {
-    $this->assertEnrolledGrant($grant);
-    if ($operation === 'mint' && $grant->gateMethod === NULL) {
-      throw new GrantParticipationException('A qualified grant method is required.');
-    }
-    if ($this->participant === NULL || $this->database->inTransaction() !== $nested) {
-      throw new GrantParticipationException('The host transaction is unavailable.');
+    $cleanup = $operation === 'cleanup_revoke';
+    $participant = $this->participant;
+    if ($this->database->inTransaction() !== $nested || (!$cleanup && $participant === NULL)) {
+      throw new GrantParticipationException('The native grant transaction is unavailable.');
     }
     $this->assertNativeStorage();
+    if ($cleanup) {
+      if ($nested || $this->enrolled($grant->field)) {
+        throw new GrantParticipationException('Cleanup requires a previously enrolled field.');
+      }
+      $marker = $this->read(GrantInventory::PRIMARY_FIELDS_COLLECTION, $grant->field)[$grant->field] ?? NULL;
+      if ($marker === NULL || $marker['expires'] !== self::MAX_STORE_EXPIRY || !is_array($marker['value'])) {
+        throw new GrantParticipationException('Cleanup requires a durable field scope.');
+      }
+      $this->assertGrantScope($grant, $marker['value']);
+    }
+    else {
+      $this->assertEnrolledGrant($grant);
+      if ($operation === 'mint' && $grant->gateMethod === NULL) {
+        throw new GrantParticipationException('A qualified grant method is required.');
+      }
+    }
 
     $manager = $this->database->transactionManager();
     $client = $this->database->getClientConnection();
@@ -164,7 +185,7 @@ final class GrantParticipation {
     $callback_property = new \ReflectionProperty(TransactionManagerBase::class, 'postTransactionCallbacks');
     try {
       $callbacks = $callback_property->getValue($manager);
-      $this->participant->participate($operation, $grant, $this->database, function () use ($effect, $grant, $manager, $client, $stack, &$called, &$invalid, &$result): bool {
+      $apply = function () use ($effect, $grant, $cleanup, $manager, $client, $stack, &$called, &$invalid, &$result): bool {
         if ($called || !$client->inTransaction() || array_keys($this->transactionStack($manager)) !== $stack) {
           $invalid = TRUE;
           throw new GrantParticipationException('The native effect requires one active host dispatch.');
@@ -172,7 +193,7 @@ final class GrantParticipation {
         $called = TRUE;
         try {
           $result = $effect();
-          if ($result) {
+          if ($result && !$cleanup) {
             $this->persistProtection($grant->field);
           }
           return $result;
@@ -181,7 +202,13 @@ final class GrantParticipation {
           $invalid = TRUE;
           throw $error;
         }
-      }, $nested);
+      };
+      if ($cleanup) {
+        $apply();
+      }
+      else {
+        $participant->participate($operation, $grant, $this->database, $apply, $nested);
+      }
       if (!$called || $invalid || $result === NULL || !$client->inTransaction()
         || array_keys($this->transactionStack($manager)) !== $stack
         || $callback_property->getValue($manager) !== $callbacks) {

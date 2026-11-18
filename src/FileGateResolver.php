@@ -154,6 +154,22 @@ final class FileGateResolver {
   }
 
   /**
+   * Whether a referencing field requires transactional grant protection.
+   *
+   * Protection exists independently of whether a qualified gate is available.
+   */
+  public function hasProtectedField(FileInterface $file): bool {
+    if ($this->participation !== NULL) {
+      foreach ($this->gatedFieldKeys($file) as $field) {
+        if ($this->participation->protectsField($field)) {
+          return TRUE;
+        }
+      }
+    }
+    return FALSE;
+  }
+
+  /**
    * All gated field keys that reference the file.
    *
    * @param \Drupal\file\FileInterface $file

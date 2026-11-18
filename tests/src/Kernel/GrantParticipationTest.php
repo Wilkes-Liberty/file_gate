@@ -11,6 +11,7 @@ use Drupal\Core\Lock\DatabaseLockBackend;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\entity_test\Entity\EntityTest;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
@@ -21,6 +22,7 @@ use Drupal\file_gate\Controller\MintController;
 use Drupal\file_gate\Controller\RevokeController;
 use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\Service\GrantInventory;
+use Drupal\system\FileDownloadController;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\DependencyInjection\Reference;
@@ -35,6 +37,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Group('file_gate')]
 #[RunTestsInSeparateProcesses]
 final class GrantParticipationTest extends KernelTestBase {
+
+  use UserCreationTrait;
 
   /**
    * {@inheritdoc}
@@ -57,6 +61,8 @@ final class GrantParticipationTest extends KernelTestBase {
     parent::register($container);
     $container->register('lock', DatabaseLockBackend::class)->addArgument(new Reference('database'));
     $container->register('file_gate.grant_participant', TestGrantParticipant::class);
+    $container->register('stream_wrapper.private', PrivateStream::class)
+      ->addTag('stream_wrapper', ['scheme' => 'private']);
   }
 
   /**
@@ -292,6 +298,37 @@ final class GrantParticipationTest extends KernelTestBase {
   }
 
   /**
+   * A durable marker denies raw downloads after enrollment disappears.
+   */
+  public function testRawDownloadDeniesMissingEnrollmentForAnAdministrator(): void {
+    $file = $this->file();
+    $this->setSetting('file_gate.transactional_grant_fields', [self::FIELD => self::GRANT_CLASS]);
+    $root = $this->container->get('database')->startTransaction();
+    $this->inventory()->protectField(self::FIELD);
+    unset($root);
+    $unrelated = $this->assertRawBypassControls($file);
+    $this->assertSame(200, $this->rawDownload($file)->getStatusCode());
+
+    $this->setSetting('file_gate.transactional_grant_fields', []);
+    $this->assertSame(200, $this->rawDownload($unrelated)->getStatusCode());
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->rawDownload($file);
+  }
+
+  /**
+   * An alternate gate cannot reopen raw downloads for an enrolled file.
+   */
+  public function testRawDownloadDeniesMultipleGatesForAnAdministrator(): void {
+    $file = $this->file();
+    $this->setSetting('file_gate.transactional_grant_fields', [self::FIELD => self::GRANT_CLASS]);
+    $this->addReference($file, 'field_alternate', 'authenticated');
+    $this->assertRawBypassControls($file);
+
+    $this->expectException(AccessDeniedHttpException::class);
+    $this->rawDownload($file);
+  }
+
+  /**
    * Scoped URLs stay gated and listed after enrollment is removed.
    */
   public function testUnenrollmentPreservesInventoryAndBulkRevoke(): void {
@@ -299,6 +336,7 @@ final class GrantParticipationTest extends KernelTestBase {
     $legacy = $this->mintQuery($file);
     $this->setSetting('file_gate.transactional_grant_fields', [self::FIELD => self::GRANT_CLASS]);
     $query = $this->mintQuery($file);
+    $grant = $this->participant->seen;
     $this->assertCount(2, $this->inventory()->scopedGrants(self::FIELD));
 
     $this->setSetting('file_gate.transactional_grant_fields', []);
@@ -316,6 +354,19 @@ final class GrantParticipationTest extends KernelTestBase {
     $this->assertSame(200, $response->getStatusCode());
     $this->assertNull($this->inventory()->meta($query['jti']));
     $this->assertSame([$legacy['jti']], array_column($this->inventory()->listForField(self::FIELD), 'jti'));
+    $this->assertSame('mint', $this->participant->operation);
+
+    $this->setSetting('file_gate.transactional_grant_fields', [self::FIELD => self::GRANT_CLASS]);
+    $state = $this->inventory()->scopedState($grant);
+    $this->assertTrue($state->killed);
+    $this->assertFalse($state->coordinatedKill);
+    $this->assertGreaterThanOrEqual($grant->expiresAt + GrantInventory::KILL_MARGIN, $state->killExpiresAt);
+    $root = $this->container->get('database')->startTransaction();
+    $repeat = $this->inventory()->revokeScoped($grant);
+    $this->assertTrue($repeat->killed);
+    $this->assertTrue($repeat->coordinatedKill);
+    $this->assertGreaterThanOrEqual($state->killExpiresAt, $repeat->killExpiresAt);
+    unset($root);
   }
 
   /**
@@ -413,6 +464,59 @@ final class GrantParticipationTest extends KernelTestBase {
     $host->save();
     $this->container->get('file.usage')->add($file, 'file', 'entity_test', (string) $host->id());
     return $file;
+  }
+
+  /**
+   * Configures an implicit bypass actor and returns an unrelated control.
+   */
+  private function assertRawBypassControls(File $file): File {
+    $this->installConfig(['user']);
+    $account = $this->createUser(admin: TRUE);
+    $this->assertTrue($account->hasPermission('bypass file gate'));
+    $this->container->get('current_user')->setAccount($account);
+    $file->setOwnerId((int) $account->id())->save();
+
+    $uri = 'private://fixtures/unrelated.pdf';
+    file_put_contents($uri, 'separate fixture bytes');
+    $unrelated = File::create(['uri' => $uri, 'status' => 1, 'uid' => $account->id()]);
+    $unrelated->save();
+    $this->addReference($unrelated, 'field_unrelated');
+    $this->assertSame(200, $this->rawDownload($unrelated)->getStatusCode());
+    return $unrelated;
+  }
+
+  /**
+   * Adds another file field and a host reference to a fixture file.
+   */
+  private function addReference(File $file, string $field, ?string $method = NULL): void {
+    $storage = FieldStorageConfig::create([
+      'entity_type' => 'entity_test',
+      'field_name' => $field,
+      'type' => 'file',
+      'settings' => ['uri_scheme' => 'private'],
+    ]);
+    if ($method !== NULL) {
+      $storage->setThirdPartySetting('file_gate', 'gated', TRUE)
+        ->setThirdPartySetting('file_gate', 'method', $method);
+    }
+    $storage->save();
+    FieldConfig::create([
+      'entity_type' => 'entity_test',
+      'field_name' => $field,
+      'bundle' => 'entity_test',
+    ])->save();
+    $host = EntityTest::create(['name' => 'another fixture', $field => ['target_id' => $file->id()]]);
+    $host->save();
+    $this->container->get('file.usage')->add($file, 'file', 'entity_test', (string) $host->id());
+  }
+
+  /**
+   * Executes the raw private route's core file download authorization.
+   */
+  private function rawDownload(File $file): Response {
+    $path = $this->container->get('stream_wrapper_manager')->getTarget($file->getFileUri());
+    $controller = new FileDownloadController($this->container->get('stream_wrapper_manager'));
+    return $controller->download(Request::create('/system/files/' . $path, 'GET', ['file' => $path]));
   }
 
   /**

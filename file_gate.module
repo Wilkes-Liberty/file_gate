@@ -71,17 +71,19 @@ function file_gate_file_download(string $uri): ?int {
 
   // Not referenced by a gated field ⇒ leave it to core (this preserves access
   // to ungated private files, e.g. profile documents).
-  if (!\Drupal::service('file_gate.resolver')->isGated($file)) {
+  $resolver = \Drupal::service('file_gate.resolver');
+  if (!$resolver->isGated($file)) {
     return NULL;
   }
 
-  // Gated. Editors/operators with the bypass permission keep normal admin-UI
-  // downloads; everyone else is denied the raw path and must use a minted URL.
-  if (\Drupal::currentUser()->hasPermission('bypass file gate')) {
-    return NULL;
+  // A protected field with no qualified gate must stay closed on the raw
+  // route, even when another hook would allow a general bypass permission.
+  if (!\Drupal::currentUser()->hasPermission('bypass file gate')
+    || ($resolver->hasProtectedField($file) && $resolver->getGateForFile($file) === NULL)) {
+    return -1;
   }
 
-  return -1;
+  return NULL;
 }
 
 /**

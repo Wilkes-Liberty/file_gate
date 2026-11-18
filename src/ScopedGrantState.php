@@ -18,6 +18,7 @@ final readonly class ScopedGrantState {
     public bool $killed,
     public ?int $killExpiresAt,
     public bool $enrolledMint,
+    public bool $coordinatedKill = FALSE,
   ) {}
 
 }

@@ -347,8 +347,13 @@ and removal with the authority writer. At activation, call
 enrollment transaction so protection is durable before the first mint.
 Successful enrolled operations also persist the exact class and method in the
 marker. Removing settings
-from a protected field disables mint and redemption. Existing credentials
-remain listed and available for cleanup revocation.
+from a protected field disables mint and redemption. A protected file with
+no qualified gate also rejects raw private downloads, including for accounts
+with the general bypass permission. Existing credentials remain listed and
+available for cleanup revocation. Cleanup writes a typed native kill for the
+stored field and credential class. Its state reports `coordinatedKill` as
+false because the host did not participate. A repeat through the restored
+host can verify and renew the kill in its own transaction.
 
 A previously issued usage-limited grant can continue with its original
 signature, expiry and cap. Its primary record must match and the participant
