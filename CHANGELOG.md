@@ -6,6 +6,13 @@ All notable changes to **File Gate** are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-18
+
+### Added
+- A site can coordinate usage-limited Signed URL and Assurance grants with a
+  host transaction for a named credential and field. File Gate still signs,
+  spends, and revokes the grants.
+
 ## [1.12.1] - 2026-11-04
 
 ### Changed
