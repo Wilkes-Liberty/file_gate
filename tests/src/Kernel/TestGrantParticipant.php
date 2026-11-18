@@ -42,6 +42,11 @@ final class TestGrantParticipant implements GrantParticipantInterface {
   public bool $deferredDispatch = FALSE;
 
   /**
+   * Whether the fixture ends the native root before dispatching.
+   */
+  public bool $endNativeRoot = FALSE;
+
+  /**
    * The exact legacy JTI admitted by the fixture's baseline.
    */
   public ?string $baseline = NULL;
@@ -59,6 +64,15 @@ final class TestGrantParticipant implements GrantParticipantInterface {
   public function participate(string $operation, ScopedGrant $grant, Connection $database, \Closure $effect, bool $existing_host_root): void {
     $this->seen = $grant;
     $this->operation = $operation;
+    if ($this->endNativeRoot) {
+      $client = $database->getClientConnection();
+      if (!$client instanceof \PDO) {
+        throw new \LogicException('The transaction fixture requires a native PDO connection.');
+      }
+      $client->rollBack();
+      $effect();
+      return;
+    }
     if ($operation === 'redeem' && $grant->gateMethod === NULL && $grant->jti !== $this->baseline) {
       throw new GrantParticipationException('The fixture has no matching issuance provenance.');
     }

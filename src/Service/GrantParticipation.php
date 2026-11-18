@@ -21,6 +21,7 @@ use Drupal\file_gate\GrantParticipantInterface;
 use Drupal\file_gate\Plugin\GateMethod\SignedUrl;
 use Drupal\file_gate\ScopedGrant;
 use Drupal\file_gate_assurance\Plugin\GateMethod\Assurance;
+use Drupal\sqlite\Driver\Database\sqlite\PDOConnection as LegacySqlitePdoConnection;
 
 /**
  * Qualifies native grant storage and verifies host transaction participation.
@@ -172,6 +173,9 @@ final class GrantParticipation {
     if (!$manager instanceof TransactionManagerBase || !$client instanceof \PDO) {
       throw new GrantParticipationException('The native transaction manager is unavailable.');
     }
+    if ($this->nativeTransactionState($client) !== $nested) {
+      throw new GrantParticipationException('The native transaction state does not match the requested scope.');
+    }
 
     // The participant owns authority and resource locks. File Gate alone
     // owns completion of this root or savepoint, including host writes.
@@ -185,7 +189,7 @@ final class GrantParticipation {
     try {
       $callbacks = $callback_property->getValue($manager);
       $apply = function () use ($effect, $grant, $cleanup, $manager, $client, $stack, &$called, &$invalid, &$result): bool {
-        if ($called || !$client->inTransaction() || array_keys($this->transactionStack($manager)) !== $stack) {
+        if ($called || array_keys($this->transactionStack($manager)) !== $stack || $this->nativeTransactionState($client) !== TRUE) {
           $invalid = TRUE;
           throw new GrantParticipationException('The native effect requires one active host dispatch.');
         }
@@ -208,8 +212,9 @@ final class GrantParticipation {
       else {
         $participant->participate($operation, $grant, $this->database, $apply, $nested);
       }
-      if (!$called || $invalid || $result === NULL || !$client->inTransaction()
+      if (!$called || $invalid || $result === NULL
         || array_keys($this->transactionStack($manager)) !== $stack
+        || $this->nativeTransactionState($client) !== TRUE
         || $callback_property->getValue($manager) !== $callbacks) {
         throw new GrantParticipationException('The native grant operation was not acknowledged.');
       }
@@ -234,11 +239,11 @@ final class GrantParticipation {
             // Refused deferred work must not run when this scope ends.
             $callback_property->setValue($manager, $callbacks);
           }
-          if ($client->inTransaction()) {
-            $this->rollbackBoundary($manager, $stack, $boundary);
+          if ($this->nativeTransactionState($client) === FALSE) {
+            $manager->voidClientTransaction();
           }
           else {
-            $manager->voidClientTransaction();
+            $this->rollbackBoundary($manager, $stack, $boundary);
           }
         }
       }
@@ -253,7 +258,31 @@ final class GrantParticipation {
     // Drupal's transaction-end callback reports TRUE even for an implicit
     // commit. Only a native committed state acknowledges work.
     $state = (new \ReflectionProperty(TransactionManagerBase::class, 'connectionTransactionState'))->getValue($manager);
-    return $state === ClientConnectionTransactionState::Committed && !$client->inTransaction();
+    return $state === ClientConnectionTransactionState::Committed && $this->nativeTransactionState($client) === FALSE;
+  }
+
+  /**
+   * Returns whether the native connection is active, or NULL when unproven.
+   */
+  private function nativeTransactionState(\PDO $client): ?bool {
+    if (PHP_VERSION_ID >= 80400 || $client::class !== LegacySqlitePdoConnection::class) {
+      return $client->inTransaction();
+    }
+
+    // Drupal's legacy SQLite connection opens its root with SQL. PHP 8.2
+    // and 8.3 only track transactions opened through PDO itself. SQLite
+    // refuses a new BEGIN while a root is active. On an idle connection the
+    // deferred probe starts an empty transaction, which we roll back.
+    try {
+      if ($client->exec('BEGIN DEFERRED TRANSACTION') !== FALSE) {
+        return $client->rollBack() ? FALSE : NULL;
+      }
+      $error = $client->errorInfo();
+    }
+    catch (\PDOException $exception) {
+      $error = $exception->errorInfo;
+    }
+    return $error === ['HY000', 1, 'cannot start a transaction within a transaction'] ? TRUE : NULL;
   }
 
   /**

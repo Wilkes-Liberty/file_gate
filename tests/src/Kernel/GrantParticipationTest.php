@@ -258,6 +258,21 @@ final class GrantParticipationTest extends KernelTestBase {
   }
 
   /**
+   * A live Drupal stack alone cannot acknowledge a closed native root.
+   */
+  public function testClosedNativeRootCannotAcknowledgeEffect(): void {
+    $this->setSetting('file_gate.transactional_grant_fields', [self::FIELD => self::GRANT_CLASS]);
+    $file = $this->file();
+    $this->participant->endNativeRoot = TRUE;
+    $this->assertSame(503, $this->mint($file)->getStatusCode());
+    $this->assertSame([], $this->inventory()->scopedGrants(self::FIELD));
+    $this->assertSame(0, $this->hostWriteCount());
+
+    $this->participant->endNativeRoot = FALSE;
+    $this->assertSame(200, $this->mint($file)->getStatusCode());
+  }
+
+  /**
    * Duplicate and deferred dispatches cannot commit a native effect.
    */
   public function testInvalidDispatchRollsBackNativeAndHostWrites(): void {
