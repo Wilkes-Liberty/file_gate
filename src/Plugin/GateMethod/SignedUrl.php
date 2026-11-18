@@ -10,6 +10,7 @@ use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\Attribute\GateMethod;
+use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\FileGateResolver;
@@ -18,8 +19,10 @@ use Drupal\file_gate\GateMethodBase;
 use Drupal\file_gate\GrantLockTrait;
 use Drupal\file_gate\GrantSignerInterface;
 use Drupal\file_gate\MintStoredField;
+use Drupal\file_gate\ScopedGrant;
 use Drupal\file_gate\SecretRegistryInterface;
 use Drupal\file_gate\Service\GrantInventory;
+use Drupal\file_gate\Service\GrantParticipation;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -48,6 +51,7 @@ class SignedUrl extends GateMethodBase {
     'jti',
     'max',
     'fld',
+    'txg',
   ];
 
   /**
@@ -96,6 +100,11 @@ class SignedUrl extends GateMethodBase {
   protected MintStoredField $mintStoredField;
 
   /**
+   * Server-side enrolled grant coordination.
+   */
+  protected GrantParticipation $grantParticipation;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition): static {
@@ -110,6 +119,7 @@ class SignedUrl extends GateMethodBase {
     $instance->resolver = $container->get('file_gate.resolver');
     $instance->grantInventory = $container->get('file_gate.grant_inventory');
     $instance->mintStoredField = $container->get('file_gate.mint_stored_field');
+    $instance->grantParticipation = $container->get('file_gate.grant_participation');
     return $instance;
   }
 
@@ -121,6 +131,31 @@ class SignedUrl extends GateMethodBase {
       return FALSE;
     }
     $claims = $this->claimsFromRequest($request);
+    try {
+      $field = (string) ($claims['fld'] ?? $this->mintStoredField->pin($request) ?? '');
+      if ($this->requiresParticipation($file, $field)) {
+        $method = (string) $this->getPluginId();
+        if (isset($claims['txg']) && $claims['txg'] !== $method) {
+          return FALSE;
+        }
+        return $this->grantInventory->consumeScoped(new ScopedGrant(
+          (string) ($claims['jti'] ?? ''),
+          $file->uuid(),
+          $field,
+          $this->secretIdFromRequest($request),
+          (int) $claims[GrantSignerInterface::CLAIM_EXPIRES],
+          (int) ($claims['max'] ?? 0),
+          isset($claims['txg']) ? $method : NULL,
+        ));
+      }
+      // A grant signed for participation must never downgrade to a bare use.
+      if (isset($claims['txg'])) {
+        return FALSE;
+      }
+    }
+    catch (GrantParticipationException) {
+      return FALSE;
+    }
     // Enforce a usage limit when the grant carries one (burn only on delivery).
     if (isset($claims['max'])) {
       return $this->consumeUse(
@@ -258,22 +293,20 @@ class SignedUrl extends GateMethodBase {
     }
 
     $secret_id = $this->activeSecretId();
-    $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
-
-    // Index usage-limited grants for inventory / bulk-revoke (GH #44).
-    // Persist the mint-resolved field; re-calling getGateForFile() would pick
-    // another same-method field when this file sits on two signed_url fields.
-    if ($max_uses > 0 && !empty($claims['jti'])) {
-      $field = (string) ($this->configuration['field'] ?? '');
-      $this->grantInventory->record(
-        (string) $claims['jti'],
-        $file->uuid(),
-        $field,
-        (int) $claims[GrantSignerInterface::CLAIM_EXPIRES],
-        $secret_id,
-        $max_uses,
-        isset($claims['sh']) ? (string) $claims['sh'] : '',
-      );
+    $subject_hash = isset($claims['sh']) ? (string) $claims['sh'] : '';
+    if ($this->requiresParticipation($file, $field)) {
+      $method = (string) $this->getPluginId();
+      $claims['txg'] = $method;
+      $scope = new ScopedGrant((string) ($claims['jti'] ?? ''), $file->uuid(), $field, $secret_id, $exp, $max_uses, $method);
+      $sig = $this->grantInventory->mintScoped($scope, $subject_hash, fn (): string => $this->signer->sign($this->resourceId($file), $claims, $secret_id));
+    }
+    else {
+      $sig = $this->signer->sign($this->resourceId($file), $claims, $secret_id);
+      // Persist the mint-resolved field; re-resolving could choose another
+      // same-method field for a file with multiple references.
+      if ($max_uses > 0 && !empty($claims['jti'])) {
+        $this->grantInventory->record((string) $claims['jti'], $file->uuid(), $field, $exp, $secret_id, $max_uses, $subject_hash);
+      }
     }
 
     // The claims travel in the URL (bound by the signature); the controller
@@ -284,6 +317,23 @@ class SignedUrl extends GateMethodBase {
       $params['k'] = $secret_id;
     }
     return $params;
+  }
+
+  /**
+   * Gives enrolled files one signed mint and redemption path.
+   */
+  private function requiresParticipation(FileInterface $file, string $field): bool {
+    $fields = array_values(array_unique($this->resolver->gatedFieldKeys($file)));
+    $enrolled = array_filter($fields, $this->grantParticipation->protectsField(...));
+    if ($enrolled === [] && !$this->grantParticipation->protectsField($field)) {
+      return FALSE;
+    }
+    $gate = $this->resolver->getGateForFile($file, $field);
+    $method = (string) $this->getPluginId();
+    if (!$this->grantParticipation->supportsPlugin($method, $this::class) || $fields !== [$field] || ($gate['method'] ?? NULL) !== $method) {
+      throw new GrantParticipationException('The file does not have one qualified grant field.');
+    }
+    return TRUE;
   }
 
   /**
@@ -321,6 +371,7 @@ class SignedUrl extends GateMethodBase {
       'jti',
       'max',
       'fld',
+      'txg',
     ];
   }
 

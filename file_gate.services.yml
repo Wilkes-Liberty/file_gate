@@ -44,12 +44,23 @@ services:
       - '@logger.channel.file_gate'
       - '@config.factory'
 
+  file_gate.grant_participation:
+    class: Drupal\file_gate\Service\GrantParticipation
+    arguments:
+      - '@database'
+      - '@keyvalue.expirable'
+      - '@datetime.time'
+      - '@serialization.phpserialize'
+      - '@lock'
+      - '@?file_gate.grant_participant'
+
   file_gate.grant_inventory:
     class: Drupal\file_gate\Service\GrantInventory
     arguments:
       - '@keyvalue.expirable'
       - '@datetime.time'
       - '@lock'
+      - '@file_gate.grant_participation'
 
   file_gate.otp_session:
     class: Drupal\file_gate\Service\OtpSession
@@ -83,6 +94,8 @@ services:
       - '@file_gate.file_references'
       - '@entity_type.manager'
       - '@stream_wrapper_manager'
+      - '@file_gate.grant_participation'
+      - '@plugin.manager.file_gate.gate_method'
 
   file_gate.mint_stored_field:
     class: Drupal\file_gate\MintStoredField

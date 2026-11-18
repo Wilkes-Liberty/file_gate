@@ -15,6 +15,7 @@ use Drupal\Core\Session\AccountInterface;
 use Drupal\file\FileInterface;
 use Drupal\file_gate\ActiveSecret;
 use Drupal\file_gate\ContextualMintInterface;
+use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\Exception\GrantWindowClosedException;
 use Drupal\file_gate\FileGateResolver;
 use Drupal\file_gate\FileTargetResolver;
@@ -260,6 +261,9 @@ final class MintController implements ContainerInjectionInterface {
       $params = $method instanceof ContextualMintInterface
         ? $method->mintWithContext($file, $request)
         : $method->mint($file);
+    }
+    catch (GrantParticipationException) {
+      return new JsonResponse(['error' => 'Grant issuance is unavailable.'], Response::HTTP_SERVICE_UNAVAILABLE);
     }
     catch (GrantWindowClosedException $e) {
       // The field's availability window has already closed; there is no live

@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\file_gate_assurance\Kernel;
 
+use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\Form\FormState;
+use Drupal\Core\KeyValueStore\DatabaseStorageExpirable;
+use Drupal\Core\Lock\DatabaseLockBackend;
 use Drupal\Core\Logger\RfcLoggerTrait;
 use Drupal\Core\Logger\RfcLogLevel;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\Core\StreamWrapper\PrivateStream;
 use Drupal\Core\StreamWrapper\StreamWrapperInterface;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\Tests\file_gate\Kernel\TestGrantParticipant;
+use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\entity_test\Entity\EntityTest;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
@@ -31,6 +36,7 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Drupal\file_gate_assurance\Controller\BridgeController;
 use Drupal\file_gate_assurance\SessionBridge;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -45,6 +51,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 #[Group('file_gate')]
 #[RunTestsInSeparateProcesses]
 final class AssuranceTest extends KernelTestBase {
+
+  use UserCreationTrait;
 
   /**
    * {@inheritdoc}
@@ -133,6 +141,88 @@ final class AssuranceTest extends KernelTestBase {
     ])->save();
 
     $this->container->get('current_user')->setAccount(new AnonymousUserSession());
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function register(ContainerBuilder $container): void {
+    parent::register($container);
+    $container->register('lock', DatabaseLockBackend::class)->addArgument(new Reference('database'));
+    $container->register('file_gate.grant_participant', TestGrantParticipant::class);
+  }
+
+  /**
+   * The enrolled Assurance controller retains identity and live proof checks.
+   */
+  public function testEnrolledAssuranceRequiresIdentityAndProof(): void {
+    $database = $this->container->get('database');
+    $database->schema()->createTable('key_value_expire', DatabaseStorageExpirable::schemaDefinition());
+    $lock = $this->container->get('lock');
+    $lock->acquire('test-grant-schema');
+    $lock->release('test-grant-schema');
+    $database->schema()->createTable('file_gate_test_host', [
+      'fields' => [
+        'operation' => ['type' => 'varchar_ascii', 'length' => 24, 'not null' => TRUE],
+        'jti' => ['type' => 'varchar_ascii', 'length' => 128, 'not null' => TRUE],
+      ],
+    ]);
+    $this->installConfig(['user']);
+    $this->configure(['max_uses' => 1, 'require_identity_mint' => TRUE]);
+    $field = 'entity_test.field_gated';
+    $this->setSetting('file_gate.secrets', ['fixture' => self::SECRET]);
+    $this->setSetting('file_gate.transactional_grant_fields', [
+      $field => ['class' => 'fixture', 'method' => 'assurance'],
+    ]);
+    $this->config('file_gate.settings')->set('secret_scopes', ['fixture' => [$field]])->save();
+    $participant = $this->container->get('file_gate.grant_participant');
+    $file = $this->createFile('enrolled.pdf');
+    $user = $this->createUser(['access content', 'view test entity']);
+    $file->setOwnerId((int) $user->id())->save();
+
+    $controller = MintController::create($this->container);
+    $mint = static function (array $payload) use ($controller) {
+      $request = Request::create('/api/file-gate/mint', 'POST', [], [], [], [], json_encode($payload, JSON_THROW_ON_ERROR));
+      $request->headers->set('Authorization', 'Basic ' . base64_encode('fixture:' . self::SECRET));
+      return $controller->mint($request);
+    };
+    $this->assertSame(403, $mint(['file' => $file->uuid()])->getStatusCode());
+    $this->assertNull($participant->lastGrant());
+
+    $subject = 'assurance-fixture-subject';
+    $response = $mint(['file' => $file->uuid(), 'account' => $user->uuid(), 'subject' => $subject]);
+    $this->assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+    $path = json_decode((string) $response->getContent(), TRUE, 512, JSON_THROW_ON_ERROR)['path'];
+    parse_str((string) parse_url($path, PHP_URL_QUERY), $query);
+    $this->assertSame('assurance', $query['txg']);
+    $grant = $participant->lastGrant();
+    $this->assertNotNull($grant);
+    $this->assertSame('assurance', $grant->gateMethod);
+    $this->assertSame('fixture', $grant->grantClass);
+    $this->assertSame(1, $grant->maxUses);
+    $this->assertSame('mint', $participant->operation);
+
+    try {
+      $this->download($query, $this->bearer($this->idpToken(['acr' => 'too-low', 'sub' => $subject])));
+      $this->fail('Wrong assurance was allowed to proceed.');
+    }
+    catch (AccessDeniedHttpException) {
+      $this->assertSame('mint', $participant->operation);
+    }
+
+    $headers = $this->bearer($this->idpToken(['sub' => $subject]));
+    $participant->rejectCommit = TRUE;
+    try {
+      $this->download($query, $headers);
+      $this->fail('An uncommitted redemption returned file bytes.');
+    }
+    catch (AccessDeniedHttpException) {
+      $this->assertSame('redeem', $participant->operation);
+      $inventory = $this->container->get('file_gate.grant_inventory');
+      $this->assertSame(0, $inventory->scopedState($grant)->uses);
+    }
+    $participant->rejectCommit = FALSE;
+    $this->assertInstanceOf(BinaryFileResponse::class, $this->download($query, $headers));
   }
 
   /**

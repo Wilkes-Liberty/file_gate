@@ -10,6 +10,7 @@ use Drupal\Core\Flood\FloodInterface;
 use Drupal\Core\KeyValueStore\KeyValueExpirableFactoryInterface;
 use Drupal\Core\Lock\LockBackendInterface;
 use Drupal\file_gate\GrantLockTrait;
+use Drupal\file_gate\Exception\GrantParticipationException;
 use Drupal\file_gate\GrantRevokeLockException;
 use Drupal\file_gate\Plugin\GateMethod\Token;
 use Drupal\file_gate\SecretRegistryInterface;
@@ -221,7 +222,7 @@ final class RevokeController implements ContainerInjectionInterface {
     try {
       $this->inventory->revokeJti($jti, $field, $ttl);
     }
-    catch (GrantRevokeLockException) {
+    catch (GrantRevokeLockException | GrantParticipationException) {
       $response = new JsonResponse(['error' => 'Grant is momentarily locked; retry.'], Response::HTTP_SERVICE_UNAVAILABLE);
       $response->headers->set('Retry-After', '5');
       return $response;

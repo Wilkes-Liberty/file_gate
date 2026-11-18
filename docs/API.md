@@ -285,3 +285,73 @@ method reads the `subject` from the mint body for per-user binding.)
 | `file_gate.resolver` | `FileGateResolver` — map a file to its gate config (method + settings) via the referencing field. |
 | `plugin.manager.file_gate.gate_method` | The gate-method plugin manager. |
 | `logger.channel.file_gate` | The module's logger channel. |
+
+## Transactional grant participation
+
+The integration is opt-in for each field storage. Define trusted settings
+and register a service named `file_gate.grant_participant` implementing
+`Drupal\file_gate\GrantParticipantInterface`.
+
+```php
+$settings['file_gate.transactional_grant_fields'] = [
+  'media.field_private_document' => [
+    'class' => 'document_service',
+    'method' => 'assurance',
+  ],
+];
+```
+
+The class selects a named File Gate signing credential already authorized
+for the field. The method must match the field's gate configuration exactly.
+`signed_url` and `assurance` are supported by this interface. The
+file must resolve to a single gated field and the grant must have a positive
+use cap. Existing host, identity, assurance, and named-secret checks still
+apply. For `signed_url`, a class string can replace the class-and-method map.
+
+The participant receives the verified JTI, file UUID, field, named class,
+method, original expiry and use cap. It holds its authority writer lock
+before acquiring the resource writer lock and calls the supplied effect once
+while both are held. File Gate takes its native JTI lock inside that effect.
+The participant must hold both writer locks until the database root ends.
+File Gate starts the native root before calling the participant and commits
+it only after the participant finishes. For an existing host root, File Gate
+opens and manages a savepoint. The participant joins its supplied transaction
+scope, runs the effect, and completes any host writes before returning. An
+effect exception must propagate.
+
+Hosts that already own a root transaction can use
+`file_gate.grant_inventory->revokeScoped($grant)` during an authority
+change. The participant reuses the existing authority writer scope. File Gate
+writes and verifies a kill through the original expiry plus
+`GrantInventory::KILL_MARGIN` before returning to the caller. The state
+remains provisional until the enclosing caller commits. Roll back the root
+if the revoke fails.
+
+- `scopedGrants($field)` inspects live primary metadata for the entire field.
+  Supply a file UUID as a second argument to narrow the inspection. Optional
+  matching-grant and primary-row limits refuse the operation on overflow.
+- `scopedState($grant)` reports primary metadata presence, usage count and
+  verified kill coverage. Keep the host writer fence held when deciding
+  across multiple reads. An absent row cannot verify revocation.
+- These methods return grant coordinates and state. They do not accept or
+  return a signature, bearer URL, or subject binding.
+
+The participating paths require Drupal's native expirable database stores and
+per-grant database lock on the same connection. Create `key_value_expire`
+and `semaphore` before operating. Both tables must use InnoDB on MySQL.
+Alternative backends and mixed writer versions need separate qualification.
+All workers that can reach an enrolled field must run the same participation
+contract before the host relies on its writer fence. Coordinate enrollment
+and removal with the authority writer. At activation, call
+`file_gate.grant_inventory->protectField($field)` inside the host's native
+enrollment transaction so protection is durable before the first mint.
+Successful enrolled operations also persist the exact class and method in the
+marker. Removing settings
+from a protected field disables mint and redemption. Existing credentials
+remain listed and available for cleanup revocation.
+
+A previously issued usage-limited grant can continue with its original
+signature, expiry and cap. Its primary record must match and the participant
+must independently prove its issuance provenance before redeeming it.
+`ScopedGrant::gateMethod` is NULL for these grants. Historical credentials
+without primary records require separate coverage before an authority change.
