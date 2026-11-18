@@ -18,7 +18,7 @@ jobs:
         include:
           - { core: '~10.6.0', php: '8.2' }
           - { core: '~11.3.0', php: '8.3' }
-          - { core: '11.4.10', php: '8.4' }
+          - { core: '11.4.13', php: '8.4' }
           - { core: '~11.4.0', php: '8.4' }
     steps:
       - uses: actions/checkout@v4
