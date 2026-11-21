@@ -33,11 +33,11 @@ For **assurance A2** (`verify_oidc_at_mint`): also send `Authorization: Bearer|D
 | Status | Meaning |
 |---|---|
 | `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int>, "field", "method" }`. `path` is root-relative — prepend your public origin. Named secrets add `k=<id>` to the query. |
-| `400` | Invalid JSON, multi-field without `field`, neither `file` nor `media`, or method does not support minted URLs. |
+| `400` | Invalid JSON, neither `file` nor `media`, a method that does not support minted URLs, or a file gated by several fields the secret may mint with no `field` given. The `fields` list in that answer contains only the fields this secret may mint. A named secret that may mint exactly one of them needs no `field`. |
 | `401` | Missing or wrong secret (or missing A2 token when required). |
 | `403` | Identity or A2 acr/token check failed. |
 | `404` | Unknown file/media, or a named secret whose field scope does not cover the file. The two are deliberately indistinguishable; the scope refusal is logged and audited as `mint_denied`. |
-| `409` | The host media is unpublished. |
+| `409` | The host media is unpublished. A named secret whose scope does not cover the media's file gets `404` instead. |
 | `422` | The file is not gated, or the media has no file. |
 | `429` | Rate limited (per client IP). |
 | `503` | No signing secret is configured — the module is failing closed. |
@@ -150,8 +150,7 @@ Pre-shared campaign tokens are revoked by removing their hash from the field's
 | `204` | Revoked. |
 | `400` | Invalid JSON, or neither `token` nor a non-empty `jti` supplied. |
 | `401` | Missing or wrong secret. |
-| `403` | Credential is not allowed to revoke that grant (field / `k` scope). |
-| `404` | Unknown token or jti, already expired/revoked, or inventory meta gone. |
+| `404` | Unknown token or jti, already expired/revoked, or inventory meta gone. A grant outside the secret's field or `k` scope gets the same answer; that refusal is audited as `revoke_denied`. |
 | `429` | Rate limited (per client IP). |
 | `503` | No signing secret is configured — the module is failing closed. Token path also returns 503 when the row is momentarily locked by a concurrent redemption. |
 
@@ -171,9 +170,15 @@ site mail transport. Rate-limited per IP and per (file, email).
 | `field` | string | Optional. Field storage id (`entity_type.field_name`). Pins the OTP gate when the file sits on more than one gated field. |
 
 **Responses:** `204` (a code was sent), `400` (bad JSON / invalid email / no
-file), `401` (bad/absent secret), `404` (unknown file/media), `409` (media
-unpublished), `422` (file is not OTP-gated), `429` (rate limited), `503` (no
-secret configured).
+file), `401` (bad/absent secret), `404` (unknown file/media, or a named secret
+whose field scope does not cover the file; that refusal is audited as
+`otp_denied`), `409` (media unpublished), `422` (file is not OTP-gated), `429`
+(rate limited), `503` (no secret configured).
+
+The session endpoint (`POST /api/file-gate/otp/session`) takes no shared
+secret, so it gives one answer for every refusal: `403` with the same body for
+an unknown file, a file that is not OTP-gated and a wrong or expired passcode.
+Malformed input is still `400`.
 
 ## The grant signature
 

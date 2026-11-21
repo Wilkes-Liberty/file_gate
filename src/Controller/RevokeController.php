@@ -158,9 +158,14 @@ final class RevokeController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'Token not found.'], Response::HTTP_NOT_FOUND);
     }
     if ($result === 'scope') {
-      return new JsonResponse([
-        'error' => 'This credential is not allowed to revoke that token.',
-      ], Response::HTTP_FORBIDDEN);
+      // Answered like an unknown token, so a scoped secret cannot confirm
+      // that another field's token exists. The refusal is still audited.
+      $this->audit->log('revoke_denied', [
+        'kind' => 'token',
+        'reason' => 'secret_scope',
+        'secret_id' => $secret_id ?? 'legacy',
+      ]);
+      return new JsonResponse(['error' => 'Token not found.'], Response::HTTP_NOT_FOUND);
     }
 
     $this->logger->info('Revoked a token grant from @ip.', [
@@ -190,8 +195,8 @@ final class RevokeController implements ContainerInjectionInterface {
    *   The request (for audit IP context via logger).
    *
    * @return \Symfony\Component\HttpFoundation\Response
-   *   204 on success; 400 when jti empty; 403 when the secret is out of
-   *   scope for the grant's field or k; 404 when inventory meta is missing.
+   *   204 on success; 400 when jti empty; 404 when inventory meta is missing
+   *   or the secret is out of scope for the grant's field or k.
    */
   private function revokeSignedJti(string $jti, ?string $secret_id, Request $request): Response {
     $jti = trim($jti);
@@ -211,9 +216,15 @@ final class RevokeController implements ContainerInjectionInterface {
     // tenant cannot spend another field's grant (token revoke uses the same
     // allowsField() check; list/bulk also require matching k).
     if (!$this->secrets->allowsField($secret_id, $field) || ($secret_id !== NULL && $row_k !== $secret_id)) {
-      return new JsonResponse([
-        'error' => 'This credential is not allowed to revoke that grant.',
-      ], Response::HTTP_FORBIDDEN);
+      // Answered like an unknown grant, so a scoped secret cannot confirm
+      // that another field's grant exists. The refusal is still audited.
+      $this->audit->log('revoke_denied', [
+        'kind' => 'signed_url',
+        'reason' => 'secret_scope',
+        'field' => $field,
+        'secret_id' => $secret_id ?? 'legacy',
+      ]);
+      return new JsonResponse(['error' => 'Grant not found.'], Response::HTTP_NOT_FOUND);
     }
     $data = json_decode($request->getContent(), TRUE);
     $ttl = is_array($data) && array_key_exists('ttl', $data)

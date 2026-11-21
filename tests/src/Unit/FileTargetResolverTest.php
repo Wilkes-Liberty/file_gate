@@ -80,6 +80,29 @@ final class FileTargetResolverTest extends UnitTestCase {
   }
 
   /**
+   * An unpublished host whose file is out of scope looks like no media.
+   */
+  public function testUnpublishedOutOfScopeMediaIsNotFound(): void {
+    $file = $this->createMock(FileInterface::class);
+    $storage = $this->createMock(EntityStorageInterface::class);
+    $storage->method('load')->with('42')->willReturn($file);
+    $media = $this->media(FALSE, '42');
+    $repository = $this->createMock(EntityRepositoryInterface::class);
+    $repository->method('loadEntityByUuid')->willReturn($media);
+    $entity_types = $this->createMock(EntityTypeManagerInterface::class);
+    $entity_types->method('hasDefinition')->with('media')->willReturn(TRUE);
+    $entity_types->method('getStorage')->with('file')->willReturn($storage);
+    $resolver = $this->resolver($repository, $entity_types);
+
+    $refused = $resolver->resolve(['media' => 'media-uuid'], static fn (): bool => FALSE);
+    $this->assertError($refused, Response::HTTP_NOT_FOUND, 'Media not found.');
+
+    // In scope, the caller is still told the host is unpublished.
+    $allowed = $resolver->resolve(['media' => 'media-uuid'], static fn (): bool => TRUE);
+    $this->assertError($allowed, Response::HTTP_CONFLICT, 'Media is not published.');
+  }
+
+  /**
    * A media entity with no source file is 422.
    */
   public function testMediaWithoutFileIsUnprocessable(): void {

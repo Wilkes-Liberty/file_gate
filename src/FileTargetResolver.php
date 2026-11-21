@@ -37,12 +37,17 @@ final class FileTargetResolver {
    *
    * @param array $data
    *   The decoded JSON body: {"file": "<uuid>"} or {"media": "<uuid>"}.
+   * @param callable|null $in_scope
+   *   Optional. Receives the media's file and returns whether the caller may
+   *   act on it. When given, an unpublished host whose file is out of scope
+   *   is answered like an unknown target, so the caller cannot learn that it
+   *   exists.
    *
    * @return \Drupal\file\FileInterface|\Symfony\Component\HttpFoundation\JsonResponse
    *   The resolved file, or a JsonResponse describing why it could not be
    *   resolved (404 unknown, 409 unpublished host, 422 no file, 400 bad input).
    */
-  public function resolve(array $data): FileInterface|JsonResponse {
+  public function resolve(array $data, ?callable $in_scope = NULL): FileInterface|JsonResponse {
     // By file UUID (media-agnostic path).
     if (!empty($data['file']) && is_string($data['file'])) {
       $file = $this->entityRepository->loadEntityByUuid('file', $data['file']);
@@ -61,6 +66,13 @@ final class FileTargetResolver {
       // Never mint for unpublished host content — the URL would be handed to
       // the public for something that is not yet public.
       if (method_exists($media, 'isPublished') && !$media->isPublished()) {
+        if ($in_scope !== NULL) {
+          $fid = $media->getSource()->getSourceFieldValue($media);
+          $unpublished_file = $fid ? $this->entityTypeManager->getStorage('file')->load($fid) : NULL;
+          if ($unpublished_file instanceof FileInterface && !$in_scope($unpublished_file)) {
+            return $this->notFound($data);
+          }
+        }
         return new JsonResponse(['error' => 'Media is not published.'], Response::HTTP_CONFLICT);
       }
       $fid = $media->getSource()->getSourceFieldValue($media);

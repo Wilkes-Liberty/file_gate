@@ -154,21 +154,27 @@ final class OtpController implements ContainerInjectionInterface {
     if ($email === '' || $code === '') {
       return new JsonResponse(['error' => 'Provide "email" and "otp".'], Response::HTTP_BAD_REQUEST);
     }
+    // This endpoint takes no shared secret, so every refusal is the same
+    // answer: an unknown file, a file that is not OTP-gated and a wrong
+    // passcode cannot be told apart, and the endpoint cannot be used to learn
+    // whether a file exists.
+    $refused = new JsonResponse(['error' => 'Invalid or expired passcode.'], Response::HTTP_FORBIDDEN);
     $file = $this->fileTargetResolver->resolve($data);
     if ($file instanceof JsonResponse) {
-      return $file;
+      // Malformed input is still reported; it says nothing about any file.
+      return $file->getStatusCode() === Response::HTTP_BAD_REQUEST ? $file : $refused;
     }
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->fromRequest($request),
     );
     if ($gate === NULL || $gate['method'] !== 'otp') {
-      return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+      return $refused;
     }
 
     $method = $this->gateMethodManager->createInstance('otp', $gate['settings']);
     if (!$method instanceof Otp || !$method->consumeCode($file->uuid(), $email, $code)) {
-      return new JsonResponse(['error' => 'Invalid or expired passcode.'], Response::HTTP_FORBIDDEN);
+      return $refused;
     }
 
     $cookie = $this->otpSession->mintCookie(
@@ -225,7 +231,13 @@ final class OtpController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'Provide a valid "email".'], Response::HTTP_BAD_REQUEST);
     }
 
-    $file = $this->fileTargetResolver->resolve($data);
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    $in_scope = fn (FileInterface $candidate): bool => array_filter(
+      $this->resolver->gatedFieldKeys($candidate),
+      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
+    ) !== [];
+    $file = $this->fileTargetResolver->resolve($data, $in_scope);
     if ($file instanceof JsonResponse) {
       return $file;
     }
@@ -235,15 +247,9 @@ final class OtpController implements ContainerInjectionInterface {
     // Field scope, checked before anything about the file is disclosed: a
     // named secret that may mint none of the fields gating this file gets the
     // answer for a file that does not exist.
-    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
-    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
     $gated_fields = $this->resolver->gatedFieldKeys($file);
-    $mintable_fields = array_filter(
-      $gated_fields,
-      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
-    );
-    if ($gated_fields !== [] && $mintable_fields === []) {
-      return $this->fileTargetResolver->notFound($data);
+    if ($gated_fields !== [] && !$in_scope($file)) {
+      return $this->refuseFieldScope($file, $secret_id, $gated_fields[0], $data);
     }
     $gate = $this->resolver->getGateForFile(
       $file,
@@ -253,7 +259,7 @@ final class OtpController implements ContainerInjectionInterface {
       return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
     if (!$this->secrets->allowsField($secret_id, $gate['field'])) {
-      return $this->fileTargetResolver->notFound($data);
+      return $this->refuseFieldScope($file, $secret_id, $gate['field'], $data);
     }
 
     // Throttle per (file, email) to bound mailbombing and brute force.
@@ -271,6 +277,33 @@ final class OtpController implements ContainerInjectionInterface {
     }
 
     return new Response('', Response::HTTP_NO_CONTENT);
+  }
+
+  /**
+   * Refuses a secret for field scope with the answer for an unknown file.
+   *
+   * The refusal is audited; only the caller's view matches a missing file.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file the secret may not request a passcode for.
+   * @param string|null $secret_id
+   *   The named secret, or NULL for the legacy secret.
+   * @param string $field
+   *   The gating field that is outside the secret's scope.
+   * @param array $data
+   *   The decoded request body.
+   */
+  private function refuseFieldScope(FileInterface $file, ?string $secret_id, string $field, array $data): JsonResponse {
+    $this->audit->log('otp_denied', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => FileGateAudit::fileLabel($file),
+      'uuid' => $file->uuid(),
+      'reason' => 'secret_scope',
+      'field' => $field,
+      'secret_id' => $secret_id ?? 'legacy',
+    ]);
+    return $this->fileTargetResolver->notFound($data);
   }
 
   /**
