@@ -204,6 +204,49 @@ final class ScopedSecretsTest extends KernelTestBase {
   }
 
   /**
+   * A file gated by two fields discloses only what the secret may mint.
+   */
+  public function testMultiFieldAnswersStayInsideTheSecretScope(): void {
+    $directory = 'private://docs';
+    \Drupal::service('file_system')->prepareDirectory($directory, FileSystemInterface::CREATE_DIRECTORY);
+    file_put_contents('private://docs/both.pdf', 'BYTES:both');
+    $both = File::create(['uri' => 'private://docs/both.pdf']);
+    $both->setPermanent();
+    $both->save();
+    $entity = EntityTest::create([
+      'name' => 'host',
+      'field_whitepaper' => ['target_id' => $both->id()],
+      'field_nda' => ['target_id' => $both->id()],
+    ]);
+    $entity->save();
+    \Drupal::service('file.usage')->add($both, 'file', 'entity_test', (string) $entity->id());
+    $mint = fn (array $body, string $secret, ?string $id) => MintController::create($this->container)
+      ->mint($this->mintRequest(json_encode($body), $secret, $id));
+
+    // The scoped secret needs no hint: it may mint exactly one of the fields,
+    // and the answer never names the other.
+    $scoped = $mint(['file' => $both->uuid()], self::PUBLIC_SECRET, self::PUBLIC_ID);
+    $this->assertSame(200, $scoped->getStatusCode(), (string) $scoped->getContent());
+    $this->assertStringNotContainsString('field_nda', (string) $scoped->getContent());
+
+    // Naming a field outside its scope is answered like an unknown file,
+    // whether that field gates the file or not.
+    $missing = $mint(['file' => '00000000-0000-4000-8000-000000000000'], self::PUBLIC_SECRET, self::PUBLIC_ID);
+    foreach (['entity_test.field_nda', 'entity_test.field_elsewhere'] as $field) {
+      $refused = $mint(['file' => $both->uuid(), 'field' => $field], self::PUBLIC_SECRET, self::PUBLIC_ID);
+      $this->assertSame($missing->getStatusCode(), $refused->getStatusCode(), $field);
+      $this->assertSame($missing->getContent(), $refused->getContent(), $field);
+    }
+
+    // The unscoped legacy secret may mint both and is still asked to choose.
+    $legacy = $mint(['file' => $both->uuid()], self::LEGACY, NULL);
+    $this->assertSame(400, $legacy->getStatusCode());
+    $fields = json_decode((string) $legacy->getContent(), TRUE)['fields'];
+    sort($fields);
+    $this->assertSame(['entity_test.field_nda', 'entity_test.field_whitepaper'], $fields);
+  }
+
+  /**
    * Redemption re-checks scope after a secret is narrowed.
    */
   public function testNarrowingScopeDeniesOutstandingGrant(): void {

@@ -228,11 +228,13 @@ final class GrantInventoryRevokeScopeTest extends KernelTestBase {
     $cross = RevokeController::create($this->container)->revoke(
       $this->secretRequest('POST', '/api/file-gate/revoke', self::PUBLIC_ID, self::PUBLIC_SECRET, json_encode(['jti' => $nda_query['jti']])),
     );
-    $this->assertSame(Response::HTTP_FORBIDDEN, $cross->getStatusCode());
-    $this->assertSame(
-      'This credential is not allowed to revoke that grant.',
-      json_decode((string) $cross->getContent(), TRUE)['error'],
+    // A grant outside the secret's scope answers exactly like an unknown one.
+    $unknown = RevokeController::create($this->container)->revoke(
+      $this->secretRequest('POST', '/api/file-gate/revoke', self::PUBLIC_ID, self::PUBLIC_SECRET, json_encode(['jti' => 'no-such-grant-identifier'])),
     );
+    $this->assertSame(Response::HTTP_NOT_FOUND, $unknown->getStatusCode());
+    $this->assertSame($unknown->getStatusCode(), $cross->getStatusCode());
+    $this->assertSame($unknown->getContent(), $cross->getContent());
 
     $nda_after_cross = $this->listGrants(self::NDA_FIELD, self::NDA_ID, self::NDA_SECRET);
     $this->assertSame(1, $nda_after_cross['count']);

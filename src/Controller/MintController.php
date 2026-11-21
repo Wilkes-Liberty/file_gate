@@ -143,7 +143,9 @@ final class MintController implements ContainerInjectionInterface {
     }
 
     // Resolve the target file. Returns a JsonResponse (error) or the file.
-    $file = $this->fileTargetResolver->resolve($data);
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    $file = $this->fileTargetResolver->resolve($data, fn (FileInterface $candidate): bool => $this->mintableFields($candidate, $secret_id) !== []);
     if ($file instanceof JsonResponse) {
       return $file;
     }
@@ -163,19 +165,26 @@ final class MintController implements ContainerInjectionInterface {
     // Field scope, checked before anything about the file is disclosed: a
     // named secret that may mint none of the fields gating this file gets the
     // answer for a file that does not exist.
-    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
-    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
-    $mintable_fields = array_values(array_filter(
-      $gated_fields,
-      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
-    ));
+    $mintable_fields = $this->mintableFields($file, $secret_id);
     if ($mintable_fields === []) {
       return $this->refuseFieldScope($request, $file, $secret_id, $gated_fields[0], $data);
     }
-    if ($field_key === NULL && count($gated_fields) > 1) {
+    // A field the secret may not mint is answered the same way whether or not
+    // it gates this file, so naming it tells the caller nothing.
+    if ($field_key !== NULL && !$this->secrets->allowsField($secret_id, $field_key)) {
+      return $this->refuseFieldScope($request, $file, $secret_id, $field_key, $data);
+    }
+    // When several fields gate the file but the secret may mint only one,
+    // that one needs no hint. A file with a single gate is left exactly as
+    // before.
+    if ($field_key === NULL && count($gated_fields) > 1 && count($mintable_fields) === 1) {
+      $field_key = $mintable_fields[0];
+    }
+    if ($field_key === NULL && count($mintable_fields) > 1) {
+      // Only the fields this secret may mint: the others are not its business.
       return new JsonResponse([
         'error' => 'This file is gated by multiple fields; provide "field" (entity_type.field_name).',
-        'fields' => $gated_fields,
+        'fields' => $mintable_fields,
       ], Response::HTTP_BAD_REQUEST);
     }
     $gate = $this->resolver->getGateForFile($file, $field_key);
@@ -311,6 +320,24 @@ final class MintController implements ContainerInjectionInterface {
       'field' => $gate['field'],
       'method' => $gate['method'],
     ]);
+  }
+
+  /**
+   * The gating fields of a file that a secret may mint.
+   *
+   * @param \Drupal\file\FileInterface $file
+   *   The file.
+   * @param string|null $secret_id
+   *   The named secret, or NULL for the legacy secret, which may mint all.
+   *
+   * @return string[]
+   *   Field storage keys, in gate order.
+   */
+  private function mintableFields(FileInterface $file, ?string $secret_id): array {
+    return array_values(array_filter(
+      $this->resolver->gatedFieldKeys($file),
+      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
+    ));
   }
 
   /**

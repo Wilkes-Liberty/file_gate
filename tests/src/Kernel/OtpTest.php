@@ -241,6 +241,43 @@ final class OtpTest extends KernelTestBase {
   }
 
   /**
+   * The session endpoint gives one answer for every refusal.
+   *
+   * It takes no shared secret, so an unknown file, a file that is not
+   * OTP-gated and a wrong passcode must be indistinguishable.
+   */
+  public function testSessionRefusalsAreIndistinguishable(): void {
+    FieldStorageConfig::create([
+      'entity_type' => 'entity_test',
+      'field_name' => 'field_signed',
+      'type' => 'file',
+      'settings' => ['uri_scheme' => 'private'],
+    ])
+      ->setThirdPartySetting('file_gate', 'gated', TRUE)
+      ->setThirdPartySetting('file_gate', 'method', 'signed_url')
+      ->save();
+    FieldConfig::create([
+      'entity_type' => 'entity_test',
+      'field_name' => 'field_signed',
+      'bundle' => 'entity_test',
+    ])->save();
+    $signed = $this->createFile('signed.pdf', 'field_signed');
+    $gated = $this->createFile('doc.pdf');
+
+    $wrong_code = $this->establishSession($gated, self::EMAIL, '000000');
+    $not_otp = $this->establishSession($signed, self::EMAIL, '000000');
+    $missing = OtpController::create($this->container)->establishSession(Request::create(
+      '/api/file-gate/otp/session', 'POST', [], [], [], [],
+      (string) json_encode(['file' => '00000000-0000-4000-8000-000000000000', 'email' => self::EMAIL, 'otp' => '000000']),
+    ));
+    $this->assertSame(403, $wrong_code->getStatusCode());
+    foreach ([$not_otp, $missing] as $response) {
+      $this->assertSame($wrong_code->getStatusCode(), $response->getStatusCode());
+      $this->assertSame($wrong_code->getContent(), $response->getContent());
+    }
+  }
+
+  /**
    * The send endpoint throttles repeated requests for the same file + email.
    */
   public function testSendThrottle(): void {

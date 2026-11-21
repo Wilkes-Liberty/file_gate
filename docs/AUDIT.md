@@ -39,7 +39,9 @@ drush audit-chain:verify
 | `download` | Successful gated delivery |
 | `download_denied` | Hard grant reject (not soft step-up challenges) |
 | `otp_issue` | OTP code issued (never the code itself) |
+| `otp_denied` | Passcode request refused for field scope |
 | `revoke` | Token or jti revoke |
+| `revoke_denied` | Revoke refused for field or `k` scope |
 | `field_gating_refused` | A save that would gate a field on a non-private file scheme was refused. Metadata: `storage` (config name), `scheme`, `write` (`entity` or `config`) |
 
 Metadata promotes `entity_type` / `id` / `label` when present; free keys
@@ -61,7 +63,8 @@ Set `file_gate.settings.audit_require_keyed` to `true` (also a checkbox on
 the File Gate settings form) when a signed row is mandatory evidence.
 Mint and download then call `logKeyed()` and, if the signed append fails,
 return **HTTP 503** with a generic body and **do not stream file bytes**.
-Denied paths (`mint_denied`, `download_denied`, `otp_issue`, `revoke`) stay
+Denied paths (`mint_denied`, `download_denied`, `otp_denied`, `revoke_denied`,
+`otp_issue`, `revoke`) stay
 best-effort: they already refuse the action.
 
 Leave the setting off unless the site has `audit_chain` enabled and a

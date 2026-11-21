@@ -59,6 +59,16 @@ final class AuditChainEvidenceTest extends KernelTestBase {
   private const OTHER_SECRET = 'other-tier-secret-value';
 
   /**
+   * Named secret scoped to the signed-URL field only.
+   */
+  private const GATED_ONLY_ID = 's_gated_only';
+
+  /**
+   * Material for the signed-URL-only secret.
+   */
+  private const GATED_ONLY_SECRET = 'gated-only-secret-value';
+
+  /**
    * {@inheritdoc}
    */
   protected static $modules = [
@@ -96,11 +106,13 @@ final class AuditChainEvidenceTest extends KernelTestBase {
 
     $this->setSetting('file_gate.secrets', [
       self::OTHER_ID => self::OTHER_SECRET,
+      self::GATED_ONLY_ID => self::GATED_ONLY_SECRET,
     ]);
     $this->config('file_gate.settings')
       ->set('download_secret', self::SECRET)
       ->set('secret_scopes', [
         self::OTHER_ID => ['entity_test.field_otp'],
+        self::GATED_ONLY_ID => ['entity_test.field_gated'],
       ])
       ->save();
     $this->config('system.mail')->set('interface.default', 'test_mail_collector')->save();
@@ -185,6 +197,15 @@ final class AuditChainEvidenceTest extends KernelTestBase {
     );
     $this->assertSame(204, $otp->getStatusCode());
 
+    // A scope refusal on the passcode request is audited like one on mint.
+    $otp_refused = OtpController::create($this->container)->request(
+      $this->secretRequest('/api/file-gate/otp', json_encode([
+        'file' => $otp_file->uuid(),
+        'email' => 'requester@example.com',
+      ]), self::GATED_ONLY_SECRET, self::GATED_ONLY_ID),
+    );
+    $this->assertSame(404, $otp_refused->getStatusCode());
+
     $token_file = $this->createReferencedFile('field_token', self::CANARY . '-token.pdf');
     $token_mint = MintController::create($this->container)
       ->mint($this->secretRequest('/api/file-gate/mint', json_encode(['file' => $token_file->uuid()]), self::SECRET));
@@ -197,7 +218,7 @@ final class AuditChainEvidenceTest extends KernelTestBase {
     $this->assertSame(204, $revoked->getStatusCode());
 
     $ops = array_column(RecordingAuditChain::$events, 1);
-    foreach (['mint', 'mint_denied', 'download', 'download_denied', 'otp_issue', 'revoke'] as $op) {
+    foreach (['mint', 'mint_denied', 'download', 'download_denied', 'otp_issue', 'otp_denied', 'revoke'] as $op) {
       $this->assertContains($op, $ops, "Expected a $op audit row.");
     }
 

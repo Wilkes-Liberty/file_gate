@@ -370,8 +370,9 @@ again never shortens its mark. Bulk revoke
 (`POST /api/file-gate/grants/revoke-bulk`) follows the same rule.
 
 Responses: `204` (revoked), `400` (no token/jti), `401` (bad/absent secret),
-`403` (credential not allowed for that grant's field / `k`), `404` (unknown or
-already-gone token or jti), `429` (rate limited), `503` (no secret configured).
+`404` (unknown or already-gone token or jti, or a grant outside the
+credential's field / `k` scope), `429` (rate limited), `503` (no secret
+configured).
 
 ### OTP — `POST /api/file-gate/otp`
 
