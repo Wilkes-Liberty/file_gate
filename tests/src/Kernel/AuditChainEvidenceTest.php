@@ -173,7 +173,8 @@ final class AuditChainEvidenceTest extends KernelTestBase {
         self::OTHER_ID,
       ),
     );
-    $this->assertSame(403, $denied->getStatusCode());
+    // The caller sees a missing file; the refusal is still audited below.
+    $this->assertSame(404, $denied->getStatusCode());
 
     $otp_file = $this->createReferencedFile('field_otp', self::CANARY . '-otp.pdf');
     $otp = OtpController::create($this->container)->request(

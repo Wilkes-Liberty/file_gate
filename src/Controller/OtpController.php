@@ -232,6 +232,19 @@ final class OtpController implements ContainerInjectionInterface {
 
     // The file must be gated with the OTP method. Pin to the request field
     // when the same file sits on more than one gated field.
+    // Field scope, checked before anything about the file is disclosed: a
+    // named secret that may mint none of the fields gating this file gets the
+    // answer for a file that does not exist.
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    $gated_fields = $this->resolver->gatedFieldKeys($file);
+    $mintable_fields = array_filter(
+      $gated_fields,
+      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
+    );
+    if ($gated_fields !== [] && $mintable_fields === []) {
+      return $this->fileTargetResolver->notFound($data);
+    }
     $gate = $this->resolver->getGateForFile(
       $file,
       $this->mintStoredField->fromRequest($request),
@@ -239,12 +252,8 @@ final class OtpController implements ContainerInjectionInterface {
     if ($gate === NULL || $gate['method'] !== 'otp') {
       return new JsonResponse(['error' => 'The requested file is not OTP-gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
-    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
-    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
     if (!$this->secrets->allowsField($secret_id, $gate['field'])) {
-      return new JsonResponse([
-        'error' => 'This credential is not allowed to mint that file.',
-      ], Response::HTTP_FORBIDDEN);
+      return $this->fileTargetResolver->notFound($data);
     }
 
     // Throttle per (file, email) to bound mailbombing and brute force.

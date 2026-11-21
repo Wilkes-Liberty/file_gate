@@ -73,4 +73,25 @@ final class FileTargetResolver {
     return new JsonResponse(['error' => 'Provide a "file" or "media" UUID.'], Response::HTTP_BAD_REQUEST);
   }
 
+  /**
+   * The response for a target that does not exist.
+   *
+   * Callers return this when a scoped credential is refused for a file that
+   * exists, so the refusal cannot be told apart from an unknown identifier.
+   *
+   * @param array $data
+   *   The decoded JSON body the target was resolved from.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   The same 404 that resolve() returns for an unknown file or media.
+   */
+  public function notFound(array $data): JsonResponse {
+    $by_media = (empty($data['file']) || !is_string($data['file']))
+      && !empty($data['media']) && is_string($data['media']);
+    return new JsonResponse(
+      ['error' => $by_media ? 'Media not found.' : 'File not found.'],
+      Response::HTTP_NOT_FOUND,
+    );
+  }
+
 }
