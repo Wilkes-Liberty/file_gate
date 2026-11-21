@@ -160,6 +160,18 @@ final class MintController implements ContainerInjectionInterface {
     if ($gated_fields === []) {
       return new JsonResponse(['error' => 'The requested file is not gated.'], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
+    // Field scope, checked before anything about the file is disclosed: a
+    // named secret that may mint none of the fields gating this file gets the
+    // answer for a file that does not exist.
+    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
+    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    $mintable_fields = array_values(array_filter(
+      $gated_fields,
+      fn (string $field): bool => $this->secrets->allowsField($secret_id, $field),
+    ));
+    if ($mintable_fields === []) {
+      return $this->refuseFieldScope($request, $file, $secret_id, $gated_fields[0], $data);
+    }
     if ($field_key === NULL && count($gated_fields) > 1) {
       return new JsonResponse([
         'error' => 'This file is gated by multiple fields; provide "field" (entity_type.field_name).',
@@ -175,27 +187,10 @@ final class MintController implements ContainerInjectionInterface {
       ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
-    // Field scope: named secrets may only mint fields in their allowlist.
-    $secret_id = $request->attributes->get(SecretRegistryInterface::REQUEST_ATTR_SECRET_ID);
-    $secret_id = is_string($secret_id) && $secret_id !== '' ? $secret_id : NULL;
+    // The gate that was resolved may still be outside the secret's scope when
+    // several fields gate the file and the request named one of them.
     if (!$this->secrets->allowsField($secret_id, $gate['field'])) {
-      $this->logger->warning('Mint refused: secret @id is not allowed to mint field @field (file @uuid) from @ip.', [
-        '@id' => $secret_id ?? 'legacy',
-        '@field' => $gate['field'],
-        '@uuid' => $file->uuid(),
-        '@ip' => $request->getClientIp() ?? 'unknown',
-      ]);
-      $this->audit->log('mint_denied', [
-        'entity_type' => 'file',
-        'id' => (string) $file->id(),
-        'label' => FileGateAudit::fileLabel($file),
-        'uuid' => $file->uuid(),
-        'reason' => 'secret_scope',
-        'field' => $gate['field'],
-      ]);
-      return new JsonResponse([
-        'error' => 'This credential is not allowed to mint that file.',
-      ], Response::HTTP_FORBIDDEN);
+      return $this->refuseFieldScope($request, $file, $secret_id, $gate['field'], $data);
     }
 
     // Forced identity-aware mint (global and/or field method setting).
@@ -316,6 +311,41 @@ final class MintController implements ContainerInjectionInterface {
       'field' => $gate['field'],
       'method' => $gate['method'],
     ]);
+  }
+
+  /**
+   * Refuses a secret for field scope with the response for an unknown file.
+   *
+   * The refusal is still logged and audited; only the caller's view is the
+   * same as for a file that does not exist.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The mint request.
+   * @param \Drupal\file\FileInterface $file
+   *   The file the secret may not mint.
+   * @param string|null $secret_id
+   *   The named secret, or NULL for the legacy secret.
+   * @param string $field
+   *   The gating field that is outside the secret's scope.
+   * @param array $data
+   *   The decoded request body.
+   */
+  private function refuseFieldScope(Request $request, FileInterface $file, ?string $secret_id, string $field, array $data): JsonResponse {
+    $this->logger->warning('Mint refused: secret @id is not allowed to mint field @field (file @uuid) from @ip.', [
+      '@id' => $secret_id ?? 'legacy',
+      '@field' => $field,
+      '@uuid' => $file->uuid(),
+      '@ip' => $request->getClientIp() ?? 'unknown',
+    ]);
+    $this->audit->log('mint_denied', [
+      'entity_type' => 'file',
+      'id' => (string) $file->id(),
+      'label' => FileGateAudit::fileLabel($file),
+      'uuid' => $file->uuid(),
+      'reason' => 'secret_scope',
+      'field' => $field,
+    ]);
+    return $this->fileTargetResolver->notFound($data);
   }
 
   /**

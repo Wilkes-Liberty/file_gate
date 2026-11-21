@@ -35,8 +35,8 @@ For **assurance A2** (`verify_oidc_at_mint`): also send `Authorization: Bearer|D
 | `200` | `{ "path": "/api/file-gate/download?…", "expires": <unix-ts|null>, "ttl": <int>, "field", "method" }`. `path` is root-relative — prepend your public origin. Named secrets add `k=<id>` to the query. |
 | `400` | Invalid JSON, multi-field without `field`, neither `file` nor `media`, or method does not support minted URLs. |
 | `401` | Missing or wrong secret (or missing A2 token when required). |
-| `403` | Credential scope, identity, or A2 acr/token check failed. |
-| `404` | Unknown file/media. |
+| `403` | Identity or A2 acr/token check failed. |
+| `404` | Unknown file/media, or a named secret whose field scope does not cover the file. The two are deliberately indistinguishable; the scope refusal is logged and audited as `mint_denied`. |
 | `409` | The host media is unpublished. |
 | `422` | The file is not gated, or the media has no file. |
 | `429` | Rate limited (per client IP). |

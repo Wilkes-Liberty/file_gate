@@ -185,7 +185,22 @@ final class ScopedSecretsTest extends KernelTestBase {
     $denied = MintController::create($this->container)->mint(
       $this->mintRequest(json_encode(['file' => $nda->uuid()]), self::PUBLIC_SECRET, self::PUBLIC_ID),
     );
-    $this->assertSame(403, $denied->getStatusCode());
+    // A field-scope refusal answers exactly like a file that does not exist,
+    // so a scoped credential cannot learn that an out-of-scope file exists.
+    $missing = MintController::create($this->container)->mint(
+      $this->mintRequest(json_encode(['file' => '00000000-0000-4000-8000-000000000000']), self::PUBLIC_SECRET, self::PUBLIC_ID),
+    );
+    $this->assertSame(404, $missing->getStatusCode());
+    $this->assertSame($missing->getStatusCode(), $denied->getStatusCode());
+    $this->assertSame($missing->getContent(), $denied->getContent());
+    $this->assertStringNotContainsString('field_nda', (string) $denied->getContent());
+
+    // Naming the out-of-scope field explicitly changes nothing.
+    $named = MintController::create($this->container)->mint(
+      $this->mintRequest(json_encode(['file' => $nda->uuid(), 'field' => 'entity_test.field_nda']), self::PUBLIC_SECRET, self::PUBLIC_ID),
+    );
+    $this->assertSame($missing->getStatusCode(), $named->getStatusCode());
+    $this->assertSame($missing->getContent(), $named->getContent());
   }
 
   /**
